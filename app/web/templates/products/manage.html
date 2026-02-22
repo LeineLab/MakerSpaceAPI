@@ -40,9 +40,15 @@
           <span class="text-xs bg-gray-100 text-gray-500 rounded px-2 py-0.5">inactive</span>
           {% endif %}
         </td>
-        <td class="px-4 py-2 text-right">
+        <td class="px-4 py-2 text-right space-x-2 whitespace-nowrap">
+          <button
+            onclick="openEditModal('{{ p.ean }}','{{ p.name|e }}','{{ p.price }}','{{ p.category|e }}',{{ 'true' if p.active else 'false' }})"
+            class="text-xs text-blue-600 hover:underline">edit</button>
+          <button
+            onclick="openStockModal('{{ p.ean }}','{{ p.name|e }}',{{ p.stock }})"
+            class="text-xs text-gray-500 hover:underline">stock</button>
           <a href="/api/v1/products/{{ p.ean }}/audit" target="_blank"
-             class="text-xs text-blue-500 hover:underline">history</a>
+             class="text-xs text-gray-400 hover:underline">history</a>
         </td>
       </tr>
       {% else %}
@@ -52,17 +58,150 @@
   </table>
 </div>
 
-<!-- Add product modal (minimal, JS-free submit via regular form to API) -->
+<!-- Add Product Modal -->
 <div id="add-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
   <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
     <h2 class="text-lg font-bold mb-4">Add Product</h2>
-    <p class="text-sm text-gray-500 mb-4">
-      Use the <a href="/api/docs#/products/create_product_api_v1_products_post"
-                 class="text-blue-600 underline" target="_blank">API docs</a>
-      to add products programmatically, or submit below.
-    </p>
-    <button onclick="document.getElementById('add-modal').classList.add('hidden')"
-            class="text-sm text-gray-500 hover:underline">Close</button>
+    <form method="post" action="/products/manage/new" class="space-y-3">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">EAN</label>
+        <input type="text" name="ean" required placeholder="e.g. 4006381333931"
+               class="w-full border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+        <input type="text" name="name" required placeholder="Product name"
+               class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Price (€)</label>
+          <input type="number" name="price" required min="0" step="0.01" placeholder="0.00"
+                 class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Initial stock</label>
+          <input type="number" name="stock" value="0" min="0"
+                 class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
+        <input type="text" name="category" required placeholder="e.g. Food"
+               list="category-list"
+               class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+        <datalist id="category-list">
+          {% for cat in categories %}
+          <option value="{{ cat }}">
+          {% endfor %}
+        </datalist>
+      </div>
+      <div class="flex items-center gap-2">
+        <input type="checkbox" name="active" id="add-active" checked
+               class="rounded border-gray-300 text-blue-600">
+        <label for="add-active" class="text-sm text-gray-700">Active</label>
+      </div>
+      <div class="flex justify-end gap-3 pt-2">
+        <button type="button"
+                onclick="document.getElementById('add-modal').classList.add('hidden')"
+                class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">Cancel</button>
+        <button type="submit"
+                class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
+          Add Product
+        </button>
+      </div>
+    </form>
   </div>
 </div>
+
+<!-- Edit Product Modal -->
+<div id="edit-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+  <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+    <h2 class="text-lg font-bold mb-1">Edit Product</h2>
+    <p id="edit-ean-label" class="text-xs text-gray-400 font-mono mb-4"></p>
+    <form id="edit-form" method="post" action="" class="space-y-3">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+        <input type="text" name="name" id="edit-name" required
+               class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Price (€)</label>
+          <input type="number" name="price" id="edit-price" required min="0" step="0.01"
+                 class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
+          <input type="text" name="category" id="edit-category" required
+                 list="category-list"
+                 class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <input type="checkbox" name="active" id="edit-active"
+               class="rounded border-gray-300 text-blue-600">
+        <label for="edit-active" class="text-sm text-gray-700">Active</label>
+      </div>
+      <div class="flex justify-end gap-3 pt-2">
+        <button type="button"
+                onclick="document.getElementById('edit-modal').classList.add('hidden')"
+                class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">Cancel</button>
+        <button type="submit"
+                class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
+          Save Changes
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Stock Adjustment Modal -->
+<div id="stock-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+  <div class="bg-white rounded-lg shadow-xl w-full max-w-sm p-6">
+    <h2 class="text-lg font-bold mb-1">Adjust Stock</h2>
+    <p id="stock-product-label" class="text-xs text-gray-500 mb-1"></p>
+    <p class="text-sm text-gray-600 mb-4">Current stock: <span id="stock-current" class="font-semibold"></span></p>
+    <form id="stock-form" method="post" action="" class="space-y-3">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Delta (positive = add, negative = deduct)</label>
+        <input type="number" name="delta" required placeholder="e.g. 10 or -1"
+               class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Note (optional)</label>
+        <input type="text" name="note" placeholder="Reason for change"
+               class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+      </div>
+      <div class="flex justify-end gap-3 pt-2">
+        <button type="button"
+                onclick="document.getElementById('stock-modal').classList.add('hidden')"
+                class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">Cancel</button>
+        <button type="submit"
+                class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
+          Update Stock
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openEditModal(ean, name, price, category, active) {
+  document.getElementById('edit-form').action = '/products/manage/' + ean + '/edit';
+  document.getElementById('edit-ean-label').textContent = 'EAN: ' + ean;
+  document.getElementById('edit-name').value = name;
+  document.getElementById('edit-price').value = price;
+  document.getElementById('edit-category').value = category;
+  document.getElementById('edit-active').checked = active;
+  document.getElementById('edit-modal').classList.remove('hidden');
+}
+
+function openStockModal(ean, name, stock) {
+  document.getElementById('stock-form').action = '/products/manage/' + ean + '/stock';
+  document.getElementById('stock-product-label').textContent = name + ' (' + ean + ')';
+  document.getElementById('stock-current').textContent = stock;
+  document.getElementById('stock-modal').classList.remove('hidden');
+}
+</script>
 {% endblock %}

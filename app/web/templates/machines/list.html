@@ -3,11 +3,31 @@
 {% block content %}
 <div class="flex items-center justify-between mb-4">
   <h1 class="text-2xl font-bold">Machines &amp; Devices</h1>
-  <a href="/api/docs#/machines/register_machine_api_v1_machines_post" target="_blank"
-     class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
-    + Register Machine (via API)
-  </a>
+  <button onclick="document.getElementById('add-machine-modal').classList.remove('hidden')"
+          class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+    + Register Machine
+  </button>
 </div>
+
+{% if pending_token %}
+<div class="mb-6 bg-yellow-50 border border-yellow-300 rounded-lg p-5">
+  <h2 class="font-semibold text-yellow-800 mb-1">
+    Machine "{{ pending_token.machine }}" registered — save this token now!
+  </h2>
+  <p class="text-xs text-yellow-700 mb-2">
+    This API token is shown only once. Copy it and configure the device before leaving this page.
+  </p>
+  <div class="flex items-center gap-3">
+    <code id="pending-token-value"
+          class="flex-1 bg-yellow-100 text-yellow-900 font-mono text-sm px-3 py-2 rounded break-all select-all">{{ pending_token.token }}</code>
+    <button onclick="navigator.clipboard.writeText(document.getElementById('pending-token-value').innerText)"
+            class="shrink-0 px-3 py-2 bg-yellow-600 text-white text-xs rounded hover:bg-yellow-700">
+      Copy
+    </button>
+  </div>
+  <p class="text-xs text-gray-500 mt-2">Slug: <code class="font-mono">{{ pending_token.slug }}</code></p>
+</div>
+{% endif %}
 
 <div class="bg-white rounded-lg shadow overflow-hidden">
   <table class="w-full text-sm">
@@ -42,5 +62,44 @@
       {% endfor %}
     </tbody>
   </table>
+</div>
+
+<!-- Register Machine Modal -->
+<div id="add-machine-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+  <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+    <h2 class="text-lg font-bold mb-4">Register Machine</h2>
+    <form method="post" action="/machines/new" class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+        <input type="text" name="name" required placeholder="e.g. Laser Cutter"
+               class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Slug</label>
+        <input type="text" name="slug" required placeholder="e.g. laser-cutter"
+               pattern="[a-z0-9_-]+"
+               title="Lowercase letters, digits, hyphens and underscores only"
+               class="w-full border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
+        <p class="text-xs text-gray-400 mt-1">Used in API calls. Lowercase only, no spaces.</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
+        <select name="machine_type" required
+                class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <option value="machine">machine</option>
+          <option value="checkout">checkout</option>
+        </select>
+      </div>
+      <div class="flex justify-end gap-3 pt-2">
+        <button type="button"
+                onclick="document.getElementById('add-machine-modal').classList.add('hidden')"
+                class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">Cancel</button>
+        <button type="submit"
+                class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
+          Register &amp; Get Token
+        </button>
+      </div>
+    </form>
+  </div>
 </div>
 {% endblock %}

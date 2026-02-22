@@ -1,7 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Rentals – MakerSpaceAPI{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-bold mb-6">Rental System</h1>
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Rental System</h1>
+  <button onclick="document.getElementById('add-item-modal').classList.remove('hidden')"
+          class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+    + Add Item
+  </button>
+</div>
 
 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
@@ -22,7 +28,12 @@
       <tbody>
         {% for item in items %}
         <tr class="border-t hover:bg-gray-50">
-          <td class="px-4 py-2">{{ item.name }}</td>
+          <td class="px-4 py-2">
+            {{ item.name }}
+            {% if item.description %}
+            <span class="block text-xs text-gray-400">{{ item.description }}</span>
+            {% endif %}
+          </td>
           <td class="px-4 py-2 font-mono text-xs text-gray-500">{{ item.uhf_tid }}</td>
           <td class="px-4 py-2 text-center">
             {% if item.active %}✓{% else %}—{% endif %}
@@ -89,5 +100,39 @@
       {% endfor %}
     </tbody>
   </table>
+</div>
+
+<!-- Add Rental Item Modal -->
+<div id="add-item-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+  <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+    <h2 class="text-lg font-bold mb-4">Add Rental Item</h2>
+    <form method="post" action="/rentals/items/new" class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+        <input type="text" name="name" required placeholder="e.g. Angle Grinder"
+               class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">UHF TID</label>
+        <input type="text" name="uhf_tid" required placeholder="e.g. E2003412012345678"
+               class="w-full border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
+        <p class="text-xs text-gray-400 mt-1">Tag ID from the UHF RFID chip. Will be stored uppercase.</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Description (optional)</label>
+        <input type="text" name="description" placeholder="Short description or notes"
+               class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+      </div>
+      <div class="flex justify-end gap-3 pt-2">
+        <button type="button"
+                onclick="document.getElementById('add-item-modal').classList.add('hidden')"
+                class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">Cancel</button>
+        <button type="submit"
+                class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
+          Add Item
+        </button>
+      </div>
+    </form>
+  </div>
 </div>
 {% endblock %}

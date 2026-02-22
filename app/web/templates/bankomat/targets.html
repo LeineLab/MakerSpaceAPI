@@ -1,7 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Booking Targets – MakerSpaceAPI{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-bold mb-4">Booking Targets</h1>
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-2xl font-bold">Booking Targets</h1>
+  <button onclick="document.getElementById('add-target-modal').classList.remove('hidden')"
+          class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+    + New Target
+  </button>
+</div>
 
 <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
   {% for t in targets %}
@@ -15,8 +21,34 @@
   {% endfor %}
 </div>
 
-<div class="text-sm text-gray-500">
-  Use the <a href="/api/docs#/bankomat" class="text-blue-600 hover:underline" target="_blank">API docs</a>
-  to create new booking targets.
+<!-- Add Booking Target Modal -->
+<div id="add-target-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+  <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+    <h2 class="text-lg font-bold mb-4">New Booking Target</h2>
+    <form method="post" action="/bankomat/targets/new" class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+        <input type="text" name="name" required placeholder="e.g. Electricity"
+               class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Slug</label>
+        <input type="text" name="slug" required placeholder="e.g. electricity"
+               pattern="[a-z0-9_-]+"
+               title="Lowercase letters, digits, hyphens and underscores only"
+               class="w-full border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
+        <p class="text-xs text-gray-400 mt-1">Used in API calls. Lowercase only, no spaces.</p>
+      </div>
+      <div class="flex justify-end gap-3 pt-2">
+        <button type="button"
+                onclick="document.getElementById('add-target-modal').classList.add('hidden')"
+                class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">Cancel</button>
+        <button type="submit"
+                class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
+          Create
+        </button>
+      </div>
+    </form>
+  </div>
 </div>
 {% endblock %}
