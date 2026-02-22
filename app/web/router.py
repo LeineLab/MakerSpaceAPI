@@ -9,7 +9,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from app.auth.deps import get_session_user, require_admin_user
+from app.auth.deps import get_session_user, require_admin_user, require_product_manager_user
+from app.auth.oidc import is_admin, is_product_manager
 from app.auth.tokens import generate_api_token
 from app.database import get_db
 from app.models.booking_target import BookingTarget
@@ -21,6 +22,8 @@ from app.web.auth import router as auth_router
 
 _templates_dir = pathlib.Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(_templates_dir))
+templates.env.globals["is_admin"] = lambda u: is_admin(u) if u else False
+templates.env.globals["is_product_manager"] = lambda u: is_product_manager(u) if u else False
 
 router = APIRouter()
 router.include_router(auth_router)
@@ -162,13 +165,13 @@ def machines_create(
 
 
 # ---------------------------------------------------------------------------
-# Admin: Products (manage)
+# Product manager: Products (manage) — accessible by admins and product managers
 # ---------------------------------------------------------------------------
 
 @router.get("/products/manage", response_class=HTMLResponse)
 def products_manage(
     request: Request,
-    admin: dict = Depends(require_admin_user),
+    user: dict = Depends(require_product_manager_user),
     db: Session = Depends(get_db),
 ):
     products = db.query(Product).order_by(Product.category, Product.name).all()
@@ -176,14 +179,14 @@ def products_manage(
     aliases = db.query(ProductAlias).order_by(ProductAlias.product_id, ProductAlias.ean).all()
     return templates.TemplateResponse(
         "products/manage.html",
-        _ctx(request, admin, db, products=products, categories=categories, aliases=aliases),
+        _ctx(request, user, db, products=products, categories=categories, aliases=aliases),
     )
 
 
 @router.post("/products/manage/categories/new")
 def products_category_create(
     request: Request,
-    admin: dict = Depends(require_admin_user),
+    user: dict = Depends(require_product_manager_user),
     db: Session = Depends(get_db),
     name: str = Form(...),
 ):
@@ -204,7 +207,7 @@ def products_category_create(
 def products_alias_create(
     ean: str,
     request: Request,
-    admin: dict = Depends(require_admin_user),
+    user: dict = Depends(require_product_manager_user),
     db: Session = Depends(get_db),
     alias_ean: str = Form(...),
 ):
@@ -230,7 +233,7 @@ def products_alias_delete(
     ean: str,
     alias_ean: str,
     request: Request,
-    admin: dict = Depends(require_admin_user),
+    user: dict = Depends(require_product_manager_user),
     db: Session = Depends(get_db),
 ):
     product = db.query(Product).filter(Product.ean == ean).first()
@@ -254,7 +257,7 @@ def products_alias_delete(
 @router.post("/products/manage/new")
 def products_create(
     request: Request,
-    admin: dict = Depends(require_admin_user),
+    user: dict = Depends(require_product_manager_user),
     db: Session = Depends(get_db),
     ean: str = Form(...),
     name: str = Form(...),
@@ -286,7 +289,7 @@ def products_create(
     db.flush()
     db.add(ProductAudit(
         product_id=product.id,
-        changed_by=admin.get("sub", "unknown"),
+        changed_by=user.get("sub", "unknown"),
         change_type=ProductAuditType.created,
         new_value=ean,
     ))
@@ -299,7 +302,7 @@ def products_create(
 def products_edit(
     ean: str,
     request: Request,
-    admin: dict = Depends(require_admin_user),
+    user: dict = Depends(require_product_manager_user),
     db: Session = Depends(get_db),
     name: str = Form(...),
     price: str = Form(...),
@@ -311,7 +314,7 @@ def products_edit(
         _set_flash(request, "Product not found.", "error")
         return RedirectResponse("/products/manage", status_code=303)
 
-    actor = admin.get("sub", "unknown")
+    actor = user.get("sub", "unknown")
     new_name = name.strip()
     new_category = category.strip()
     new_active = (active == "on")
@@ -351,7 +354,7 @@ def products_edit(
 def products_stock(
     ean: str,
     request: Request,
-    admin: dict = Depends(require_admin_user),
+    user: dict = Depends(require_product_manager_user),
     db: Session = Depends(get_db),
     delta: int = Form(...),
     note: Optional[str] = Form(None),
@@ -369,7 +372,7 @@ def products_stock(
     change_type = ProductAuditType.stock_add if delta > 0 else ProductAuditType.stock_deduct
     db.add(ProductAudit(
         product_id=product.id,
-        changed_by=admin.get("sub", "unknown"),
+        changed_by=user.get("sub", "unknown"),
         change_type=change_type,
         old_value=str(product.stock),
         new_value=str(new_stock),

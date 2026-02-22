@@ -28,6 +28,14 @@ def is_admin(user_info: dict) -> bool:
     return settings.OIDC_ADMIN_GROUP in get_user_groups(user_info)
 
 
+def is_product_manager(user_info: dict) -> bool:
+    """True if user is admin OR belongs to the product-manager group (when configured)."""
+    if is_admin(user_info):
+        return True
+    group = settings.OIDC_PRODUCT_MANAGER_GROUP
+    return bool(group) and group in get_user_groups(user_info)
+
+
 def is_machine_admin(user_info: dict, oidc_groups: list[str]) -> bool:
     """Check whether user belongs to any of the machine's admin groups."""
     user_groups = set(get_user_groups(user_info))

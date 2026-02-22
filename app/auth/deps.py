@@ -2,7 +2,7 @@ from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from app.auth.oidc import is_admin, is_machine_admin
+from app.auth.oidc import is_admin, is_machine_admin, is_product_manager
 from app.auth.tokens import verify_api_token
 from app.database import get_db
 from app.models.machine import Machine
@@ -29,6 +29,13 @@ def require_session_user(request: Request) -> dict:
 def require_admin_user(user: dict = Depends(require_session_user)) -> dict:
     if not is_admin(user):
         raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
+def require_product_manager_user(user: dict = Depends(require_session_user)) -> dict:
+    """Allow global admins and users in the product-manager OIDC group."""
+    if not is_product_manager(user):
+        raise HTTPException(status_code=403, detail="Product manager access required")
     return user
 
 

@@ -97,8 +97,8 @@ def checkout_token(db):
 
 @pytest.fixture
 def admin_client(db):
-    """TestClient with require_admin_user overridden to a fake admin."""
-    from app.auth.deps import require_admin_user
+    """TestClient with require_admin_user and require_product_manager_user overridden."""
+    from app.auth.deps import require_admin_user, require_product_manager_user
 
     fake_admin = {"sub": "test-admin-sub", "name": "Test Admin"}
 
@@ -110,6 +110,27 @@ def admin_client(db):
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[require_admin_user] = override_admin
+    app.dependency_overrides[require_product_manager_user] = override_admin
+    with TestClient(app) as c:
+        yield c
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def product_manager_client(db):
+    """TestClient with only require_product_manager_user overridden (not admin)."""
+    from app.auth.deps import require_product_manager_user
+
+    fake_pm = {"sub": "test-pm-sub", "name": "Test Product Manager"}
+
+    def override_get_db():
+        yield db
+
+    def override_pm():
+        return fake_pm
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[require_product_manager_user] = override_pm
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

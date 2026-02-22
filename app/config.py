@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     OIDC_CLIENT_SECRET: str = ""
     OIDC_DISCOVERY_URL: str = ""
     OIDC_ADMIN_GROUP: str = "makerspace-admins"
+    OIDC_PRODUCT_MANAGER_GROUP: str = ""
     OIDC_GROUP_CLAIM: str = "groups"
     OIDC_REDIRECT_URI: str = "http://localhost:8000/auth/callback"
 

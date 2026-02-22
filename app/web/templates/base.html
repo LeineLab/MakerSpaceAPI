@@ -13,12 +13,16 @@
     <a href="/" class="font-bold text-lg tracking-tight">MakerSpace</a>
     <a href="/products" class="hover:text-gray-300 text-sm">Products</a>
     {% if user %}
-      <a href="/dashboard" class="hover:text-gray-300 text-sm">Dashboard</a>
-      <a href="/machines" class="hover:text-gray-300 text-sm">Machines</a>
-      <a href="/products/manage" class="hover:text-gray-300 text-sm">Manage Products</a>
-      <a href="/users" class="hover:text-gray-300 text-sm">Users</a>
-      <a href="/bankomat" class="hover:text-gray-300 text-sm">Bankomat</a>
-      <a href="/rentals" class="hover:text-gray-300 text-sm">Rentals</a>
+      {% if is_admin(user) %}
+        <a href="/dashboard" class="hover:text-gray-300 text-sm">Dashboard</a>
+        <a href="/machines" class="hover:text-gray-300 text-sm">Machines</a>
+        <a href="/users" class="hover:text-gray-300 text-sm">Users</a>
+        <a href="/bankomat" class="hover:text-gray-300 text-sm">Bankomat</a>
+        <a href="/rentals" class="hover:text-gray-300 text-sm">Rentals</a>
+      {% endif %}
+      {% if is_product_manager(user) %}
+        <a href="/products/manage" class="hover:text-gray-300 text-sm">Manage Products</a>
+      {% endif %}
       <span class="ml-auto text-xs text-gray-400">{{ user.get('name') or user.get('sub') }}</span>
       <a href="/auth/logout" class="text-sm hover:text-red-300">Logout</a>
     {% else %}
