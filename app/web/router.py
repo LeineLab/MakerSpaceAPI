@@ -14,7 +14,7 @@ from app.auth.tokens import generate_api_token
 from app.database import get_db
 from app.models.booking_target import BookingTarget
 from app.models.machine import Machine, MachineAuthorization
-from app.models.product import Product, ProductAudit, ProductAuditType
+from app.models.product import Product, ProductAlias, ProductAudit, ProductAuditType, ProductCategory
 from app.models.rental import Rental, RentalItem, RentalPermission
 from app.models.user import User
 from app.web.auth import router as auth_router
@@ -172,13 +172,83 @@ def products_manage(
     db: Session = Depends(get_db),
 ):
     products = db.query(Product).order_by(Product.category, Product.name).all()
-    categories = [
-        c[0] for c in db.query(Product.category).distinct().order_by(Product.category).all()
-    ]
+    categories = db.query(ProductCategory).order_by(ProductCategory.name).all()
+    aliases = db.query(ProductAlias).order_by(ProductAlias.product_id, ProductAlias.ean).all()
     return templates.TemplateResponse(
         "products/manage.html",
-        _ctx(request, admin, db, products=products, categories=categories),
+        _ctx(request, admin, db, products=products, categories=categories, aliases=aliases),
     )
+
+
+@router.post("/products/manage/categories/new")
+def products_category_create(
+    request: Request,
+    admin: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+    name: str = Form(...),
+):
+    name = name.strip()
+    if not name:
+        _set_flash(request, "Category name cannot be empty.", "error")
+        return RedirectResponse("/products/manage", status_code=303)
+    if db.query(ProductCategory).filter(ProductCategory.name == name).first():
+        _set_flash(request, f"Category '{name}' already exists.", "error")
+        return RedirectResponse("/products/manage", status_code=303)
+    db.add(ProductCategory(name=name))
+    db.commit()
+    _set_flash(request, f"Category '{name}' added.")
+    return RedirectResponse("/products/manage", status_code=303)
+
+
+@router.post("/products/manage/{ean}/aliases/new")
+def products_alias_create(
+    ean: str,
+    request: Request,
+    admin: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+    alias_ean: str = Form(...),
+):
+    product = db.query(Product).filter(Product.ean == ean).first()
+    if not product:
+        _set_flash(request, "Product not found.", "error")
+        return RedirectResponse("/products/manage", status_code=303)
+    alias_ean = alias_ean.strip()
+    if db.query(Product).filter(Product.ean == alias_ean).first():
+        _set_flash(request, f"EAN '{alias_ean}' is already a primary product EAN.", "error")
+        return RedirectResponse("/products/manage", status_code=303)
+    if db.query(ProductAlias).filter(ProductAlias.ean == alias_ean).first():
+        _set_flash(request, f"EAN '{alias_ean}' is already registered as an alias.", "error")
+        return RedirectResponse("/products/manage", status_code=303)
+    db.add(ProductAlias(ean=alias_ean, product_id=product.id))
+    db.commit()
+    _set_flash(request, f"Alias '{alias_ean}' added to '{product.name}'.")
+    return RedirectResponse("/products/manage", status_code=303)
+
+
+@router.post("/products/manage/{ean}/aliases/{alias_ean}/delete")
+def products_alias_delete(
+    ean: str,
+    alias_ean: str,
+    request: Request,
+    admin: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
+    product = db.query(Product).filter(Product.ean == ean).first()
+    if not product:
+        _set_flash(request, "Product not found.", "error")
+        return RedirectResponse("/products/manage", status_code=303)
+    alias = (
+        db.query(ProductAlias)
+        .filter(ProductAlias.ean == alias_ean, ProductAlias.product_id == product.id)
+        .first()
+    )
+    if not alias:
+        _set_flash(request, "Alias not found.", "error")
+        return RedirectResponse("/products/manage", status_code=303)
+    db.delete(alias)
+    db.commit()
+    _set_flash(request, f"Alias '{alias_ean}' removed.")
+    return RedirectResponse("/products/manage", status_code=303)
 
 
 @router.post("/products/manage/new")

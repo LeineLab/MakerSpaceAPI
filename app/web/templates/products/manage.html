@@ -9,7 +9,8 @@
   </button>
 </div>
 
-<div class="bg-white rounded-lg shadow overflow-hidden">
+<!-- Products table -->
+<div class="bg-white rounded-lg shadow overflow-hidden mb-8">
   <table class="w-full text-sm">
     <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
       <tr>
@@ -58,6 +59,96 @@
   </table>
 </div>
 
+<!-- Categories and Aliases side by side -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+
+  <!-- Product Categories -->
+  <div class="bg-white rounded-lg shadow">
+    <div class="px-5 py-4 border-b flex items-center justify-between">
+      <h2 class="font-semibold">Product Categories</h2>
+      <span class="text-xs text-gray-400">{{ categories|length }}</span>
+    </div>
+    <div class="px-5 py-4">
+      {% if categories %}
+      <ul class="mb-4 space-y-1">
+        {% for cat in categories %}
+        <li class="text-sm text-gray-700 py-1 border-b border-gray-100 last:border-0">{{ cat.name }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="text-sm text-gray-400 mb-4">No categories yet.</p>
+      {% endif %}
+      <form method="post" action="/products/manage/categories/new" class="flex gap-2">
+        <input type="text" name="name" required placeholder="New category name"
+               class="flex-1 border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+        <button type="submit"
+                class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
+          Add
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Product Aliases -->
+  <div class="bg-white rounded-lg shadow">
+    <div class="px-5 py-4 border-b flex items-center justify-between">
+      <h2 class="font-semibold">Product Aliases</h2>
+      <span class="text-xs text-gray-400">{{ aliases|length }}</span>
+    </div>
+    <div class="px-5 py-4">
+      {% if aliases %}
+      <table class="w-full text-sm mb-4">
+        <thead class="text-xs text-gray-500 uppercase">
+          <tr>
+            <th class="text-left pb-1">Alias EAN</th>
+            <th class="text-left pb-1">Product</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in aliases %}
+          <tr class="border-t border-gray-100">
+            <td class="py-1.5 font-mono text-xs text-gray-600">{{ a.ean }}</td>
+            <td class="py-1.5 text-xs text-gray-500">
+              {{ a.product.name }} <span class="text-gray-400">({{ a.product.ean }})</span>
+            </td>
+            <td class="py-1.5 text-right">
+              <form method="post"
+                    action="/products/manage/{{ a.product.ean }}/aliases/{{ a.ean }}/delete"
+                    onsubmit="return confirm('Remove alias {{ a.ean }}?')">
+                <button type="submit"
+                        class="text-xs text-red-500 hover:underline">remove</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="text-sm text-gray-400 mb-4">No aliases yet.</p>
+      {% endif %}
+      <form method="post" id="add-alias-form" action="" class="space-y-2">
+        <select name="_product_ean" required onchange="updateAliasAction(this)"
+                class="w-full border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <option value="">— select product —</option>
+          {% for p in products %}
+          <option value="{{ p.ean }}">{{ p.name }} ({{ p.ean }})</option>
+          {% endfor %}
+        </select>
+        <div class="flex gap-2">
+          <input type="text" name="alias_ean" required placeholder="Alias EAN"
+                 class="flex-1 border rounded px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <button type="submit"
+                  class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
+            Add
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+</div>
+
 <!-- Add Product Modal -->
 <div id="add-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
   <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
@@ -87,14 +178,19 @@
       </div>
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
-        <input type="text" name="category" required placeholder="e.g. Food"
-               list="category-list"
-               class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-        <datalist id="category-list">
+        {% if categories %}
+        <select name="category" required
+                class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <option value="">— select category —</option>
           {% for cat in categories %}
-          <option value="{{ cat }}">
+          <option value="{{ cat.name }}">{{ cat.name }}</option>
           {% endfor %}
-        </datalist>
+        </select>
+        {% else %}
+        <p class="text-xs text-amber-600 mb-1">No categories yet — add one in the Categories panel first.</p>
+        <input type="text" name="category" required placeholder="Category name"
+               class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+        {% endif %}
       </div>
       <div class="flex items-center gap-2">
         <input type="checkbox" name="active" id="add-active" checked
@@ -133,9 +229,12 @@
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
-          <input type="text" name="category" id="edit-category" required
-                 list="category-list"
-                 class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <select name="category" id="edit-category" required
+                  class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            {% for cat in categories %}
+            <option value="{{ cat.name }}">{{ cat.name }}</option>
+            {% endfor %}
+          </select>
         </div>
       </div>
       <div class="flex items-center gap-2">
@@ -192,7 +291,10 @@ function openEditModal(ean, name, price, category, active) {
   document.getElementById('edit-ean-label').textContent = 'EAN: ' + ean;
   document.getElementById('edit-name').value = name;
   document.getElementById('edit-price').value = price;
-  document.getElementById('edit-category').value = category;
+  var sel = document.getElementById('edit-category');
+  for (var i = 0; i < sel.options.length; i++) {
+    if (sel.options[i].value === category) { sel.selectedIndex = i; break; }
+  }
   document.getElementById('edit-active').checked = active;
   document.getElementById('edit-modal').classList.remove('hidden');
 }
@@ -202,6 +304,12 @@ function openStockModal(ean, name, stock) {
   document.getElementById('stock-product-label').textContent = name + ' (' + ean + ')';
   document.getElementById('stock-current').textContent = stock;
   document.getElementById('stock-modal').classList.remove('hidden');
+}
+
+function updateAliasAction(select) {
+  var ean = select.value;
+  document.getElementById('add-alias-form').action =
+    ean ? '/products/manage/' + ean + '/aliases/new' : '';
 }
 </script>
 {% endblock %}

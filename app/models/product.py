@@ -58,6 +58,12 @@ class Product(Base):
     )
 
 
+class ProductCategory(Base):
+    __tablename__ = "product_categories"
+
+    name: Mapped[str] = mapped_column(String(50), primary_key=True)
+
+
 class ProductAlias(Base):
     __tablename__ = "product_aliases"
 
