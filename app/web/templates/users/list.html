@@ -1,17 +1,17 @@
 {% extends "base.html" %}
-{% block title %}Users – MakerSpaceAPI{% endblock %}
+{% block title %}{{ _('users.title') }} – MakerSpaceAPI{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-bold mb-4">Users</h1>
+<h1 class="text-2xl font-bold mb-4">{{ _('users.title') }}</h1>
 
 <div class="bg-white rounded-lg shadow overflow-hidden">
   <table class="w-full text-sm">
     <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
       <tr>
-        <th class="px-4 py-3 text-left">NFC ID</th>
-        <th class="px-4 py-3 text-left">Name</th>
-        <th class="px-4 py-3 text-left">OIDC Linked</th>
-        <th class="px-4 py-3 text-right">Balance</th>
-        <th class="px-4 py-3 text-left">Created</th>
+        <th class="px-4 py-3 text-left">{{ _('users.col_nfc') }}</th>
+        <th class="px-4 py-3 text-left">{{ _('common.name') }}</th>
+        <th class="px-4 py-3 text-left">{{ _('users.col_oidc') }}</th>
+        <th class="px-4 py-3 text-right">{{ _('users.col_balance') }}</th>
+        <th class="px-4 py-3 text-left">{{ _('common.created') }}</th>
       </tr>
     </thead>
     <tbody>
@@ -21,7 +21,7 @@
         <td class="px-4 py-2">{{ u.name or '—' }}</td>
         <td class="px-4 py-2 text-gray-500 text-xs">
           {% if u.oidc_sub %}
-          <span class="bg-green-100 text-green-700 rounded px-1.5 py-0.5">yes</span>
+          <span class="bg-green-100 text-green-700 rounded px-1.5 py-0.5">{{ _('common.yes') }}</span>
           {% else %}—{% endif %}
         </td>
         <td class="px-4 py-2 text-right font-medium
@@ -31,7 +31,7 @@
         <td class="px-4 py-2 text-gray-500 text-xs">{{ u.created_at.strftime('%Y-%m-%d') }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">No users yet.</td></tr>
+      <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">{{ _('users.empty') }}</td></tr>
       {% endfor %}
     </tbody>
   </table>

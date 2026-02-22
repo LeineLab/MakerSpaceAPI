@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.auth.deps import get_session_user, require_admin_user, require_product_manager_user
 from app.auth.oidc import is_admin, is_product_manager
 from app.auth.tokens import generate_api_token
+from app.web.i18n import detect_language, get_translator
 from app.database import get_db
 from app.models.booking_target import BookingTarget
 from app.models.machine import Machine, MachineAuthorization
@@ -24,6 +25,8 @@ _templates_dir = pathlib.Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(_templates_dir))
 templates.env.globals["is_admin"] = lambda u: is_admin(u) if u else False
 templates.env.globals["is_product_manager"] = lambda u: is_product_manager(u) if u else False
+# Default translator (English) — overridden per-request via template context
+templates.env.globals["_"] = get_translator("en")
 
 router = APIRouter()
 router.include_router(auth_router)
@@ -41,9 +44,17 @@ def _pop_flash(request: Request) -> Optional[dict]:
     return request.session.pop("_flash", None)
 
 
-def _ctx(request: Request, admin: dict, db: Session, **extra) -> dict:
-    """Build a base template context dict including any pending flash."""
-    return {"request": request, "user": admin, "flash": _pop_flash(request), **extra}
+def _ctx(request: Request, user: dict, db: Session, **extra) -> dict:
+    """Build a base template context dict including flash and i18n translator."""
+    locale = detect_language(request.headers.get("accept-language", ""))
+    return {
+        "request": request,
+        "user": user,
+        "flash": _pop_flash(request),
+        "_": get_translator(locale),
+        "lang": locale,
+        **extra,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -52,8 +63,15 @@ def _ctx(request: Request, admin: dict, db: Session, **extra) -> dict:
 
 @router.get("/", response_class=HTMLResponse)
 def index(request: Request, user: dict | None = Depends(get_session_user)):
+    locale = detect_language(request.headers.get("accept-language", ""))
     return templates.TemplateResponse(
-        "index.html", {"request": request, "user": user, "flash": _pop_flash(request)}
+        "index.html", {
+            "request": request,
+            "user": user,
+            "flash": _pop_flash(request),
+            "_": get_translator(locale),
+            "lang": locale,
+        }
     )
 
 
@@ -74,6 +92,7 @@ def product_list(
         .order_by(Product.category)
         .all()
     )
+    locale = detect_language(request.headers.get("accept-language", ""))
     return templates.TemplateResponse(
         "products/list.html",
         {
@@ -83,6 +102,8 @@ def product_list(
             "selected_category": category,
             "user": get_session_user(request),
             "flash": _pop_flash(request),
+            "_": get_translator(locale),
+            "lang": locale,
         },
     )
 

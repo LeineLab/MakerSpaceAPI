@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ lang | default('en') }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,22 +11,22 @@
 
   <nav class="bg-gray-800 text-white px-6 py-3 flex items-center gap-6">
     <a href="/" class="font-bold text-lg tracking-tight">MakerSpace</a>
-    <a href="/products" class="hover:text-gray-300 text-sm">Products</a>
+    <a href="/products" class="hover:text-gray-300 text-sm">{{ _('nav.products') }}</a>
     {% if user %}
       {% if is_admin(user) %}
-        <a href="/dashboard" class="hover:text-gray-300 text-sm">Dashboard</a>
-        <a href="/machines" class="hover:text-gray-300 text-sm">Machines</a>
-        <a href="/users" class="hover:text-gray-300 text-sm">Users</a>
-        <a href="/bankomat" class="hover:text-gray-300 text-sm">Bankomat</a>
-        <a href="/rentals" class="hover:text-gray-300 text-sm">Rentals</a>
+        <a href="/dashboard" class="hover:text-gray-300 text-sm">{{ _('nav.dashboard') }}</a>
+        <a href="/machines" class="hover:text-gray-300 text-sm">{{ _('nav.machines') }}</a>
+        <a href="/users" class="hover:text-gray-300 text-sm">{{ _('nav.users') }}</a>
+        <a href="/bankomat" class="hover:text-gray-300 text-sm">{{ _('nav.bankomat') }}</a>
+        <a href="/rentals" class="hover:text-gray-300 text-sm">{{ _('nav.rentals') }}</a>
       {% endif %}
       {% if is_product_manager(user) %}
-        <a href="/products/manage" class="hover:text-gray-300 text-sm">Manage Products</a>
+        <a href="/products/manage" class="hover:text-gray-300 text-sm">{{ _('nav.manage_products') }}</a>
       {% endif %}
       <span class="ml-auto text-xs text-gray-400">{{ user.get('name') or user.get('sub') }}</span>
-      <a href="/auth/logout" class="text-sm hover:text-red-300">Logout</a>
+      <a href="/auth/logout" class="text-sm hover:text-red-300">{{ _('nav.logout') }}</a>
     {% else %}
-      <a href="/auth/login" class="ml-auto text-sm hover:text-gray-300">Login</a>
+      <a href="/auth/login" class="ml-auto text-sm hover:text-gray-300">{{ _('nav.login') }}</a>
     {% endif %}
   </nav>
 

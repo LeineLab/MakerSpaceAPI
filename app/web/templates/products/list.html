@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Products – MakerSpaceAPI{% endblock %}
+{% block title %}{{ _('products.title') }} – MakerSpaceAPI{% endblock %}
 {% block content %}
 <div class="flex items-center justify-between mb-4">
-  <h1 class="text-2xl font-bold">Products</h1>
+  <h1 class="text-2xl font-bold">{{ _('products.title') }}</h1>
   <form method="get" class="flex gap-2 items-center">
     <select name="category" onchange="this.form.submit()"
             class="border rounded px-3 py-1.5 text-sm">
-      <option value="">All categories</option>
+      <option value="">{{ _('products.all_cats') }}</option>
       {% for cat in categories %}
       <option value="{{ cat }}" {% if cat == selected_category %}selected{% endif %}>{{ cat }}</option>
       {% endfor %}
@@ -18,11 +18,11 @@
   <table class="w-full text-sm">
     <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
       <tr>
-        <th class="px-4 py-3 text-left">Category</th>
-        <th class="px-4 py-3 text-left">Name</th>
-        <th class="px-4 py-3 text-left">EAN</th>
-        <th class="px-4 py-3 text-right">Price</th>
-        <th class="px-4 py-3 text-right">Stock</th>
+        <th class="px-4 py-3 text-left">{{ _('products.col_category') }}</th>
+        <th class="px-4 py-3 text-left">{{ _('products.col_name') }}</th>
+        <th class="px-4 py-3 text-left">{{ _('products.col_ean') }}</th>
+        <th class="px-4 py-3 text-right">{{ _('products.col_price') }}</th>
+        <th class="px-4 py-3 text-right">{{ _('products.col_stock') }}</th>
       </tr>
     </thead>
     <tbody>
@@ -44,7 +44,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">No products found.</td></tr>
+      <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">{{ _('products.empty') }}</td></tr>
       {% endfor %}
     </tbody>
   </table>

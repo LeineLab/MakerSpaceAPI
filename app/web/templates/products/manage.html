@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Manage Products – MakerSpaceAPI{% endblock %}
+{% block title %}{{ _('manage.title') }} – MakerSpaceAPI{% endblock %}
 {% block content %}
 <div class="flex items-center justify-between mb-4">
-  <h1 class="text-2xl font-bold">Manage Products</h1>
+  <h1 class="text-2xl font-bold">{{ _('manage.title') }}</h1>
   <button onclick="document.getElementById('add-modal').classList.remove('hidden')"
           class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
-    + Add Product
+    {{ _('manage.btn_add') }}
   </button>
 </div>
 
@@ -14,12 +14,12 @@
   <table class="w-full text-sm">
     <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
       <tr>
-        <th class="px-4 py-3 text-left">Category</th>
-        <th class="px-4 py-3 text-left">Name</th>
-        <th class="px-4 py-3 text-left">EAN</th>
-        <th class="px-4 py-3 text-right">Price</th>
-        <th class="px-4 py-3 text-right">Stock</th>
-        <th class="px-4 py-3 text-center">Status</th>
+        <th class="px-4 py-3 text-left">{{ _('products.col_category') }}</th>
+        <th class="px-4 py-3 text-left">{{ _('common.name') }}</th>
+        <th class="px-4 py-3 text-left">{{ _('manage.label_ean') }}</th>
+        <th class="px-4 py-3 text-right">{{ _('manage.label_price') }}</th>
+        <th class="px-4 py-3 text-right">{{ _('products.col_stock') }}</th>
+        <th class="px-4 py-3 text-center">{{ _('common.status') }}</th>
         <th class="px-4 py-3"></th>
       </tr>
     </thead>
@@ -36,24 +36,24 @@
         </td>
         <td class="px-4 py-2 text-center">
           {% if p.active %}
-          <span class="text-xs bg-green-100 text-green-700 rounded px-2 py-0.5">active</span>
+          <span class="text-xs bg-green-100 text-green-700 rounded px-2 py-0.5">{{ _('common.active') }}</span>
           {% else %}
-          <span class="text-xs bg-gray-100 text-gray-500 rounded px-2 py-0.5">inactive</span>
+          <span class="text-xs bg-gray-100 text-gray-500 rounded px-2 py-0.5">{{ _('common.inactive') }}</span>
           {% endif %}
         </td>
         <td class="px-4 py-2 text-right space-x-2 whitespace-nowrap">
           <button
             onclick="openEditModal('{{ p.ean }}','{{ p.name|e }}','{{ p.price }}','{{ p.category|e }}',{{ 'true' if p.active else 'false' }})"
-            class="text-xs text-blue-600 hover:underline">edit</button>
+            class="text-xs text-blue-600 hover:underline">{{ _('common.edit') }}</button>
           <button
             onclick="openStockModal('{{ p.ean }}','{{ p.name|e }}',{{ p.stock }})"
-            class="text-xs text-gray-500 hover:underline">stock</button>
+            class="text-xs text-gray-500 hover:underline">{{ _('common.stock') }}</button>
           <a href="/api/v1/products/{{ p.ean }}/audit" target="_blank"
-             class="text-xs text-gray-400 hover:underline">history</a>
+             class="text-xs text-gray-400 hover:underline">{{ _('common.history') }}</a>
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="7" class="px-4 py-8 text-center text-gray-400">No products yet.</td></tr>
+      <tr><td colspan="7" class="px-4 py-8 text-center text-gray-400">{{ _('manage.empty') }}</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -65,7 +65,7 @@
   <!-- Product Categories -->
   <div class="bg-white rounded-lg shadow">
     <div class="px-5 py-4 border-b flex items-center justify-between">
-      <h2 class="font-semibold">Product Categories</h2>
+      <h2 class="font-semibold">{{ _('manage.categories_title') }}</h2>
       <span class="text-xs text-gray-400">{{ categories|length }}</span>
     </div>
     <div class="px-5 py-4">
@@ -76,14 +76,14 @@
         {% endfor %}
       </ul>
       {% else %}
-      <p class="text-sm text-gray-400 mb-4">No categories yet.</p>
+      <p class="text-sm text-gray-400 mb-4">{{ _('manage.no_categories') }}</p>
       {% endif %}
       <form method="post" action="/products/manage/categories/new" class="flex gap-2">
-        <input type="text" name="name" required placeholder="New category name"
+        <input type="text" name="name" required placeholder="{{ _('manage.categories_placeholder') }}"
                class="flex-1 border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
         <button type="submit"
                 class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
-          Add
+          {{ _('common.add') }}
         </button>
       </form>
     </div>
@@ -92,7 +92,7 @@
   <!-- Product Aliases -->
   <div class="bg-white rounded-lg shadow">
     <div class="px-5 py-4 border-b flex items-center justify-between">
-      <h2 class="font-semibold">Product Aliases</h2>
+      <h2 class="font-semibold">{{ _('manage.aliases_title') }}</h2>
       <span class="text-xs text-gray-400">{{ aliases|length }}</span>
     </div>
     <div class="px-5 py-4">
@@ -100,8 +100,8 @@
       <table class="w-full text-sm mb-4">
         <thead class="text-xs text-gray-500 uppercase">
           <tr>
-            <th class="text-left pb-1">Alias EAN</th>
-            <th class="text-left pb-1">Product</th>
+            <th class="text-left pb-1">{{ _('manage.col_alias_ean') }}</th>
+            <th class="text-left pb-1">{{ _('manage.col_product') }}</th>
             <th></th>
           </tr>
         </thead>
@@ -115,9 +115,9 @@
             <td class="py-1.5 text-right">
               <form method="post"
                     action="/products/manage/{{ a.product.ean }}/aliases/{{ a.ean }}/delete"
-                    onsubmit="return confirm('Remove alias {{ a.ean }}?')">
+                    onsubmit="return confirm('{{ _('manage.confirm_remove_alias', ean=a.ean) }}')">
                 <button type="submit"
-                        class="text-xs text-red-500 hover:underline">remove</button>
+                        class="text-xs text-red-500 hover:underline">{{ _('common.remove') }}</button>
               </form>
             </td>
           </tr>
@@ -125,22 +125,22 @@
         </tbody>
       </table>
       {% else %}
-      <p class="text-sm text-gray-400 mb-4">No aliases yet.</p>
+      <p class="text-sm text-gray-400 mb-4">{{ _('manage.no_aliases') }}</p>
       {% endif %}
       <form method="post" id="add-alias-form" action="" class="space-y-2">
         <select name="_product_ean" required onchange="updateAliasAction(this)"
                 class="w-full border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-          <option value="">— select product —</option>
+          <option value="">{{ _('manage.select_product') }}</option>
           {% for p in products %}
           <option value="{{ p.ean }}">{{ p.name }} ({{ p.ean }})</option>
           {% endfor %}
         </select>
         <div class="flex gap-2">
-          <input type="text" name="alias_ean" required placeholder="Alias EAN"
+          <input type="text" name="alias_ean" required placeholder="{{ _('manage.alias_ean_placeholder') }}"
                  class="flex-1 border rounded px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
           <button type="submit"
                   class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
-            Add
+            {{ _('common.add') }}
           </button>
         </div>
       </form>
@@ -152,58 +152,58 @@
 <!-- Add Product Modal -->
 <div id="add-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
   <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-    <h2 class="text-lg font-bold mb-4">Add Product</h2>
+    <h2 class="text-lg font-bold mb-4">{{ _('manage.add_title') }}</h2>
     <form method="post" action="/products/manage/new" class="space-y-3">
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">EAN</label>
-        <input type="text" name="ean" required placeholder="e.g. 4006381333931"
+        <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('manage.label_ean') }}</label>
+        <input type="text" name="ean" required placeholder="{{ _('manage.placeholder_ean') }}"
                class="w-full border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
       </div>
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
-        <input type="text" name="name" required placeholder="Product name"
+        <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('common.name') }}</label>
+        <input type="text" name="name" required placeholder="{{ _('manage.placeholder_name') }}"
                class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
       </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Price (€)</label>
+          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('manage.label_price') }}</label>
           <input type="number" name="price" required min="0" step="0.01" placeholder="0.00"
                  class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Initial stock</label>
+          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('manage.label_initial_stock') }}</label>
           <input type="number" name="stock" value="0" min="0"
                  class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
         </div>
       </div>
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
+        <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('manage.label_category') }}</label>
         {% if categories %}
         <select name="category" required
                 class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-          <option value="">— select category —</option>
+          <option value="">{{ _('manage.select_category') }}</option>
           {% for cat in categories %}
           <option value="{{ cat.name }}">{{ cat.name }}</option>
           {% endfor %}
         </select>
         {% else %}
-        <p class="text-xs text-amber-600 mb-1">No categories yet — add one in the Categories panel first.</p>
-        <input type="text" name="category" required placeholder="Category name"
+        <p class="text-xs text-amber-600 mb-1">{{ _('manage.no_categories_warn') }}</p>
+        <input type="text" name="category" required placeholder="{{ _('manage.placeholder_cat') }}"
                class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
         {% endif %}
       </div>
       <div class="flex items-center gap-2">
         <input type="checkbox" name="active" id="add-active" checked
                class="rounded border-gray-300 text-blue-600">
-        <label for="add-active" class="text-sm text-gray-700">Active</label>
+        <label for="add-active" class="text-sm text-gray-700">{{ _('manage.label_active') }}</label>
       </div>
       <div class="flex justify-end gap-3 pt-2">
         <button type="button"
                 onclick="document.getElementById('add-modal').classList.add('hidden')"
-                class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">Cancel</button>
+                class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">{{ _('common.cancel') }}</button>
         <button type="submit"
                 class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
-          Add Product
+          {{ _('manage.btn_add_product') }}
         </button>
       </div>
     </form>
@@ -213,22 +213,22 @@
 <!-- Edit Product Modal -->
 <div id="edit-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
   <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-    <h2 class="text-lg font-bold mb-1">Edit Product</h2>
+    <h2 class="text-lg font-bold mb-1">{{ _('manage.edit_title') }}</h2>
     <p id="edit-ean-label" class="text-xs text-gray-400 font-mono mb-4"></p>
     <form id="edit-form" method="post" action="" class="space-y-3">
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+        <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('common.name') }}</label>
         <input type="text" name="name" id="edit-name" required
                class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
       </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Price (€)</label>
+          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('manage.label_price') }}</label>
           <input type="number" name="price" id="edit-price" required min="0" step="0.01"
                  class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
+          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('manage.label_category') }}</label>
           <select name="category" id="edit-category" required
                   class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
             {% for cat in categories %}
@@ -240,15 +240,15 @@
       <div class="flex items-center gap-2">
         <input type="checkbox" name="active" id="edit-active"
                class="rounded border-gray-300 text-blue-600">
-        <label for="edit-active" class="text-sm text-gray-700">Active</label>
+        <label for="edit-active" class="text-sm text-gray-700">{{ _('manage.label_active') }}</label>
       </div>
       <div class="flex justify-end gap-3 pt-2">
         <button type="button"
                 onclick="document.getElementById('edit-modal').classList.add('hidden')"
-                class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">Cancel</button>
+                class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">{{ _('common.cancel') }}</button>
         <button type="submit"
                 class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
-          Save Changes
+          {{ _('common.save') }}
         </button>
       </div>
     </form>
@@ -258,27 +258,27 @@
 <!-- Stock Adjustment Modal -->
 <div id="stock-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
   <div class="bg-white rounded-lg shadow-xl w-full max-w-sm p-6">
-    <h2 class="text-lg font-bold mb-1">Adjust Stock</h2>
+    <h2 class="text-lg font-bold mb-1">{{ _('manage.stock_title') }}</h2>
     <p id="stock-product-label" class="text-xs text-gray-500 mb-1"></p>
-    <p class="text-sm text-gray-600 mb-4">Current stock: <span id="stock-current" class="font-semibold"></span></p>
+    <p class="text-sm text-gray-600 mb-4">{{ _('products.col_stock') }}: <span id="stock-current" class="font-semibold"></span></p>
     <form id="stock-form" method="post" action="" class="space-y-3">
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Delta (positive = add, negative = deduct)</label>
+        <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('manage.label_delta') }}</label>
         <input type="number" name="delta" required placeholder="e.g. 10 or -1"
                class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
       </div>
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Note (optional)</label>
-        <input type="text" name="note" placeholder="Reason for change"
+        <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('common.note_optional') }}</label>
+        <input type="text" name="note" placeholder="{{ _('manage.placeholder_reason') }}"
                class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
       </div>
       <div class="flex justify-end gap-3 pt-2">
         <button type="button"
                 onclick="document.getElementById('stock-modal').classList.add('hidden')"
-                class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">Cancel</button>
+                class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">{{ _('common.cancel') }}</button>
         <button type="submit"
                 class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
-          Update Stock
+          {{ _('manage.btn_update_stock') }}
         </button>
       </div>
     </form>
