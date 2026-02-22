@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}MakerSpaceAPI{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+
+  <nav class="bg-gray-800 text-white px-6 py-3 flex items-center gap-6">
+    <a href="/" class="font-bold text-lg tracking-tight">MakerSpace</a>
+    <a href="/products" class="hover:text-gray-300 text-sm">Products</a>
+    {% if user %}
+      <a href="/dashboard" class="hover:text-gray-300 text-sm">Dashboard</a>
+      <a href="/machines" class="hover:text-gray-300 text-sm">Machines</a>
+      <a href="/products/manage" class="hover:text-gray-300 text-sm">Manage Products</a>
+      <a href="/users" class="hover:text-gray-300 text-sm">Users</a>
+      <a href="/bankomat" class="hover:text-gray-300 text-sm">Bankomat</a>
+      <a href="/rentals" class="hover:text-gray-300 text-sm">Rentals</a>
+      <span class="ml-auto text-xs text-gray-400">{{ user.get('name') or user.get('sub') }}</span>
+      <a href="/auth/logout" class="text-sm hover:text-red-300">Logout</a>
+    {% else %}
+      <a href="/auth/login" class="ml-auto text-sm hover:text-gray-300">Login</a>
+    {% endif %}
+  </nav>
+
+  {% if flash %}
+  <div class="max-w-5xl mx-auto mt-4 px-4">
+    <div class="rounded p-3 text-sm
+      {% if flash.type == 'error' %}bg-red-100 text-red-700
+      {% elif flash.type == 'success' %}bg-green-100 text-green-700
+      {% else %}bg-blue-100 text-blue-700{% endif %}">
+      {{ flash.message }}
+    </div>
+  </div>
+  {% endif %}
+
+  <main class="max-w-5xl mx-auto px-4 py-6">
+    {% block content %}{% endblock %}
+  </main>
+
+</body>
+</html>

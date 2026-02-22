@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Booking Targets – MakerSpaceAPI{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Booking Targets</h1>
+
+<div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+  {% for t in targets %}
+  <div class="bg-white rounded-lg shadow p-5 border-l-4 border-blue-500">
+    <div class="text-2xl font-bold text-blue-600">{{ "%.2f"|format(t.balance) }} €</div>
+    <div class="font-medium mt-1">{{ t.name }}</div>
+    <div class="text-xs text-gray-400 font-mono">{{ t.slug }}</div>
+  </div>
+  {% else %}
+  <p class="col-span-3 text-gray-400">No booking targets yet.</p>
+  {% endfor %}
+</div>
+
+<div class="text-sm text-gray-500">
+  Use the <a href="/api/docs#/bankomat" class="text-blue-600 hover:underline" target="_blank">API docs</a>
+  to create new booking targets.
+</div>
+{% endblock %}

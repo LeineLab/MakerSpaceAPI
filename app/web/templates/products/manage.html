@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Manage Products – MakerSpaceAPI{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-2xl font-bold">Manage Products</h1>
+  <button onclick="document.getElementById('add-modal').classList.remove('hidden')"
+          class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+    + Add Product
+  </button>
+</div>
+
+<div class="bg-white rounded-lg shadow overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
+      <tr>
+        <th class="px-4 py-3 text-left">Category</th>
+        <th class="px-4 py-3 text-left">Name</th>
+        <th class="px-4 py-3 text-left">EAN</th>
+        <th class="px-4 py-3 text-right">Price</th>
+        <th class="px-4 py-3 text-right">Stock</th>
+        <th class="px-4 py-3 text-center">Status</th>
+        <th class="px-4 py-3"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in products %}
+      <tr class="border-t hover:bg-gray-50">
+        <td class="px-4 py-2 text-gray-500">{{ p.category }}</td>
+        <td class="px-4 py-2 font-medium">{{ p.name }}</td>
+        <td class="px-4 py-2 font-mono text-xs text-gray-500">{{ p.ean }}</td>
+        <td class="px-4 py-2 text-right">{{ "%.2f"|format(p.price) }} €</td>
+        <td class="px-4 py-2 text-right
+          {% if p.stock == 0 %}text-red-500 font-semibold{% elif p.stock < 5 %}text-yellow-600{% endif %}">
+          {{ p.stock }}
+        </td>
+        <td class="px-4 py-2 text-center">
+          {% if p.active %}
+          <span class="text-xs bg-green-100 text-green-700 rounded px-2 py-0.5">active</span>
+          {% else %}
+          <span class="text-xs bg-gray-100 text-gray-500 rounded px-2 py-0.5">inactive</span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-2 text-right">
+          <a href="/api/v1/products/{{ p.ean }}/audit" target="_blank"
+             class="text-xs text-blue-500 hover:underline">history</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="px-4 py-8 text-center text-gray-400">No products yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Add product modal (minimal, JS-free submit via regular form to API) -->
+<div id="add-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+  <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+    <h2 class="text-lg font-bold mb-4">Add Product</h2>
+    <p class="text-sm text-gray-500 mb-4">
+      Use the <a href="/api/docs#/products/create_product_api_v1_products_post"
+                 class="text-blue-600 underline" target="_blank">API docs</a>
+      to add products programmatically, or submit below.
+    </p>
+    <button onclick="document.getElementById('add-modal').classList.add('hidden')"
+            class="text-sm text-gray-500 hover:underline">Close</button>
+  </div>
+</div>
+{% endblock %}

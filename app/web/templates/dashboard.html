@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Dashboard – MakerSpaceAPI{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">Dashboard</h1>
+
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+  {% for label, key, href, color in [
+    ('Users', 'users', '/users', 'blue'),
+    ('Machines', 'machines', '/machines', 'green'),
+    ('Products', 'products', '/products/manage', 'yellow'),
+    ('Booking Targets', 'targets', '/bankomat', 'purple'),
+  ] %}
+  <a href="{{ href }}"
+     class="block bg-white rounded-lg shadow p-5 border-l-4 border-{{ color }}-500 hover:shadow-md">
+    <div class="text-3xl font-bold text-{{ color }}-600">{{ stats[key] }}</div>
+    <div class="text-sm text-gray-500 mt-1">{{ label }}</div>
+  </a>
+  {% endfor %}
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+  <div class="bg-white rounded-lg shadow p-5">
+    <h2 class="font-semibold mb-3">Quick Links</h2>
+    <ul class="space-y-2 text-sm">
+      <li><a href="/machines" class="text-blue-600 hover:underline">→ Register new machine</a></li>
+      <li><a href="/products/manage" class="text-blue-600 hover:underline">→ Manage products &amp; stock</a></li>
+      <li><a href="/rentals" class="text-blue-600 hover:underline">→ Rental items &amp; permissions</a></li>
+      <li><a href="/bankomat" class="text-blue-600 hover:underline">→ Booking targets</a></li>
+      <li><a href="/api/docs" target="_blank" class="text-blue-600 hover:underline">→ API documentation</a></li>
+    </ul>
+  </div>
+</div>
+{% endblock %}

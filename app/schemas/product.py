@@ -1,0 +1,85 @@
+from datetime import datetime
+from decimal import Decimal
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict
+
+from app.models.product import ProductAuditType
+
+
+class ProductCreate(BaseModel):
+    ean: str
+    name: str
+    price: Decimal
+    stock: int = 0
+    category: str
+
+
+class ProductUpdate(BaseModel):
+    name: Optional[str] = None
+    price: Optional[Decimal] = None
+    category: Optional[str] = None
+    active: Optional[bool] = None
+
+
+class ProductStockAdjust(BaseModel):
+    delta: int  # positive = add, negative = deduct
+    note: Optional[str] = None
+
+
+class ProductStocktaking(BaseModel):
+    count: int
+    note: Optional[str] = None
+
+
+class ProductAliasCreate(BaseModel):
+    ean: str
+
+
+class ProductAliasResponse(BaseModel):
+    ean: str
+    product_id: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductResponse(BaseModel):
+    id: int
+    ean: str
+    name: str
+    price: Decimal
+    stock: int
+    category: str
+    active: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductDetailResponse(ProductResponse):
+    aliases: list[ProductAliasResponse]
+
+
+class ProductAuditResponse(BaseModel):
+    id: int
+    product_id: int
+    changed_by: str
+    change_type: ProductAuditType
+    old_value: Optional[str]
+    new_value: Optional[str]
+    note: Optional[str]
+    changed_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductPurchase(BaseModel):
+    nfc_id: int
+    ean: str
+
+
+class ProductPopularityResponse(BaseModel):
+    product_id: int
+    ean: str
+    name: str
+    purchase_count: int
+    days: int

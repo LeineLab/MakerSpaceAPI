@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Rentals – MakerSpaceAPI{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">Rental System</h1>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+  <!-- Rental Items -->
+  <div class="bg-white rounded-lg shadow">
+    <div class="px-5 py-4 border-b flex items-center justify-between">
+      <h2 class="font-semibold">Rental Items</h2>
+      <span class="text-xs text-gray-400">{{ items|length }} items</span>
+    </div>
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
+        <tr>
+          <th class="px-4 py-2 text-left">Name</th>
+          <th class="px-4 py-2 text-left">TID</th>
+          <th class="px-4 py-2 text-center">Active</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr class="border-t hover:bg-gray-50">
+          <td class="px-4 py-2">{{ item.name }}</td>
+          <td class="px-4 py-2 font-mono text-xs text-gray-500">{{ item.uhf_tid }}</td>
+          <td class="px-4 py-2 text-center">
+            {% if item.active %}✓{% else %}—{% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400">No items.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Currently Rented -->
+  <div class="bg-white rounded-lg shadow">
+    <div class="px-5 py-4 border-b">
+      <h2 class="font-semibold">Currently Rented</h2>
+    </div>
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
+        <tr>
+          <th class="px-4 py-2 text-left">Item</th>
+          <th class="px-4 py-2 text-left">User</th>
+          <th class="px-4 py-2 text-left">Since</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in active_rentals %}
+        <tr class="border-t hover:bg-gray-50">
+          <td class="px-4 py-2">{{ r.item.name }}</td>
+          <td class="px-4 py-2">{{ r.user.name or r.user_id }}</td>
+          <td class="px-4 py-2 text-xs text-gray-500">{{ r.rented_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400">Nothing currently rented.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- Permissions -->
+<div class="mt-6 bg-white rounded-lg shadow">
+  <div class="px-5 py-4 border-b">
+    <h2 class="font-semibold">Rental Permissions</h2>
+  </div>
+  <table class="w-full text-sm">
+    <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
+      <tr>
+        <th class="px-4 py-2 text-left">User ID</th>
+        <th class="px-4 py-2 text-left">Name</th>
+        <th class="px-4 py-2 text-left">Granted</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for perm in permissions %}
+      <tr class="border-t hover:bg-gray-50">
+        <td class="px-4 py-2 font-mono text-xs">{{ perm.user_id }}</td>
+        <td class="px-4 py-2">{{ perm.user.name or '—' }}</td>
+        <td class="px-4 py-2 text-xs text-gray-500">{{ perm.granted_at.strftime('%Y-%m-%d') }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400">No permissions granted.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

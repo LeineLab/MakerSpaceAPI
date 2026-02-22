@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Users – MakerSpaceAPI{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Users</h1>
+
+<div class="bg-white rounded-lg shadow overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
+      <tr>
+        <th class="px-4 py-3 text-left">NFC ID</th>
+        <th class="px-4 py-3 text-left">Name</th>
+        <th class="px-4 py-3 text-left">OIDC Linked</th>
+        <th class="px-4 py-3 text-right">Balance</th>
+        <th class="px-4 py-3 text-left">Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr class="border-t hover:bg-gray-50">
+        <td class="px-4 py-2 font-mono text-xs">{{ u.id }}</td>
+        <td class="px-4 py-2">{{ u.name or '—' }}</td>
+        <td class="px-4 py-2 text-gray-500 text-xs">
+          {% if u.oidc_sub %}
+          <span class="bg-green-100 text-green-700 rounded px-1.5 py-0.5">yes</span>
+          {% else %}—{% endif %}
+        </td>
+        <td class="px-4 py-2 text-right font-medium
+          {% if u.balance < 1 %}text-red-500{% elif u.balance < 5 %}text-yellow-600{% endif %}">
+          {{ "%.2f"|format(u.balance) }} €
+        </td>
+        <td class="px-4 py-2 text-gray-500 text-xs">{{ u.created_at.strftime('%Y-%m-%d') }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">No users yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

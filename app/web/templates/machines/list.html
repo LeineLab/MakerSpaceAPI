@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Machines – MakerSpaceAPI{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-2xl font-bold">Machines &amp; Devices</h1>
+  <a href="/api/docs#/machines/register_machine_api_v1_machines_post" target="_blank"
+     class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+    + Register Machine (via API)
+  </a>
+</div>
+
+<div class="bg-white rounded-lg shadow overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
+      <tr>
+        <th class="px-4 py-3 text-left">Name</th>
+        <th class="px-4 py-3 text-left">Slug</th>
+        <th class="px-4 py-3 text-left">Type</th>
+        <th class="px-4 py-3 text-center">Status</th>
+        <th class="px-4 py-3 text-left">Created</th>
+        <th class="px-4 py-3 text-right">Authorizations</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in machines %}
+      <tr class="border-t hover:bg-gray-50">
+        <td class="px-4 py-2 font-medium">{{ m.name }}</td>
+        <td class="px-4 py-2 font-mono text-xs text-gray-500">{{ m.slug }}</td>
+        <td class="px-4 py-2 text-gray-500">{{ m.machine_type }}</td>
+        <td class="px-4 py-2 text-center">
+          {% if m.active %}
+          <span class="text-xs bg-green-100 text-green-700 rounded px-2 py-0.5">active</span>
+          {% else %}
+          <span class="text-xs bg-red-100 text-red-600 rounded px-2 py-0.5">inactive</span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-2 text-gray-500 text-xs">{{ m.created_at.strftime('%Y-%m-%d') }}</td>
+        <td class="px-4 py-2 text-right">{{ m.authorizations|length }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="px-4 py-8 text-center text-gray-400">No machines registered yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
