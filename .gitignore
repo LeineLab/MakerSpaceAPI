@@ -9,5 +9,3 @@ build/
 .mypy_cache/
 *.sqlite
 *.db
-alembic/versions/*.py
-!alembic/versions/.gitkeep
