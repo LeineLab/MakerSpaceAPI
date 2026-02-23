@@ -1,0 +1,11 @@
+{
+  "name": "makerspaceapi-frontend",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i app/web/static/css/input.css -o app/web/static/css/tailwind.css --minify",
+    "watch:css": "tailwindcss -i app/web/static/css/input.css -o app/web/static/css/tailwind.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.0"
+  }
+}
