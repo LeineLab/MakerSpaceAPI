@@ -21,25 +21,82 @@
 </head>
 <body class="bg-gray-50 text-gray-900 min-h-screen">
 
-  <nav class="bg-gray-800 text-white px-6 py-3 flex items-center gap-6">
-    <a href="/" class="font-bold text-lg tracking-tight">MakerSpace</a>
-    <a href="/products" class="hover:text-gray-300 text-sm">{{ _('nav.products') }}</a>
-    {% if user %}
-      {% if is_admin(user) %}
-        <a href="/dashboard" class="hover:text-gray-300 text-sm">{{ _('nav.dashboard') }}</a>
-        <a href="/machines" class="hover:text-gray-300 text-sm">{{ _('nav.machines') }}</a>
-        <a href="/users" class="hover:text-gray-300 text-sm">{{ _('nav.users') }}</a>
-        <a href="/bankomat" class="hover:text-gray-300 text-sm">{{ _('nav.bankomat') }}</a>
-        <a href="/rentals" class="hover:text-gray-300 text-sm">{{ _('nav.rentals') }}</a>
+  <nav x-data="{ open: false }" class="bg-gray-800 text-white">
+
+    <!-- Top bar (always visible) -->
+    <div class="px-6 py-3 flex items-center gap-6">
+
+      <a href="/" class="font-bold text-lg tracking-tight shrink-0">MakerSpace</a>
+
+      <!-- Desktop links (md and up) -->
+      <div class="hidden md:flex items-center gap-6 flex-1">
+        <a href="/products" class="hover:text-gray-300 text-sm">{{ _('nav.products') }}</a>
+        {% if user %}
+          {% if is_admin(user) %}
+            <a href="/dashboard"   class="hover:text-gray-300 text-sm">{{ _('nav.dashboard') }}</a>
+            <a href="/machines"    class="hover:text-gray-300 text-sm">{{ _('nav.machines') }}</a>
+            <a href="/users"       class="hover:text-gray-300 text-sm">{{ _('nav.users') }}</a>
+            <a href="/bankomat"    class="hover:text-gray-300 text-sm">{{ _('nav.bankomat') }}</a>
+            <a href="/rentals"     class="hover:text-gray-300 text-sm">{{ _('nav.rentals') }}</a>
+          {% endif %}
+          {% if is_product_manager(user) %}
+            <a href="/products/manage" class="hover:text-gray-300 text-sm">{{ _('nav.manage_products') }}</a>
+          {% endif %}
+        {% endif %}
+      </div>
+
+      <!-- Desktop user / login (md and up) -->
+      {% if user %}
+        <div class="hidden md:flex items-center gap-4 ml-auto">
+          <span class="text-xs text-gray-400">{{ user.get('name') or user.get('sub') }}</span>
+          <a href="/auth/logout" class="text-sm hover:text-red-300">{{ _('nav.logout') }}</a>
+        </div>
+      {% else %}
+        <a href="/auth/login" class="hidden md:block ml-auto text-sm hover:text-gray-300">{{ _('nav.login') }}</a>
       {% endif %}
-      {% if is_product_manager(user) %}
-        <a href="/products/manage" class="hover:text-gray-300 text-sm">{{ _('nav.manage_products') }}</a>
+
+      <!-- Hamburger button (mobile only) -->
+      <button @click="open = !open"
+              class="md:hidden ml-auto p-1 rounded hover:bg-gray-700 focus:outline-none"
+              aria-label="Toggle menu">
+        <!-- Hamburger icon -->
+        <svg x-show="!open" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+        <!-- Close icon -->
+        <svg x-show="open" x-cloak class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Mobile dropdown (hidden on md+) -->
+    <div x-show="open" x-cloak
+         class="md:hidden border-t border-gray-700 px-6 py-3 flex flex-col gap-1">
+      <a href="/products"
+         class="hover:text-gray-300 text-sm py-2">{{ _('nav.products') }}</a>
+      {% if user %}
+        {% if is_admin(user) %}
+          <a href="/dashboard"   class="hover:text-gray-300 text-sm py-2">{{ _('nav.dashboard') }}</a>
+          <a href="/machines"    class="hover:text-gray-300 text-sm py-2">{{ _('nav.machines') }}</a>
+          <a href="/users"       class="hover:text-gray-300 text-sm py-2">{{ _('nav.users') }}</a>
+          <a href="/bankomat"    class="hover:text-gray-300 text-sm py-2">{{ _('nav.bankomat') }}</a>
+          <a href="/rentals"     class="hover:text-gray-300 text-sm py-2">{{ _('nav.rentals') }}</a>
+        {% endif %}
+        {% if is_product_manager(user) %}
+          <a href="/products/manage" class="hover:text-gray-300 text-sm py-2">{{ _('nav.manage_products') }}</a>
+        {% endif %}
+        <div class="border-t border-gray-700 mt-2 pt-3 flex items-center justify-between">
+          <span class="text-xs text-gray-400">{{ user.get('name') or user.get('sub') }}</span>
+          <a href="/auth/logout" class="text-sm hover:text-red-300">{{ _('nav.logout') }}</a>
+        </div>
+      {% else %}
+        <a href="/auth/login" class="hover:text-gray-300 text-sm py-2">{{ _('nav.login') }}</a>
       {% endif %}
-      <span class="ml-auto text-xs text-gray-400">{{ user.get('name') or user.get('sub') }}</span>
-      <a href="/auth/logout" class="text-sm hover:text-red-300">{{ _('nav.logout') }}</a>
-    {% else %}
-      <a href="/auth/login" class="ml-auto text-sm hover:text-gray-300">{{ _('nav.login') }}</a>
-    {% endif %}
+    </div>
+
   </nav>
 
   {% if flash %}
