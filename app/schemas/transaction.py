@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.transaction import TransactionType
 
@@ -10,7 +10,7 @@ from app.models.transaction import TransactionType
 class TransactionResponse(BaseModel):
     id: int
     user_id: int
-    amount: Decimal
+    amount: Decimal = Field(examples=[Decimal("1.50")])
     type: TransactionType
     machine_id: Optional[int]
     product_id: Optional[int]

@@ -2,14 +2,14 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class UserAuthResponse(BaseModel):
     """Returned when a device authenticates an NFC card."""
     id: int
     name: Optional[str]
-    balance: Decimal
+    balance: Decimal = Field(ge=0, examples=[Decimal("12.50")])
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -24,14 +24,14 @@ class UserResponse(BaseModel):
     id: int
     name: Optional[str]
     oidc_sub: Optional[str]
-    balance: Decimal
+    balance: Decimal = Field(ge=0, examples=[Decimal("12.50")])
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class UserBalanceAdjust(BaseModel):
-    amount: Decimal
+    amount: Decimal = Field(examples=[Decimal("5.00")])
     note: Optional[str] = None
 
 

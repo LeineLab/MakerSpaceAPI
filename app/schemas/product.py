@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.product import ProductAuditType
 
@@ -10,14 +10,14 @@ from app.models.product import ProductAuditType
 class ProductCreate(BaseModel):
     ean: str
     name: str
-    price: Decimal
+    price: Decimal = Field(ge=0, examples=[Decimal("1.50")])
     stock: int = 0
     category: str
 
 
 class ProductUpdate(BaseModel):
     name: Optional[str] = None
-    price: Optional[Decimal] = None
+    price: Optional[Decimal] = Field(default=None, ge=0, examples=[Decimal("1.50")])
     category: Optional[str] = None
     active: Optional[bool] = None
 
@@ -47,7 +47,7 @@ class ProductResponse(BaseModel):
     id: int
     ean: str
     name: str
-    price: Decimal
+    price: Decimal = Field(ge=0, examples=[Decimal("1.50")])
     stock: int
     category: str
     active: bool

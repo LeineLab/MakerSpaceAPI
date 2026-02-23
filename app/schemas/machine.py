@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class MachineCreate(BaseModel):
@@ -48,22 +48,22 @@ class MachineAdminGroupResponse(BaseModel):
 
 class AuthorizationCreate(BaseModel):
     nfc_id: int
-    price_per_login: Decimal = Decimal("0.00")
-    price_per_minute: Decimal = Decimal("0.00")
+    price_per_login: Decimal = Field(default=Decimal("0.00"), ge=0, examples=[Decimal("0.50")])
+    price_per_minute: Decimal = Field(default=Decimal("0.00"), ge=0, examples=[Decimal("0.10")])
     booking_interval: int = 60  # minutes
 
 
 class AuthorizationUpdate(BaseModel):
-    price_per_login: Optional[Decimal] = None
-    price_per_minute: Optional[Decimal] = None
+    price_per_login: Optional[Decimal] = Field(default=None, ge=0, examples=[Decimal("0.50")])
+    price_per_minute: Optional[Decimal] = Field(default=None, ge=0, examples=[Decimal("0.10")])
     booking_interval: Optional[int] = None
 
 
 class AuthorizationResponse(BaseModel):
     machine_id: int
     user_id: int
-    price_per_login: Decimal
-    price_per_minute: Decimal
+    price_per_login: Decimal = Field(ge=0, examples=[Decimal("0.50")])
+    price_per_minute: Decimal = Field(ge=0, examples=[Decimal("0.10")])
     booking_interval: int
     granted_by: Optional[str]
     granted_at: datetime
@@ -76,7 +76,7 @@ class AuthorizeUserResponse(BaseModel):
     authorized: bool
     user_id: int
     user_name: Optional[str]
-    balance: Decimal
-    price_per_login: Decimal
-    price_per_minute: Decimal
+    balance: Decimal = Field(ge=0, examples=[Decimal("12.50")])
+    price_per_login: Decimal = Field(ge=0, examples=[Decimal("0.50")])
+    price_per_minute: Decimal = Field(ge=0, examples=[Decimal("0.10")])
     booking_interval: int  # minutes
