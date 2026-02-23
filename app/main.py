@@ -9,6 +9,8 @@ from app.config import settings
 from app.web.router import router as web_router
 import pathlib
 
+_STATIC_DIR = pathlib.Path(__file__).parent / "web" / "static"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -33,6 +35,9 @@ app.add_middleware(
     https_only=not settings.DEBUG,
     same_site="lax",
 )
+
+# Static files (JS/CSS served locally)
+app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
 # API routes
 app.include_router(api_router, prefix="/api/v1")
