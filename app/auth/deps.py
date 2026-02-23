@@ -2,6 +2,7 @@ from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.auth.jwt import verify_admin_jwt
 from app.auth.oidc import is_admin, is_machine_admin, is_product_manager
 from app.auth.tokens import verify_api_token
 from app.database import get_db
@@ -11,12 +12,19 @@ _bearer = HTTPBearer(auto_error=False)
 
 
 # ---------------------------------------------------------------------------
-# OIDC / web session helpers
+# OIDC / JWT helpers
 # ---------------------------------------------------------------------------
 
 def get_session_user(request: Request) -> dict | None:
-    """Return OIDC user dict from session, or None if not logged in."""
-    return request.session.get("user")
+    """Return user from JWT (Authorization: Bearer header or auth_token cookie)."""
+    # 1. Authorization: Bearer <jwt>
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Bearer "):
+        user = verify_admin_jwt(auth_header[7:])
+        if user:
+            return user
+    # 2. httpOnly auth_token cookie
+    return verify_admin_jwt(request.cookies.get("auth_token"))
 
 
 def require_session_user(request: Request) -> dict:

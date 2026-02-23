@@ -5,10 +5,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth.deps import get_current_device, require_admin_user, require_checkout_device
+from app.auth.deps import (
+    get_current_device,
+    get_session_user,
+    require_checkout_device,
+    require_product_manager_user,
+)
+from app.auth.oidc import is_product_manager
 from app.database import get_db
 from app.models.machine import Machine
-from app.models.product import Product, ProductAlias, ProductAudit, ProductAuditType
+from app.models.product import Product, ProductAlias, ProductAudit, ProductAuditType, ProductCategory
 from app.models.transaction import Transaction, TransactionType
 from app.models.user import User
 from app.schemas.common import MessageResponse
@@ -43,10 +49,14 @@ def _resolve_product(ean: str, db: Session) -> Product:
 @router.get("/products", response_model=list[ProductResponse])
 def list_products(
     category: str | None = Query(default=None),
+    include_inactive: bool = Query(default=False),
     db: Session = Depends(get_db),
+    user: dict | None = Depends(get_session_user),
 ):
-    """Public product list, sorted by category then name."""
-    q = db.query(Product).filter(Product.active.is_(True))
+    """Public product list. Product managers may pass include_inactive=true to see all."""
+    q = db.query(Product)
+    if not (include_inactive and user and is_product_manager(user)):
+        q = q.filter(Product.active.is_(True))
     if category:
         q = q.filter(Product.category == category)
     return q.order_by(Product.category, Product.name).all()
@@ -57,21 +67,56 @@ def list_products_json(
     category: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    """Public JSON product feed (same as /products)."""
-    return list_products(category=category, db=db)
+    """Public JSON product feed (same as /products, active only)."""
+    q = db.query(Product).filter(Product.active.is_(True))
+    if category:
+        q = q.filter(Product.category == category)
+    return q.order_by(Product.category, Product.name).all()
 
 
 @router.get("/categories", response_model=list[str])
 def list_categories(db: Session = Depends(get_db)):
-    """Return all distinct active categories, sorted."""
-    rows = (
-        db.query(Product.category)
+    """Return all product categories (ProductCategory table + active product categories), sorted."""
+    from_table = {c.name for c in db.query(ProductCategory).all()}
+    from_products = {
+        r[0] for r in db.query(Product.category)
         .filter(Product.active.is_(True))
         .distinct()
-        .order_by(Product.category)
         .all()
-    )
-    return [r[0] for r in rows]
+    }
+    return sorted(from_table | from_products)
+
+
+@router.post("/categories", response_model=str, status_code=201)
+def create_category(
+    body: dict,
+    user: dict = Depends(require_product_manager_user),
+    db: Session = Depends(get_db),
+):
+    """Create a new product category (product manager only)."""
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Category name cannot be empty")
+    if db.query(ProductCategory).filter(ProductCategory.name == name).first():
+        raise HTTPException(status_code=409, detail="Category already exists")
+    db.add(ProductCategory(name=name))
+    db.commit()
+    return name
+
+
+@router.delete("/categories/{name}", response_model=MessageResponse)
+def delete_category(
+    name: str,
+    user: dict = Depends(require_product_manager_user),
+    db: Session = Depends(get_db),
+):
+    """Delete a product category (product manager only)."""
+    cat = db.query(ProductCategory).filter(ProductCategory.name == name).first()
+    if not cat:
+        raise HTTPException(status_code=404, detail="Category not found")
+    db.delete(cat)
+    db.commit()
+    return {"detail": f"Category '{name}' deleted"}
 
 
 @router.get("/products/{ean}", response_model=ProductDetailResponse)
@@ -83,7 +128,7 @@ def get_product(ean: str, db: Session = Depends(get_db)):
 @router.post("/products", response_model=ProductResponse, status_code=201)
 def create_product(
     body: ProductCreate,
-    admin: dict = Depends(require_admin_user),
+    user: dict = Depends(require_product_manager_user),
     db: Session = Depends(get_db),
 ):
     if db.query(Product).filter(Product.ean == body.ean).first():
@@ -99,7 +144,7 @@ def create_product(
     db.flush()
     db.add(ProductAudit(
         product_id=product.id,
-        changed_by=admin.get("sub", "unknown"),
+        changed_by=user.get("sub", "unknown"),
         change_type=ProductAuditType.created,
         new_value=body.ean,
     ))
@@ -112,11 +157,11 @@ def create_product(
 def update_product(
     ean: str,
     body: ProductUpdate,
-    admin: dict = Depends(require_admin_user),
+    user: dict = Depends(require_product_manager_user),
     db: Session = Depends(get_db),
 ):
     product = _resolve_product(ean, db)
-    actor = admin.get("sub", "unknown")
+    actor = user.get("sub", "unknown")
 
     if body.name is not None and body.name != product.name:
         db.add(ProductAudit(
@@ -156,7 +201,7 @@ def update_product(
 def adjust_stock(
     ean: str,
     body: ProductStockAdjust,
-    admin: dict = Depends(require_admin_user),
+    user: dict = Depends(require_product_manager_user),
     db: Session = Depends(get_db),
 ):
     product = _resolve_product(ean, db)
@@ -166,7 +211,7 @@ def adjust_stock(
     change_type = ProductAuditType.stock_add if body.delta > 0 else ProductAuditType.stock_deduct
     db.add(ProductAudit(
         product_id=product.id,
-        changed_by=admin.get("sub", "unknown"),
+        changed_by=user.get("sub", "unknown"),
         change_type=change_type,
         old_value=str(product.stock),
         new_value=str(new_stock),
@@ -182,7 +227,7 @@ def adjust_stock(
 def stocktaking(
     ean: str,
     body: ProductStocktaking,
-    admin: dict = Depends(require_admin_user),
+    user: dict = Depends(require_product_manager_user),
     db: Session = Depends(get_db),
 ):
     """Set absolute stock count (stocktaking)."""
@@ -191,7 +236,7 @@ def stocktaking(
     product = _resolve_product(ean, db)
     db.add(ProductAudit(
         product_id=product.id,
-        changed_by=admin.get("sub", "unknown"),
+        changed_by=user.get("sub", "unknown"),
         change_type=ProductAuditType.stocktaking,
         old_value=str(product.stock),
         new_value=str(body.count),
@@ -206,7 +251,7 @@ def stocktaking(
 @router.get("/products/{ean}/audit", response_model=list[ProductAuditResponse])
 def get_product_audit(
     ean: str,
-    admin: dict = Depends(require_admin_user),
+    user: dict = Depends(require_product_manager_user),
     db: Session = Depends(get_db),
 ):
     product = _resolve_product(ean, db)
@@ -222,7 +267,7 @@ def get_product_audit(
 def product_popularity(
     ean: str,
     days: int = Query(default=7, ge=1, le=365),
-    admin: dict = Depends(require_admin_user),
+    user: dict = Depends(require_product_manager_user),
     db: Session = Depends(get_db),
 ):
     product = _resolve_product(ean, db)
@@ -257,7 +302,7 @@ def list_aliases(ean: str, db: Session = Depends(get_db)):
 def add_alias(
     ean: str,
     body: ProductAliasCreate,
-    admin: dict = Depends(require_admin_user),
+    user: dict = Depends(require_product_manager_user),
     db: Session = Depends(get_db),
 ):
     product = _resolve_product(ean, db)
@@ -276,7 +321,7 @@ def add_alias(
 def delete_alias(
     ean: str,
     alias_ean: str,
-    admin: dict = Depends(require_admin_user),
+    user: dict = Depends(require_product_manager_user),
     db: Session = Depends(get_db),
 ):
     product = _resolve_product(ean, db)

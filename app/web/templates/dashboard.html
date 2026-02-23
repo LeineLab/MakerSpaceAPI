@@ -3,19 +3,29 @@
 {% block content %}
 <h1 class="text-2xl font-bold mb-6">{{ _('dashboard.title') }}</h1>
 
-<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
-  {% for label_key, key, href, color in [
-    ('dashboard.users',           'users',    '/users',          'blue'),
-    ('dashboard.machines',        'machines', '/machines',       'green'),
-    ('dashboard.products',        'products', '/products/manage','yellow'),
-    ('dashboard.booking_targets', 'targets',  '/bankomat',       'purple'),
-  ] %}
-  <a href="{{ href }}"
-     class="block bg-white rounded-lg shadow p-5 border-l-4 border-{{ color }}-500 hover:shadow-md">
-    <div class="text-3xl font-bold text-{{ color }}-600">{{ stats[key] }}</div>
-    <div class="text-sm text-gray-500 mt-1">{{ _(label_key) }}</div>
-  </a>
-  {% endfor %}
+<div x-data="dashboard()" x-cloak>
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+    <a href="/users"
+       class="block bg-white rounded-lg shadow p-5 border-l-4 border-blue-500 hover:shadow-md">
+      <div class="text-3xl font-bold text-blue-600" x-text="stats.users">—</div>
+      <div class="text-sm text-gray-500 mt-1">{{ _('dashboard.users') }}</div>
+    </a>
+    <a href="/machines"
+       class="block bg-white rounded-lg shadow p-5 border-l-4 border-green-500 hover:shadow-md">
+      <div class="text-3xl font-bold text-green-600" x-text="stats.machines">—</div>
+      <div class="text-sm text-gray-500 mt-1">{{ _('dashboard.machines') }}</div>
+    </a>
+    <a href="/products/manage"
+       class="block bg-white rounded-lg shadow p-5 border-l-4 border-yellow-500 hover:shadow-md">
+      <div class="text-3xl font-bold text-yellow-600" x-text="stats.products">—</div>
+      <div class="text-sm text-gray-500 mt-1">{{ _('dashboard.products') }}</div>
+    </a>
+    <a href="/bankomat"
+       class="block bg-white rounded-lg shadow p-5 border-l-4 border-purple-500 hover:shadow-md">
+      <div class="text-3xl font-bold text-purple-600" x-text="stats.targets">—</div>
+      <div class="text-sm text-gray-500 mt-1">{{ _('dashboard.booking_targets') }}</div>
+    </a>
+  </div>
 </div>
 
 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -30,4 +40,26 @@
     </ul>
   </div>
 </div>
+
+<script>
+function dashboard() {
+  return {
+    stats: { users: '…', machines: '…', products: '…', targets: '…' },
+    async init() {
+      const [u, m, p, t] = await Promise.all([
+        fetch('/api/v1/users').then(r => r.ok ? r.json() : []),
+        fetch('/api/v1/machines').then(r => r.ok ? r.json() : []),
+        fetch('/api/v1/products').then(r => r.ok ? r.json() : []),
+        fetch('/api/v1/bankomat/targets').then(r => r.ok ? r.json() : []),
+      ]);
+      this.stats = {
+        users: u.length,
+        machines: m.length,
+        products: p.length,
+        targets: t.length,
+      };
+    }
+  }
+}
+</script>
 {% endblock %}

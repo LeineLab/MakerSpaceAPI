@@ -1,138 +1,215 @@
 {% extends "base.html" %}
 {% block title %}{{ _('rentals.title') }} – MakerSpaceAPI{% endblock %}
 {% block content %}
-<div class="flex items-center justify-between mb-6">
-  <h1 class="text-2xl font-bold">{{ _('rentals.title') }}</h1>
-  <button onclick="document.getElementById('add-item-modal').classList.remove('hidden')"
-          class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
-    {{ _('rentals.btn_add') }}
-  </button>
-</div>
 
-<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-  <!-- Rental Items -->
-  <div class="bg-white rounded-lg shadow">
-    <div class="px-5 py-4 border-b flex items-center justify-between">
-      <h2 class="font-semibold">{{ _('rentals.items_title') }}</h2>
-      <span class="text-xs text-gray-400">{{ items|length }} {{ _('rentals.items_word') }}</span>
-    </div>
-    <table class="w-full text-sm">
-      <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
-        <tr>
-          <th class="px-4 py-2 text-left">{{ _('common.name') }}</th>
-          <th class="px-4 py-2 text-left">{{ _('rentals.col_tid') }}</th>
-          <th class="px-4 py-2 text-center">{{ _('rentals.col_active') }}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for item in items %}
-        <tr class="border-t hover:bg-gray-50">
-          <td class="px-4 py-2">
-            {{ item.name }}
-            {% if item.description %}
-            <span class="block text-xs text-gray-400">{{ item.description }}</span>
-            {% endif %}
-          </td>
-          <td class="px-4 py-2 font-mono text-xs text-gray-500">{{ item.uhf_tid }}</td>
-          <td class="px-4 py-2 text-center">
-            {% if item.active %}✓{% else %}—{% endif %}
-          </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400">{{ _('rentals.items_empty') }}</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+<div x-data="rentalPage()" x-cloak>
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold">{{ _('rentals.title') }}</h1>
+    <button @click="showModal = true"
+            class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+      {{ _('rentals.btn_add') }}
+    </button>
   </div>
 
-  <!-- Currently Rented -->
-  <div class="bg-white rounded-lg shadow">
+  <div x-show="error" class="mb-4 bg-red-100 text-red-700 p-3 rounded text-sm" x-text="error"></div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+    <!-- Rental Items -->
+    <div class="bg-white rounded-lg shadow">
+      <div class="px-5 py-4 border-b flex items-center justify-between">
+        <h2 class="font-semibold">{{ _('rentals.items_title') }}</h2>
+        <span class="text-xs text-gray-400" x-text="items.length + ' {{ _('rentals.items_word') }}'"></span>
+      </div>
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
+          <tr>
+            <th class="px-4 py-2 text-left">{{ _('common.name') }}</th>
+            <th class="px-4 py-2 text-left">{{ _('rentals.col_tid') }}</th>
+            <th class="px-4 py-2 text-center">{{ _('rentals.col_active') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-if="loading">
+            <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400">Loading…</td></tr>
+          </template>
+          <template x-if="!loading && items.length === 0">
+            <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400">{{ _('rentals.items_empty') }}</td></tr>
+          </template>
+          <template x-for="item in items" :key="item.id">
+            <tr class="border-t hover:bg-gray-50">
+              <td class="px-4 py-2">
+                <span x-text="item.name"></span>
+                <span x-show="item.description" class="block text-xs text-gray-400" x-text="item.description"></span>
+              </td>
+              <td class="px-4 py-2 font-mono text-xs text-gray-500" x-text="item.uhf_tid"></td>
+              <td class="px-4 py-2 text-center" x-text="item.active ? '✓' : '—'"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Currently Rented -->
+    <div class="bg-white rounded-lg shadow">
+      <div class="px-5 py-4 border-b">
+        <h2 class="font-semibold">{{ _('rentals.rented_title') }}</h2>
+      </div>
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
+          <tr>
+            <th class="px-4 py-2 text-left">{{ _('rentals.col_item') }}</th>
+            <th class="px-4 py-2 text-left">{{ _('rentals.col_user') }}</th>
+            <th class="px-4 py-2 text-left">{{ _('rentals.col_since') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-if="loading">
+            <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400">Loading…</td></tr>
+          </template>
+          <template x-if="!loading && activeRentals.length === 0">
+            <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400">{{ _('rentals.rented_empty') }}</td></tr>
+          </template>
+          <template x-for="r in activeRentals" :key="r.rental_id">
+            <tr class="border-t hover:bg-gray-50">
+              <td class="px-4 py-2" x-text="r.item_name"></td>
+              <td class="px-4 py-2" x-text="r.user_name || r.user_id"></td>
+              <td class="px-4 py-2 text-xs text-gray-500"
+                  x-text="r.rented_at ? r.rented_at.substring(0,16).replace('T',' ') : ''"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <!-- Permissions -->
+  <div class="mt-6 bg-white rounded-lg shadow">
     <div class="px-5 py-4 border-b">
-      <h2 class="font-semibold">{{ _('rentals.rented_title') }}</h2>
+      <h2 class="font-semibold">{{ _('rentals.perms_title') }}</h2>
     </div>
     <table class="w-full text-sm">
       <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
         <tr>
-          <th class="px-4 py-2 text-left">{{ _('rentals.col_item') }}</th>
-          <th class="px-4 py-2 text-left">{{ _('rentals.col_user') }}</th>
-          <th class="px-4 py-2 text-left">{{ _('rentals.col_since') }}</th>
+          <th class="px-4 py-2 text-left">{{ _('rentals.col_uid') }}</th>
+          <th class="px-4 py-2 text-left">{{ _('common.name') }}</th>
+          <th class="px-4 py-2 text-left">{{ _('rentals.col_granted') }}</th>
         </tr>
       </thead>
       <tbody>
-        {% for r in active_rentals %}
-        <tr class="border-t hover:bg-gray-50">
-          <td class="px-4 py-2">{{ r.item.name }}</td>
-          <td class="px-4 py-2">{{ r.user.name or r.user_id }}</td>
-          <td class="px-4 py-2 text-xs text-gray-500">{{ r.rented_at.strftime('%Y-%m-%d %H:%M') }}</td>
-        </tr>
-        {% else %}
-        <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400">{{ _('rentals.rented_empty') }}</td></tr>
-        {% endfor %}
+        <template x-if="loading">
+          <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400">Loading…</td></tr>
+        </template>
+        <template x-if="!loading && permissions.length === 0">
+          <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400">{{ _('rentals.perms_empty') }}</td></tr>
+        </template>
+        <template x-for="perm in permissions" :key="perm.user_id">
+          <tr class="border-t hover:bg-gray-50">
+            <td class="px-4 py-2 font-mono text-xs" x-text="perm.user_id"></td>
+            <td class="px-4 py-2" x-text="perm.user_name || '—'"></td>
+            <td class="px-4 py-2 text-xs text-gray-500"
+                x-text="perm.granted_at ? perm.granted_at.substring(0,10) : ''"></td>
+          </tr>
+        </template>
       </tbody>
     </table>
   </div>
 
-</div>
-
-<!-- Permissions -->
-<div class="mt-6 bg-white rounded-lg shadow">
-  <div class="px-5 py-4 border-b">
-    <h2 class="font-semibold">{{ _('rentals.perms_title') }}</h2>
-  </div>
-  <table class="w-full text-sm">
-    <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
-      <tr>
-        <th class="px-4 py-2 text-left">{{ _('rentals.col_uid') }}</th>
-        <th class="px-4 py-2 text-left">{{ _('common.name') }}</th>
-        <th class="px-4 py-2 text-left">{{ _('rentals.col_granted') }}</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for perm in permissions %}
-      <tr class="border-t hover:bg-gray-50">
-        <td class="px-4 py-2 font-mono text-xs">{{ perm.user_id }}</td>
-        <td class="px-4 py-2">{{ perm.user.name or '—' }}</td>
-        <td class="px-4 py-2 text-xs text-gray-500">{{ perm.granted_at.strftime('%Y-%m-%d') }}</td>
-      </tr>
-      {% else %}
-      <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400">{{ _('rentals.perms_empty') }}</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-
-<!-- Add Rental Item Modal -->
-<div id="add-item-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-  <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-    <h2 class="text-lg font-bold mb-4">{{ _('rentals.modal_title') }}</h2>
-    <form method="post" action="/rentals/items/new" class="space-y-4">
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('common.name') }}</label>
-        <input type="text" name="name" required placeholder="{{ _('rentals.placeholder_name') }}"
-               class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('rentals.label_uhf_tid') }}</label>
-        <input type="text" name="uhf_tid" required placeholder="{{ _('rentals.placeholder_tid') }}"
-               class="w-full border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
-        <p class="text-xs text-gray-400 mt-1">{{ _('rentals.tid_hint') }}</p>
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('rentals.label_description') }}</label>
-        <input type="text" name="description" placeholder="{{ _('rentals.placeholder_desc') }}"
-               class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-      </div>
-      <div class="flex justify-end gap-3 pt-2">
-        <button type="button"
-                onclick="document.getElementById('add-item-modal').classList.add('hidden')"
-                class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">{{ _('common.cancel') }}</button>
-        <button type="submit"
-                class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
-          {{ _('rentals.btn_add_item') }}
-        </button>
-      </div>
-    </form>
+  <!-- Add Rental Item Modal -->
+  <div x-show="showModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showModal = false">
+      <h2 class="text-lg font-bold mb-4">{{ _('rentals.modal_title') }}</h2>
+      <div x-show="formError" class="mb-3 bg-red-100 text-red-700 p-2 rounded text-sm" x-text="formError"></div>
+      <form @submit.prevent="createItem()" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('common.name') }}</label>
+          <input type="text" x-model="form.name" required placeholder="{{ _('rentals.placeholder_name') }}"
+                 class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('rentals.label_uhf_tid') }}</label>
+          <input type="text" x-model="form.uhf_tid" required placeholder="{{ _('rentals.placeholder_tid') }}"
+                 class="w-full border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <p class="text-xs text-gray-400 mt-1">{{ _('rentals.tid_hint') }}</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('rentals.label_description') }}</label>
+          <input type="text" x-model="form.description" placeholder="{{ _('rentals.placeholder_desc') }}"
+                 class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" @click="showModal = false"
+                  class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">{{ _('common.cancel') }}</button>
+          <button type="submit" :disabled="submitting"
+                  class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
+            <span x-show="!submitting">{{ _('rentals.btn_add_item') }}</span>
+            <span x-show="submitting">…</span>
+          </button>
+        </div>
+      </form>
+    </div>
   </div>
 </div>
+
+<script>
+function rentalPage() {
+  return {
+    items: [],
+    activeRentals: [],
+    permissions: [],
+    loading: true,
+    error: null,
+    showModal: false,
+    submitting: false,
+    formError: null,
+    form: { name: '', uhf_tid: '', description: '' },
+
+    async init() {
+      this.loading = true;
+      this.error = null;
+      try {
+        const [items, rentals, perms] = await Promise.all([
+          fetch('/api/v1/rentals/items').then(r => r.ok ? r.json() : Promise.reject('items')),
+          fetch('/api/v1/rentals/active').then(r => r.ok ? r.json() : Promise.reject('rentals')),
+          fetch('/api/v1/rentals/permissions').then(r => r.ok ? r.json() : Promise.reject('perms')),
+        ]);
+        this.items = items;
+        this.activeRentals = rentals;
+        this.permissions = perms;
+      } catch (e) {
+        this.error = 'Failed to load rental data';
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async createItem() {
+      this.submitting = true;
+      this.formError = null;
+      try {
+        const body = { name: this.form.name, uhf_tid: this.form.uhf_tid };
+        if (this.form.description) body.description = this.form.description;
+        const r = await fetch('/api/v1/rentals/items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          this.formError = data.detail || 'Error creating item';
+          return;
+        }
+        this.showModal = false;
+        this.form = { name: '', uhf_tid: '', description: '' };
+        await this.init();
+      } catch (e) {
+        this.formError = e.message;
+      } finally {
+        this.submitting = false;
+      }
+    }
+  }
+}
+</script>
 {% endblock %}

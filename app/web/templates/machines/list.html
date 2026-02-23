@@ -1,103 +1,175 @@
 {% extends "base.html" %}
 {% block title %}{{ _('machines.title') }} – MakerSpaceAPI{% endblock %}
 {% block content %}
-<div class="flex items-center justify-between mb-4">
-  <h1 class="text-2xl font-bold">{{ _('machines.title') }}</h1>
-  <button onclick="document.getElementById('add-machine-modal').classList.remove('hidden')"
-          class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
-    {{ _('machines.btn_register') }}
-  </button>
-</div>
 
-{% if pending_token %}
-<div class="mb-6 bg-yellow-50 border border-yellow-300 rounded-lg p-5">
-  <h2 class="font-semibold text-yellow-800 mb-1">
-    {{ _('machines.token_title', name=pending_token.machine) }}
-  </h2>
-  <p class="text-xs text-yellow-700 mb-2">{{ _('machines.token_warning') }}</p>
-  <div class="flex items-center gap-3">
-    <code id="pending-token-value"
-          class="flex-1 bg-yellow-100 text-yellow-900 font-mono text-sm px-3 py-2 rounded break-all select-all">{{ pending_token.token }}</code>
-    <button onclick="navigator.clipboard.writeText(document.getElementById('pending-token-value').innerText)"
-            class="shrink-0 px-3 py-2 bg-yellow-600 text-white text-xs rounded hover:bg-yellow-700">
-      {{ _('common.copy') }}
+<div x-data="machineList()" x-cloak>
+  <div class="flex items-center justify-between mb-4">
+    <h1 class="text-2xl font-bold">{{ _('machines.title') }}</h1>
+    <button @click="showModal = true"
+            class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+      {{ _('machines.btn_register') }}
     </button>
   </div>
-  <p class="text-xs text-gray-500 mt-2">{{ _('machines.token_slug') }} <code class="font-mono">{{ pending_token.slug }}</code></p>
-</div>
-{% endif %}
 
-<div class="bg-white rounded-lg shadow overflow-hidden">
-  <table class="w-full text-sm">
-    <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
-      <tr>
-        <th class="px-4 py-3 text-left">{{ _('common.name') }}</th>
-        <th class="px-4 py-3 text-left">{{ _('machines.col_slug') }}</th>
-        <th class="px-4 py-3 text-left">{{ _('machines.col_type') }}</th>
-        <th class="px-4 py-3 text-center">{{ _('common.status') }}</th>
-        <th class="px-4 py-3 text-left">{{ _('common.created') }}</th>
-        <th class="px-4 py-3 text-right">{{ _('machines.col_auth') }}</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for m in machines %}
-      <tr class="border-t hover:bg-gray-50">
-        <td class="px-4 py-2 font-medium">{{ m.name }}</td>
-        <td class="px-4 py-2 font-mono text-xs text-gray-500">{{ m.slug }}</td>
-        <td class="px-4 py-2 text-gray-500">{{ m.machine_type }}</td>
-        <td class="px-4 py-2 text-center">
-          {% if m.active %}
-          <span class="text-xs bg-green-100 text-green-700 rounded px-2 py-0.5">{{ _('common.active') }}</span>
-          {% else %}
-          <span class="text-xs bg-red-100 text-red-600 rounded px-2 py-0.5">{{ _('common.inactive') }}</span>
-          {% endif %}
-        </td>
-        <td class="px-4 py-2 text-gray-500 text-xs">{{ m.created_at.strftime('%Y-%m-%d') }}</td>
-        <td class="px-4 py-2 text-right">{{ m.authorizations|length }}</td>
-      </tr>
-      {% else %}
-      <tr><td colspan="6" class="px-4 py-8 text-center text-gray-400">{{ _('machines.empty') }}</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+  <!-- Pending token banner (shown once after machine creation) -->
+  <div x-show="pendingToken" class="mb-6 bg-yellow-50 border border-yellow-300 rounded-lg p-5">
+    <h2 class="font-semibold text-yellow-800 mb-1">
+      {{ _('machines.token_title', name='') }}<span x-text="pendingToken && pendingToken.machine"></span>
+    </h2>
+    <p class="text-xs text-yellow-700 mb-2">{{ _('machines.token_warning') }}</p>
+    <div class="flex items-center gap-3">
+      <code x-ref="tokenCode"
+            class="flex-1 bg-yellow-100 text-yellow-900 font-mono text-sm px-3 py-2 rounded break-all select-all"
+            x-text="pendingToken && pendingToken.token"></code>
+      <button @click="navigator.clipboard.writeText(pendingToken.token)"
+              class="shrink-0 px-3 py-2 bg-yellow-600 text-white text-xs rounded hover:bg-yellow-700">
+        {{ _('common.copy') }}
+      </button>
+    </div>
+    <p class="text-xs text-gray-500 mt-2">
+      {{ _('machines.token_slug') }}
+      <code class="font-mono" x-text="pendingToken && pendingToken.slug"></code>
+    </p>
+    <button @click="pendingToken = null" class="mt-2 text-xs text-yellow-700 hover:underline">
+      {{ _('common.close') }}
+    </button>
+  </div>
 
-<!-- Register Machine Modal -->
-<div id="add-machine-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-  <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-    <h2 class="text-lg font-bold mb-4">{{ _('machines.modal_title') }}</h2>
-    <form method="post" action="/machines/new" class="space-y-4">
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('common.name') }}</label>
-        <input type="text" name="name" required placeholder="{{ _('machines.placeholder_name') }}"
-               class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('common.slug') }}</label>
-        <input type="text" name="slug" required placeholder="{{ _('machines.placeholder_slug') }}"
-               pattern="[a-z0-9_-]+"
-               title="{{ _('common.slug_hint') }}"
-               class="w-full border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
-        <p class="text-xs text-gray-400 mt-1">{{ _('common.slug_hint') }}</p>
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('machines.label_type') }}</label>
-        <select name="machine_type" required
-                class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-          <option value="machine">machine</option>
-          <option value="checkout">checkout</option>
-        </select>
-      </div>
-      <div class="flex justify-end gap-3 pt-2">
-        <button type="button"
-                onclick="document.getElementById('add-machine-modal').classList.add('hidden')"
-                class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">{{ _('common.cancel') }}</button>
-        <button type="submit"
-                class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
-          {{ _('machines.btn_register_token') }}
-        </button>
-      </div>
-    </form>
+  <!-- Error message -->
+  <div x-show="error" class="mb-4 bg-red-100 text-red-700 p-3 rounded text-sm" x-text="error"></div>
+
+  <!-- Machines table -->
+  <div class="bg-white rounded-lg shadow overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
+        <tr>
+          <th class="px-4 py-3 text-left">{{ _('common.name') }}</th>
+          <th class="px-4 py-3 text-left">{{ _('machines.col_slug') }}</th>
+          <th class="px-4 py-3 text-left">{{ _('machines.col_type') }}</th>
+          <th class="px-4 py-3 text-center">{{ _('common.status') }}</th>
+          <th class="px-4 py-3 text-left">{{ _('common.created') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-if="loading">
+          <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">Loading…</td></tr>
+        </template>
+        <template x-if="!loading && machines.length === 0">
+          <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">{{ _('machines.empty') }}</td></tr>
+        </template>
+        <template x-for="m in machines" :key="m.id">
+          <tr class="border-t hover:bg-gray-50">
+            <td class="px-4 py-2 font-medium" x-text="m.name"></td>
+            <td class="px-4 py-2 font-mono text-xs text-gray-500" x-text="m.slug"></td>
+            <td class="px-4 py-2 text-gray-500" x-text="m.machine_type"></td>
+            <td class="px-4 py-2 text-center">
+              <span x-show="m.active"
+                    class="text-xs bg-green-100 text-green-700 rounded px-2 py-0.5">{{ _('common.active') }}</span>
+              <span x-show="!m.active"
+                    class="text-xs bg-red-100 text-red-600 rounded px-2 py-0.5">{{ _('common.inactive') }}</span>
+            </td>
+            <td class="px-4 py-2 text-gray-500 text-xs" x-text="m.created_at ? m.created_at.substring(0,10) : ''"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Register Machine Modal -->
+  <div x-show="showModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showModal = false">
+      <h2 class="text-lg font-bold mb-4">{{ _('machines.modal_title') }}</h2>
+      <div x-show="formError" class="mb-3 bg-red-100 text-red-700 p-2 rounded text-sm" x-text="formError"></div>
+      <form @submit.prevent="createMachine()" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('common.name') }}</label>
+          <input type="text" x-model="form.name" required placeholder="{{ _('machines.placeholder_name') }}"
+                 class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('common.slug') }}</label>
+          <input type="text" x-model="form.slug" required placeholder="{{ _('machines.placeholder_slug') }}"
+                 pattern="[a-z0-9_-]+" title="{{ _('common.slug_hint') }}"
+                 class="w-full border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <p class="text-xs text-gray-400 mt-1">{{ _('common.slug_hint') }}</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('machines.label_type') }}</label>
+          <select x-model="form.machine_type" required
+                  class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="machine">machine</option>
+            <option value="checkout">checkout</option>
+          </select>
+        </div>
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" @click="showModal = false"
+                  class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">{{ _('common.cancel') }}</button>
+          <button type="submit" :disabled="submitting"
+                  class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
+            <span x-show="!submitting">{{ _('machines.btn_register_token') }}</span>
+            <span x-show="submitting">…</span>
+          </button>
+        </div>
+      </form>
+    </div>
   </div>
 </div>
+
+<script>
+function machineList() {
+  return {
+    machines: [],
+    loading: true,
+    error: null,
+    showModal: false,
+    submitting: false,
+    formError: null,
+    pendingToken: null,
+    form: { name: '', slug: '', machine_type: 'machine' },
+
+    async init() {
+      await this.loadMachines();
+    },
+
+    async loadMachines() {
+      this.loading = true;
+      this.error = null;
+      try {
+        const r = await fetch('/api/v1/machines');
+        if (!r.ok) throw new Error('Failed to load machines');
+        this.machines = await r.json();
+      } catch (e) {
+        this.error = e.message;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async createMachine() {
+      this.submitting = true;
+      this.formError = null;
+      try {
+        const r = await fetch('/api/v1/machines', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.form),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          this.formError = data.detail || 'Error creating machine';
+          return;
+        }
+        this.pendingToken = { machine: data.name, slug: data.slug, token: data.api_token };
+        this.showModal = false;
+        this.form = { name: '', slug: '', machine_type: 'machine' };
+        await this.loadMachines();
+      } catch (e) {
+        this.formError = e.message;
+      } finally {
+        this.submitting = false;
+      }
+    }
+  }
+}
+</script>
 {% endblock %}

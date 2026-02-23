@@ -1,52 +1,92 @@
 {% extends "base.html" %}
 {% block title %}{{ _('products.title') }} – MakerSpaceAPI{% endblock %}
 {% block content %}
-<div class="flex items-center justify-between mb-4">
-  <h1 class="text-2xl font-bold">{{ _('products.title') }}</h1>
-  <form method="get" class="flex gap-2 items-center">
-    <select name="category" onchange="this.form.submit()"
+
+<div x-data="productList()" x-cloak>
+  <div class="flex items-center justify-between mb-4">
+    <h1 class="text-2xl font-bold">{{ _('products.title') }}</h1>
+    <select x-model="selectedCategory" @change="filterProducts()"
             class="border rounded px-3 py-1.5 text-sm">
       <option value="">{{ _('products.all_cats') }}</option>
-      {% for cat in categories %}
-      <option value="{{ cat }}" {% if cat == selected_category %}selected{% endif %}>{{ cat }}</option>
-      {% endfor %}
+      <template x-for="cat in categories" :key="cat">
+        <option :value="cat" x-text="cat"></option>
+      </template>
     </select>
-  </form>
+  </div>
+
+  <div x-show="error" class="mb-4 bg-red-100 text-red-700 p-3 rounded text-sm" x-text="error"></div>
+
+  <div class="bg-white rounded-lg shadow overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
+        <tr>
+          <th class="px-4 py-3 text-left">{{ _('products.col_category') }}</th>
+          <th class="px-4 py-3 text-left">{{ _('products.col_name') }}</th>
+          <th class="px-4 py-3 text-left">{{ _('products.col_ean') }}</th>
+          <th class="px-4 py-3 text-right">{{ _('products.col_price') }}</th>
+          <th class="px-4 py-3 text-right">{{ _('products.col_stock') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-if="loading">
+          <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">Loading…</td></tr>
+        </template>
+        <template x-if="!loading && filtered.length === 0">
+          <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">{{ _('products.empty') }}</td></tr>
+        </template>
+        <template x-for="(p, i) in filtered" :key="p.ean">
+          <tr class="border-t hover:bg-gray-50">
+            <td class="px-4 py-2 text-gray-500"
+                x-text="i === 0 || filtered[i-1].category !== p.category ? p.category : ''"></td>
+            <td class="px-4 py-2 font-medium" x-text="p.name"></td>
+            <td class="px-4 py-2 text-gray-500 font-mono text-xs" x-text="p.ean"></td>
+            <td class="px-4 py-2 text-right" x-text="parseFloat(p.price).toFixed(2) + ' €'"></td>
+            <td class="px-4 py-2 text-right"
+                :class="p.stock === 0 ? 'text-red-500 font-semibold' : p.stock < 5 ? 'text-yellow-600' : ''"
+                x-text="p.stock"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
 </div>
 
-<div class="bg-white rounded-lg shadow overflow-hidden">
-  <table class="w-full text-sm">
-    <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
-      <tr>
-        <th class="px-4 py-3 text-left">{{ _('products.col_category') }}</th>
-        <th class="px-4 py-3 text-left">{{ _('products.col_name') }}</th>
-        <th class="px-4 py-3 text-left">{{ _('products.col_ean') }}</th>
-        <th class="px-4 py-3 text-right">{{ _('products.col_price') }}</th>
-        <th class="px-4 py-3 text-right">{{ _('products.col_stock') }}</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% set ns = namespace(last_cat='') %}
-      {% for p in products %}
-      <tr class="border-t hover:bg-gray-50">
-        <td class="px-4 py-2 text-gray-500">
-          {% if p.category != ns.last_cat %}
-            {{ p.category }}
-            {% set ns.last_cat = p.category %}
-          {% endif %}
-        </td>
-        <td class="px-4 py-2 font-medium">{{ p.name }}</td>
-        <td class="px-4 py-2 text-gray-500 font-mono text-xs">{{ p.ean }}</td>
-        <td class="px-4 py-2 text-right">{{ "%.2f"|format(p.price) }} €</td>
-        <td class="px-4 py-2 text-right
-          {% if p.stock == 0 %}text-red-500 font-semibold{% elif p.stock < 5 %}text-yellow-600{% endif %}">
-          {{ p.stock }}
-        </td>
-      </tr>
-      {% else %}
-      <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">{{ _('products.empty') }}</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+<script>
+function productList() {
+  return {
+    products: [],
+    categories: [],
+    selectedCategory: '',
+    filtered: [],
+    loading: true,
+    error: null,
+
+    async init() {
+      this.loading = true;
+      this.error = null;
+      try {
+        const [products, cats] = await Promise.all([
+          fetch('/api/v1/products').then(r => r.ok ? r.json() : Promise.reject('products')),
+          fetch('/api/v1/categories').then(r => r.ok ? r.json() : []),
+        ]);
+        this.products = products;
+        this.categories = cats;
+        this.filtered = products;
+      } catch (e) {
+        this.error = 'Failed to load products';
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    filterProducts() {
+      if (!this.selectedCategory) {
+        this.filtered = this.products;
+      } else {
+        this.filtered = this.products.filter(p => p.category === this.selectedCategory);
+      }
+    }
+  }
+}
+</script>
 {% endblock %}

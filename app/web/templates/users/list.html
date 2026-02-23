@@ -1,39 +1,70 @@
 {% extends "base.html" %}
 {% block title %}{{ _('users.title') }} – MakerSpaceAPI{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-bold mb-4">{{ _('users.title') }}</h1>
 
-<div class="bg-white rounded-lg shadow overflow-hidden">
-  <table class="w-full text-sm">
-    <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
-      <tr>
-        <th class="px-4 py-3 text-left">{{ _('users.col_nfc') }}</th>
-        <th class="px-4 py-3 text-left">{{ _('common.name') }}</th>
-        <th class="px-4 py-3 text-left">{{ _('users.col_oidc') }}</th>
-        <th class="px-4 py-3 text-right">{{ _('users.col_balance') }}</th>
-        <th class="px-4 py-3 text-left">{{ _('common.created') }}</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for u in users %}
-      <tr class="border-t hover:bg-gray-50">
-        <td class="px-4 py-2 font-mono text-xs">{{ u.id }}</td>
-        <td class="px-4 py-2">{{ u.name or '—' }}</td>
-        <td class="px-4 py-2 text-gray-500 text-xs">
-          {% if u.oidc_sub %}
-          <span class="bg-green-100 text-green-700 rounded px-1.5 py-0.5">{{ _('common.yes') }}</span>
-          {% else %}—{% endif %}
-        </td>
-        <td class="px-4 py-2 text-right font-medium
-          {% if u.balance < 1 %}text-red-500{% elif u.balance < 5 %}text-yellow-600{% endif %}">
-          {{ "%.2f"|format(u.balance) }} €
-        </td>
-        <td class="px-4 py-2 text-gray-500 text-xs">{{ u.created_at.strftime('%Y-%m-%d') }}</td>
-      </tr>
-      {% else %}
-      <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">{{ _('users.empty') }}</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<div x-data="userList()" x-cloak>
+  <h1 class="text-2xl font-bold mb-4">{{ _('users.title') }}</h1>
+
+  <div x-show="error" class="mb-4 bg-red-100 text-red-700 p-3 rounded text-sm" x-text="error"></div>
+
+  <div class="bg-white rounded-lg shadow overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
+        <tr>
+          <th class="px-4 py-3 text-left">{{ _('users.col_nfc') }}</th>
+          <th class="px-4 py-3 text-left">{{ _('common.name') }}</th>
+          <th class="px-4 py-3 text-left">{{ _('users.col_oidc') }}</th>
+          <th class="px-4 py-3 text-right">{{ _('users.col_balance') }}</th>
+          <th class="px-4 py-3 text-left">{{ _('common.created') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-if="loading">
+          <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">Loading…</td></tr>
+        </template>
+        <template x-if="!loading && users.length === 0">
+          <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">{{ _('users.empty') }}</td></tr>
+        </template>
+        <template x-for="u in users" :key="u.id">
+          <tr class="border-t hover:bg-gray-50">
+            <td class="px-4 py-2 font-mono text-xs" x-text="u.id"></td>
+            <td class="px-4 py-2" x-text="u.name || '—'"></td>
+            <td class="px-4 py-2 text-gray-500 text-xs">
+              <span x-show="u.oidc_sub"
+                    class="bg-green-100 text-green-700 rounded px-1.5 py-0.5">{{ _('common.yes') }}</span>
+              <span x-show="!u.oidc_sub">—</span>
+            </td>
+            <td class="px-4 py-2 text-right font-medium"
+                :class="parseFloat(u.balance) < 1 ? 'text-red-500' : parseFloat(u.balance) < 5 ? 'text-yellow-600' : ''"
+                x-text="parseFloat(u.balance).toFixed(2) + ' €'"></td>
+            <td class="px-4 py-2 text-gray-500 text-xs"
+                x-text="u.created_at ? u.created_at.substring(0,10) : ''"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
 </div>
+
+<script>
+function userList() {
+  return {
+    users: [],
+    loading: true,
+    error: null,
+
+    async init() {
+      try {
+        const r = await fetch('/api/v1/users');
+        if (!r.ok) throw new Error('Failed to load users');
+        this.users = await r.json();
+      } catch (e) {
+        this.error = e.message;
+      } finally {
+        this.loading = false;
+      }
+    }
+  }
+}
+</script>
 {% endblock %}
