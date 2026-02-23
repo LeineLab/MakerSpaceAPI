@@ -146,6 +146,7 @@
   "rentals.col_granted": "Granted",
   "rentals.perms_empty": "No permissions granted.",
 
+  "rentals.edit_title":        "Edit Rental Item",
   "rentals.modal_title":       "Add Rental Item",
   "rentals.label_uhf_tid":     "UHF TID",
   "rentals.tid_hint":          "Tag ID from the UHF RFID chip. Will be stored uppercase.",

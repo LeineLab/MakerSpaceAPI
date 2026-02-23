@@ -146,6 +146,7 @@
   "rentals.col_granted": "Erteilt",
   "rentals.perms_empty": "Keine Berechtigungen erteilt.",
 
+  "rentals.edit_title":        "Verleihgegenstand bearbeiten",
   "rentals.modal_title":       "Verleihgegenstand hinzufügen",
   "rentals.label_uhf_tid":     "UHF-TID",
   "rentals.tid_hint":          "Tag-ID des UHF-RFID-Chips. Wird in Großbuchstaben gespeichert.",

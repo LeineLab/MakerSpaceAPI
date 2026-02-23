@@ -334,8 +334,8 @@ function productManage() {
       this.error = null;
       try {
         const [products, cats] = await Promise.all([
-          fetch('/api/v1/products?include_inactive=true').then(r => r.ok ? r.json() : Promise.reject('products')),
-          fetch('/api/v1/categories').then(r => r.ok ? r.json() : []),
+          apiFetch('/api/v1/products?include_inactive=true').then(r => r.ok ? r.json() : Promise.reject('products')),
+          apiFetch('/api/v1/categories').then(r => r.ok ? r.json() : []),
         ]);
         this.products = products;
         this.categories = cats;
@@ -350,7 +350,7 @@ function productManage() {
     async loadAliases(products) {
       if (!products || products.length === 0) { this.aliases = []; return; }
       const lists = await Promise.all(
-        products.map(p => fetch(`/api/v1/products/${p.ean}/aliases`).then(r => r.ok ? r.json() : []))
+        products.map(p => apiFetch(`/api/v1/products/${p.ean}/aliases`).then(r => r.ok ? r.json() : []))
       );
       this.aliases = [];
       for (let i = 0; i < products.length; i++) {
@@ -387,7 +387,7 @@ function productManage() {
       this.submitting = true;
       this.addError = null;
       try {
-        const r = await fetch('/api/v1/products', {
+        const r = await apiFetch('/api/v1/products', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -414,7 +414,7 @@ function productManage() {
       this.submitting = true;
       this.editError = null;
       try {
-        const r = await fetch(`/api/v1/products/${this.editForm.ean}`, {
+        const r = await apiFetch(`/api/v1/products/${this.editForm.ean}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -440,7 +440,7 @@ function productManage() {
       this.submitting = true;
       this.stockError = null;
       try {
-        const r = await fetch(`/api/v1/products/${this.stockForm.ean}/stock`, {
+        const r = await apiFetch(`/api/v1/products/${this.stockForm.ean}/stock`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -463,7 +463,7 @@ function productManage() {
     async addCategory() {
       this.catError = null;
       try {
-        const r = await fetch('/api/v1/categories', {
+        const r = await apiFetch('/api/v1/categories', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: this.newCatName }),
@@ -471,7 +471,7 @@ function productManage() {
         const data = await r.json();
         if (!r.ok) { this.catError = data.detail || 'Error'; return; }
         this.newCatName = '';
-        const cats = await fetch('/api/v1/categories').then(r => r.ok ? r.json() : this.categories);
+        const cats = await apiFetch('/api/v1/categories').then(r => r.ok ? r.json() : this.categories);
         this.categories = cats;
       } catch (e) {
         this.catError = e.message;
@@ -482,10 +482,10 @@ function productManage() {
       if (!confirm(`Remove category "${name}"?`)) return;
       this.catError = null;
       try {
-        const r = await fetch(`/api/v1/categories/${encodeURIComponent(name)}`, { method: 'DELETE' });
+        const r = await apiFetch(`/api/v1/categories/${encodeURIComponent(name)}`, { method: 'DELETE' });
         const data = await r.json();
         if (!r.ok) { this.catError = data.detail || 'Error'; return; }
-        const cats = await fetch('/api/v1/categories').then(r => r.ok ? r.json() : this.categories);
+        const cats = await apiFetch('/api/v1/categories').then(r => r.ok ? r.json() : this.categories);
         this.categories = cats;
       } catch (e) {
         this.catError = e.message;
@@ -497,7 +497,7 @@ function productManage() {
       if (!this.aliasProductEan) { this.aliasError = 'Select a product first'; return; }
       if (!this.newAliasEan) { this.aliasError = 'Enter alias EAN'; return; }
       try {
-        const r = await fetch(`/api/v1/products/${this.aliasProductEan}/aliases`, {
+        const r = await apiFetch(`/api/v1/products/${this.aliasProductEan}/aliases`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ean: this.newAliasEan }),
@@ -515,7 +515,7 @@ function productManage() {
       if (!confirm(`Remove alias "${a.ean}"?`)) return;
       this.aliasError = null;
       try {
-        const r = await fetch(`/api/v1/products/${a.product_ean}/aliases/${a.ean}`, { method: 'DELETE' });
+        const r = await apiFetch(`/api/v1/products/${a.product_ean}/aliases/${a.ean}`, { method: 'DELETE' });
         const data = await r.json();
         if (!r.ok) { this.aliasError = data.detail || 'Error'; return; }
         await this.loadAliases(this.products);

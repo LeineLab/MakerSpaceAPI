@@ -62,17 +62,6 @@ def list_products(
     return q.order_by(Product.category, Product.name).all()
 
 
-@router.get("/products.json", response_model=list[ProductResponse])
-def list_products_json(
-    category: str | None = Query(default=None),
-    db: Session = Depends(get_db),
-):
-    """Public JSON product feed (same as /products, active only)."""
-    q = db.query(Product).filter(Product.active.is_(True))
-    if category:
-        q = q.filter(Product.category == category)
-    return q.order_by(Product.category, Product.name).all()
-
 
 @router.get("/categories", response_model=list[str])
 def list_categories(db: Session = Depends(get_db)):
@@ -114,6 +103,8 @@ def delete_category(
     cat = db.query(ProductCategory).filter(ProductCategory.name == name).first()
     if not cat:
         raise HTTPException(status_code=404, detail="Category not found")
+    if db.query(Product).filter(Product.category == name).first():
+        raise HTTPException(status_code=409, detail="Category is in use by one or more products")
     db.delete(cat)
     db.commit()
     return {"detail": f"Category '{name}' deleted"}

@@ -7,6 +7,17 @@
   <script src="/static/js/tailwind.js"></script>
   <script defer src="/static/js/alpine.min.js"></script>
   <style>[x-cloak]{display:none!important}</style>
+  <script>
+    function apiFetch(url, opts) {
+      return fetch(url, opts).then(function(r) {
+        if (r.status === 401 || r.status === 403) {
+          window.location.href = '/auth/login';
+          return Promise.reject('unauthenticated');
+        }
+        return r;
+      });
+    }
+  </script>
 </head>
 <body class="bg-gray-50 text-gray-900 min-h-screen">
 

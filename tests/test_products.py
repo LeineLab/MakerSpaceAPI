@@ -84,13 +84,12 @@ def test_list_products_sorted_by_category_then_name(client, db):
 
 
 # ---------------------------------------------------------------------------
-# GET /products.json — public alias
+# GET /products.json — endpoint removed, now use /products
 # ---------------------------------------------------------------------------
 
 def test_list_products_json(client, product):
     resp = client.get("/api/v1/products.json")
-    assert resp.status_code == 200
-    assert len(resp.json()) == 1
+    assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------
