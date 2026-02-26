@@ -94,6 +94,7 @@ def item_status(
         user = db.query(User).filter(User.id == active_rental.user_id).first()
         return RentalItemStatusResponse(
             uhf_tid=item.uhf_tid,
+            item_name=item.name,
             is_rented=True,
             rental_id=active_rental.id,
             rented_by_user_id=active_rental.user_id,
@@ -102,6 +103,7 @@ def item_status(
         )
     return RentalItemStatusResponse(
         uhf_tid=item.uhf_tid,
+        item_name=item.name,
         is_rented=False,
         rental_id=None,
         rented_by_user_id=None,

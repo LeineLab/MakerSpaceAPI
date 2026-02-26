@@ -29,6 +29,7 @@ class RentalItemResponse(BaseModel):
 
 class RentalItemStatusResponse(BaseModel):
     uhf_tid: str
+    item_name: str
     is_rented: bool
     rental_id: Optional[int]
     rented_by_user_id: Optional[int]
