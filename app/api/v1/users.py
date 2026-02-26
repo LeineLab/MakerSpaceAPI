@@ -9,7 +9,7 @@ from app.database import get_db
 from app.models.machine import Machine
 from app.models.user import User
 from app.schemas.common import MessageResponse
-from app.schemas.user import UserAuthResponse, UserCreate, UserResponse
+from app.schemas.user import UserAuthResponse, UserCreate, UserResponse, UserUpdate
 
 router = APIRouter()
 
@@ -64,6 +64,31 @@ def get_user(
     user = db.query(User).filter(User.id == nfc_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
+@router.put("/{nfc_id}", response_model=UserResponse)
+def update_user(
+    nfc_id: int,
+    body: UserUpdate,
+    admin: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Update user name and/or OIDC sub (admin only). Send empty string to unlink OIDC."""
+    user = db.query(User).filter(User.id == nfc_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if body.name is not None:
+        user.name = body.name or None
+    if body.oidc_sub is not None:
+        new_sub = body.oidc_sub.strip() or None
+        if new_sub:
+            existing = db.query(User).filter(User.oidc_sub == new_sub, User.id != nfc_id).first()
+            if existing:
+                raise HTTPException(status_code=409, detail="OIDC sub already linked to another user")
+        user.oidc_sub = new_sub
+    db.commit()
+    db.refresh(user)
     return user
 
 

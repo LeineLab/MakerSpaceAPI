@@ -35,6 +35,11 @@ class UserBalanceAdjust(BaseModel):
     note: Optional[str] = None
 
 
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    oidc_sub: Optional[str] = None
+
+
 class UserLinkOidc(BaseModel):
     oidc_sub: str
 

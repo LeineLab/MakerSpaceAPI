@@ -11,10 +11,10 @@
     </button>
   </div>
 
-  <!-- Pending token banner (shown once after machine creation) -->
+  <!-- Pending token banner (shown once after machine creation or token regen) -->
   <div x-show="pendingToken" class="mb-6 bg-yellow-50 border border-yellow-300 rounded-lg p-5">
     <h2 class="font-semibold text-yellow-800 mb-1"
-        x-text='pendingToken ? {{ _("machines.token_title") | tojson }}.replace("{name}", pendingToken.machine) : ""'>
+        x-text='pendingToken ? (pendingToken.regen ? {{ _("machines.regen_title") | tojson }} : {{ _("machines.token_title") | tojson }}).replace("{name}", pendingToken.machine) : ""'>
     </h2>
     <p class="text-xs text-yellow-700 mb-2">{{ _('machines.token_warning') }}</p>
     <div class="flex items-center gap-3">
@@ -48,14 +48,15 @@
           <th class="px-4 py-3 text-left">{{ _('machines.col_type') }}</th>
           <th class="px-4 py-3 text-center">{{ _('common.status') }}</th>
           <th class="px-4 py-3 text-left">{{ _('common.created') }}</th>
+          <th class="px-4 py-3 text-right">{{ _('machines.col_actions') }}</th>
         </tr>
       </thead>
       <tbody>
         <template x-if="loading">
-          <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">Loading…</td></tr>
+          <tr><td colspan="6" class="px-4 py-8 text-center text-gray-400">Loading…</td></tr>
         </template>
         <template x-if="!loading && machines.length === 0">
-          <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">{{ _('machines.empty') }}</td></tr>
+          <tr><td colspan="6" class="px-4 py-8 text-center text-gray-400">{{ _('machines.empty') }}</td></tr>
         </template>
         <template x-for="m in machines" :key="m.id">
           <tr class="border-t hover:bg-gray-50">
@@ -69,6 +70,14 @@
                     class="text-xs bg-red-100 text-red-600 rounded px-2 py-0.5">{{ _('common.inactive') }}</span>
             </td>
             <td class="px-4 py-2 text-gray-500 text-xs" x-text="m.created_at ? m.created_at.substring(0,10) : ''"></td>
+            <td class="px-4 py-2 text-right whitespace-nowrap">
+              <button @click="regenToken(m)"
+                      class="text-xs text-blue-600 hover:underline mr-3">{{ _('machines.btn_regen_token') }}</button>
+              <button x-show="m.active" @click="toggleActive(m)"
+                      class="text-xs text-red-500 hover:underline">{{ _('machines.btn_deactivate') }}</button>
+              <button x-show="!m.active" @click="toggleActive(m)"
+                      class="text-xs text-green-600 hover:underline">{{ _('machines.btn_activate') }}</button>
+            </td>
           </tr>
         </template>
       </tbody>
@@ -159,7 +168,7 @@ function machineList() {
           this.formError = data.detail || 'Error creating machine';
           return;
         }
-        this.pendingToken = { machine: data.name, slug: data.slug, token: data.api_token };
+        this.pendingToken = { machine: data.name, slug: data.slug, token: data.api_token, regen: false };
         this.showModal = false;
         this.form = { name: '', slug: '', machine_type: 'machine' };
         await this.loadMachines();
@@ -168,6 +177,31 @@ function machineList() {
       } finally {
         this.submitting = false;
       }
+    },
+
+    async regenToken(m) {
+      const r = await apiFetch(`/api/v1/machines/${m.slug}/token`, { method: 'POST' });
+      const data = await r.json();
+      if (!r.ok) {
+        this.error = data.detail || 'Failed to regenerate token';
+        return;
+      }
+      this.pendingToken = { machine: data.name, slug: data.slug, token: data.api_token, regen: true };
+    },
+
+    async toggleActive(m) {
+      const r = await apiFetch(`/api/v1/machines/${m.slug}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: !m.active }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        this.error = data.detail || 'Failed to update machine';
+        return;
+      }
+      const idx = this.machines.findIndex(x => x.id === data.id);
+      if (idx !== -1) this.machines[idx] = data;
     }
   }
 }
