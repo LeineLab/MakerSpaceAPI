@@ -114,7 +114,7 @@ def test_topup_non_positive_amount(client, machine_token, test_user, target):
         json={"nfc_id": test_user.id, "amount": "0.00", "target_slug": "test-fund"},
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 422
 
 
 def test_topup_success(client, machine_token, test_user, target, db):
@@ -194,7 +194,7 @@ def test_target_topup_non_positive(client, machine_token, target):
         json={"amount": "-1.00", "target_slug": "test-fund"},
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 422
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +276,7 @@ def test_transfer_non_positive(client, machine_token, test_user, second_user):
         json={"from_nfc_id": test_user.id, "to_nfc_id": second_user.id, "amount": "0.00"},
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 422
 
 
 def test_transfer_sender_not_found(client, machine_token, second_user):
@@ -362,7 +362,7 @@ def test_payout_non_positive(client, machine_token, test_user, target):
         json={"nfc_id": test_user.id, "pin": "1234", "target_slug": "test-fund", "amount": "0.00"},
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 422
 
 
 def test_payout_user_not_found(client, machine_token, target):
