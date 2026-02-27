@@ -4,18 +4,19 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.auth.deps import get_current_device, require_admin_user, require_machine_manager
+from app.auth.deps import get_current_device, require_admin_user, require_machine_manager, require_session_user
+from app.auth.oidc import is_admin
 from app.auth.tokens import generate_api_token
 from app.database import get_db
-from app.models.machine import Machine, MachineAdminGroup, MachineAuthorization
+from app.models.machine import Machine, MachineAdmin, MachineAuthorization
 from app.models.user import User
 from app.schemas.machine import (
     AuthorizationCreate,
     AuthorizationResponse,
     AuthorizationUpdate,
     AuthorizeUserResponse,
-    MachineAdminGroupCreate,
-    MachineAdminGroupResponse,
+    MachineAdminCreate,
+    MachineAdminResponse,
     MachineCreate,
     MachineCreateResponse,
     MachineResponse,
@@ -58,15 +59,32 @@ def register_machine(
     return {**MachineResponse.model_validate(machine).model_dump(), "api_token": plaintext_token}
 
 
+@router.get("/my", response_model=list[MachineResponse])
+def list_my_machines(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Return machines the current user manages (all if admin, assigned-only if sub-admin)."""
+    user = require_session_user(request)
+    if is_admin(user):
+        return db.query(Machine).order_by(Machine.name).all()
+    sub = user.get("sub")
+    return (
+        db.query(Machine)
+        .join(MachineAdmin, MachineAdmin.machine_id == Machine.id)
+        .filter(MachineAdmin.oidc_sub == sub, Machine.active.is_(True))
+        .order_by(Machine.name)
+        .all()
+    )
+
+
 @router.get("/{slug}", response_model=MachineResponse)
 def get_machine(
     slug: str,
-    admin: dict = Depends(require_admin_user),
+    request: Request,
     db: Session = Depends(get_db),
 ):
-    machine = db.query(Machine).filter(Machine.slug == slug).first()
-    if not machine:
-        raise HTTPException(status_code=404, detail="Machine not found")
+    _, machine = require_machine_manager(slug, request, db)
     return machine
 
 
@@ -126,24 +144,31 @@ def regenerate_token(
     return {**MachineResponse.model_validate(machine).model_dump(), "api_token": plaintext_token}
 
 
-# --- Admin groups ---
+# --- Machine admins (by OIDC sub) ---
 
-@router.get("/{slug}/admin-groups", response_model=list[MachineAdminGroupResponse])
-def list_admin_groups(
+@router.get("/{slug}/admins", response_model=list[MachineAdminResponse])
+def list_machine_admins(
     slug: str,
-    admin: dict = Depends(require_admin_user),
+    request: Request,
     db: Session = Depends(get_db),
 ):
-    machine = db.query(Machine).filter(Machine.slug == slug).first()
-    if not machine:
-        raise HTTPException(status_code=404, detail="Machine not found")
-    return machine.admin_groups
+    _, machine = require_machine_manager(slug, request, db)
+    from app.models.user import User as UserModel
+    result = []
+    for a in machine.admin_users:
+        linked_user = db.query(UserModel).filter(UserModel.oidc_sub == a.oidc_sub).first()
+        result.append({
+            "machine_id": a.machine_id,
+            "oidc_sub": a.oidc_sub,
+            "user_name": linked_user.name if linked_user else None,
+        })
+    return result
 
 
-@router.post("/{slug}/admin-groups", response_model=MachineAdminGroupResponse, status_code=201)
-def add_admin_group(
+@router.post("/{slug}/admins", response_model=MachineAdminResponse, status_code=201)
+def add_machine_admin(
     slug: str,
-    body: MachineAdminGroupCreate,
+    body: MachineAdminCreate,
     admin: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ):
@@ -151,45 +176,41 @@ def add_admin_group(
     if not machine:
         raise HTTPException(status_code=404, detail="Machine not found")
     existing = (
-        db.query(MachineAdminGroup)
-        .filter(
-            MachineAdminGroup.machine_id == machine.id,
-            MachineAdminGroup.oidc_group == body.oidc_group,
-        )
+        db.query(MachineAdmin)
+        .filter(MachineAdmin.machine_id == machine.id, MachineAdmin.oidc_sub == body.oidc_sub)
         .first()
     )
     if existing:
-        raise HTTPException(status_code=409, detail="Group already added")
-    group = MachineAdminGroup(machine_id=machine.id, oidc_group=body.oidc_group)
-    db.add(group)
+        raise HTTPException(status_code=409, detail="User already an admin for this machine")
+    entry = MachineAdmin(machine_id=machine.id, oidc_sub=body.oidc_sub)
+    db.add(entry)
     db.commit()
-    db.refresh(group)
-    return group
+    db.refresh(entry)
+    from app.models.user import User as UserModel
+    linked_user = db.query(UserModel).filter(UserModel.oidc_sub == body.oidc_sub).first()
+    return {"machine_id": entry.machine_id, "oidc_sub": entry.oidc_sub, "user_name": linked_user.name if linked_user else None}
 
 
-@router.delete("/{slug}/admin-groups/{oidc_group}", response_model=MessageResponse)
-def remove_admin_group(
+@router.delete("/{slug}/admins/{oidc_sub}", response_model=MessageResponse)
+def remove_machine_admin(
     slug: str,
-    oidc_group: str,
+    oidc_sub: str,
     admin: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ):
     machine = db.query(Machine).filter(Machine.slug == slug).first()
     if not machine:
         raise HTTPException(status_code=404, detail="Machine not found")
-    group = (
-        db.query(MachineAdminGroup)
-        .filter(
-            MachineAdminGroup.machine_id == machine.id,
-            MachineAdminGroup.oidc_group == oidc_group,
-        )
+    entry = (
+        db.query(MachineAdmin)
+        .filter(MachineAdmin.machine_id == machine.id, MachineAdmin.oidc_sub == oidc_sub)
         .first()
     )
-    if not group:
-        raise HTTPException(status_code=404, detail="Group not found")
-    db.delete(group)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    db.delete(entry)
     db.commit()
-    return {"detail": "Group removed"}
+    return {"detail": "Admin removed"}
 
 
 # --- Authorizations ---
@@ -201,7 +222,10 @@ def list_authorizations(
     db: Session = Depends(get_db),
 ):
     _, machine = require_machine_manager(slug, request, db)
-    return machine.authorizations
+    return [
+        {**AuthorizationResponse.model_validate(a).model_dump(), "user_name": a.user.name}
+        for a in machine.authorizations
+    ]
 
 
 @router.post("/{slug}/authorizations", response_model=AuthorizationResponse, status_code=201)

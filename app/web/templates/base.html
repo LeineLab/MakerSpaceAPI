@@ -10,7 +10,7 @@
   <script>
     function apiFetch(url, opts) {
       return fetch(url, opts).then(function(r) {
-        if (r.status === 401 || r.status === 403) {
+        if (r.status === 401) {
           window.location.href = '/auth/login';
           return Promise.reject('unauthenticated');
         }
@@ -32,9 +32,9 @@
       <div class="hidden md:flex items-center gap-6 flex-1">
         <a href="/products" class="hover:text-gray-300 text-sm">{{ _('nav.products') }}</a>
         {% if user %}
+          <a href="/machines" class="hover:text-gray-300 text-sm">{{ _('nav.machines') }}</a>
           {% if is_admin(user) %}
             <a href="/dashboard"   class="hover:text-gray-300 text-sm">{{ _('nav.dashboard') }}</a>
-            <a href="/machines"    class="hover:text-gray-300 text-sm">{{ _('nav.machines') }}</a>
             <a href="/users"       class="hover:text-gray-300 text-sm">{{ _('nav.users') }}</a>
             <a href="/bankomat"    class="hover:text-gray-300 text-sm">{{ _('nav.bankomat') }}</a>
             <a href="/rentals"     class="hover:text-gray-300 text-sm">{{ _('nav.rentals') }}</a>
@@ -78,9 +78,9 @@
       <a href="/products"
          class="hover:text-gray-300 text-sm py-2">{{ _('nav.products') }}</a>
       {% if user %}
+        <a href="/machines" class="hover:text-gray-300 text-sm py-2">{{ _('nav.machines') }}</a>
         {% if is_admin(user) %}
           <a href="/dashboard"   class="hover:text-gray-300 text-sm py-2">{{ _('nav.dashboard') }}</a>
-          <a href="/machines"    class="hover:text-gray-300 text-sm py-2">{{ _('nav.machines') }}</a>
           <a href="/users"       class="hover:text-gray-300 text-sm py-2">{{ _('nav.users') }}</a>
           <a href="/bankomat"    class="hover:text-gray-300 text-sm py-2">{{ _('nav.bankomat') }}</a>
           <a href="/rentals"     class="hover:text-gray-300 text-sm py-2">{{ _('nav.rentals') }}</a>

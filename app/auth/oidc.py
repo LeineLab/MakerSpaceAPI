@@ -36,7 +36,6 @@ def is_product_manager(user_info: dict) -> bool:
     return bool(group) and group in get_user_groups(user_info)
 
 
-def is_machine_admin(user_info: dict, oidc_groups: list[str]) -> bool:
-    """Check whether user belongs to any of the machine's admin groups."""
-    user_groups = set(get_user_groups(user_info))
-    return bool(user_groups.intersection(set(oidc_groups)))
+def is_machine_admin(user_info: dict, oidc_subs: list[str]) -> bool:
+    """Check whether user's OIDC sub is listed as a machine admin."""
+    return user_info.get("sub") in oidc_subs

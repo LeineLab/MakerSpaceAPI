@@ -35,13 +35,14 @@ class MachineCreateResponse(MachineResponse):
     api_token: str
 
 
-class MachineAdminGroupCreate(BaseModel):
-    oidc_group: str
+class MachineAdminCreate(BaseModel):
+    oidc_sub: str
 
 
-class MachineAdminGroupResponse(BaseModel):
+class MachineAdminResponse(BaseModel):
     machine_id: int
-    oidc_group: str
+    oidc_sub: str
+    user_name: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -62,6 +63,7 @@ class AuthorizationUpdate(BaseModel):
 class AuthorizationResponse(BaseModel):
     machine_id: int
     user_id: int
+    user_name: Optional[str] = None
     price_per_login: Decimal = Field(ge=0, examples=[Decimal("0.50")])
     price_per_minute: Decimal = Field(ge=0, examples=[Decimal("0.10")])
     booking_interval: int

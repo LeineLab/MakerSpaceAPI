@@ -96,7 +96,7 @@ def require_machine_manager(
     if not machine:
         raise HTTPException(status_code=404, detail="Machine not found")
 
-    admin_group_names = [g.oidc_group for g in machine.admin_groups]
-    if not (is_admin(user) or is_machine_admin(user, admin_group_names)):
+    admin_subs = [a.oidc_sub for a in machine.admin_users]
+    if not (is_admin(user) or is_machine_admin(user, admin_subs)):
         raise HTTPException(status_code=403, detail="Not authorized for this machine")
     return user, machine

@@ -2,10 +2,10 @@
 {% block title %}{{ _('machines.title') }} – MakerSpaceAPI{% endblock %}
 {% block content %}
 
-<div x-data="machineList()" x-cloak>
+<div x-data="machineList({{ is_admin | tojson }})" x-cloak>
   <div class="flex items-center justify-between mb-4">
     <h1 class="text-2xl font-bold">{{ _('machines.title') }}</h1>
-    <button @click="showModal = true"
+    <button x-show="isAdmin" @click="showModal = true"
             class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
       {{ _('machines.btn_register') }}
     </button>
@@ -56,11 +56,16 @@
           <tr><td colspan="6" class="px-4 py-8 text-center text-gray-400">Loading…</td></tr>
         </template>
         <template x-if="!loading && machines.length === 0">
-          <tr><td colspan="6" class="px-4 py-8 text-center text-gray-400">{{ _('machines.empty') }}</td></tr>
+          <tr><td colspan="6" class="px-4 py-8 text-center text-gray-400">
+            <span x-show="isAdmin">{{ _('machines.empty') }}</span>
+            <span x-show="!isAdmin">{{ _('machines.empty_managed') }}</span>
+          </td></tr>
         </template>
         <template x-for="m in machines" :key="m.id">
           <tr class="border-t hover:bg-gray-50">
-            <td class="px-4 py-2 font-medium" x-text="m.name"></td>
+            <td class="px-4 py-2 font-medium">
+              <a :href="'/machines/' + m.slug" class="text-blue-600 hover:underline" x-text="m.name"></a>
+            </td>
             <td class="px-4 py-2 font-mono text-xs text-gray-500" x-text="m.slug"></td>
             <td class="px-4 py-2 text-gray-500" x-text="m.machine_type"></td>
             <td class="px-4 py-2 text-center">
@@ -70,7 +75,7 @@
                     class="text-xs bg-red-100 text-red-600 rounded px-2 py-0.5">{{ _('common.inactive') }}</span>
             </td>
             <td class="px-4 py-2 text-gray-500 text-xs" x-text="m.created_at ? m.created_at.substring(0,10) : ''"></td>
-            <td class="px-4 py-2 text-right whitespace-nowrap">
+            <td class="px-4 py-2 text-right whitespace-nowrap" x-show="isAdmin">
               <button @click="regenToken(m)"
                       class="text-xs text-blue-600 hover:underline mr-3">{{ _('machines.btn_regen_token') }}</button>
               <button x-show="m.active" @click="toggleActive(m)"
@@ -125,8 +130,9 @@
 </div>
 
 <script>
-function machineList() {
+function machineList(isAdmin) {
   return {
+    isAdmin: isAdmin,
     machines: [],
     loading: true,
     error: null,
@@ -144,11 +150,11 @@ function machineList() {
       this.loading = true;
       this.error = null;
       try {
-        const r = await apiFetch('/api/v1/machines');
+        const r = await apiFetch('/api/v1/machines/my');
         if (!r.ok) throw new Error('Failed to load machines');
         this.machines = await r.json();
       } catch (e) {
-        this.error = e.message;
+        if (e !== 'unauthenticated') this.error = e.message;
       } finally {
         this.loading = false;
       }

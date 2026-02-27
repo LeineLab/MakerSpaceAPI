@@ -1,7 +1,7 @@
 from app.models.base import Base
 from app.models.audit import AuditLog
 from app.models.booking_target import BookingTarget
-from app.models.machine import Machine, MachineAdminGroup, MachineAuthorization
+from app.models.machine import Machine, MachineAdmin, MachineAuthorization
 from app.models.product import Product, ProductAlias, ProductAudit, ProductAuditType, ProductCategory
 from app.models.rental import Rental, RentalItem, RentalPermission
 from app.models.session import MachineSession
@@ -13,7 +13,7 @@ __all__ = [
     "AuditLog",
     "BookingTarget",
     "Machine",
-    "MachineAdminGroup",
+    "MachineAdmin",
     "MachineAuthorization",
     "MachineSession",
     "Product",

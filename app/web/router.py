@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.auth.deps import get_session_user, require_admin_user, require_product_manager_user
+from app.auth.deps import get_session_user, require_admin_user, require_product_manager_user, require_session_user
 from app.auth.oidc import is_admin, is_product_manager
 from app.web.i18n import detect_language, get_translator
 from app.web.auth import router as auth_router
@@ -98,9 +98,24 @@ def dashboard(
 @router.get("/machines", response_class=HTMLResponse)
 def machines_list(
     request: Request,
-    admin: dict = Depends(require_admin_user),
+    user: dict = Depends(require_session_user),
 ):
-    return templates.TemplateResponse("machines/list.html", _ctx(request, admin))
+    return templates.TemplateResponse(
+        "machines/list.html",
+        _ctx(request, user, is_admin=is_admin(user)),
+    )
+
+
+@router.get("/machines/{slug}", response_class=HTMLResponse)
+def machine_detail(
+    slug: str,
+    request: Request,
+    user: dict = Depends(require_session_user),
+):
+    return templates.TemplateResponse(
+        "machines/detail.html",
+        _ctx(request, user, slug=slug, is_admin=is_admin(user)),
+    )
 
 
 # ---------------------------------------------------------------------------

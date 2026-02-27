@@ -28,8 +28,8 @@ class Machine(Base):
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     # Relationships
-    admin_groups: Mapped[list["MachineAdminGroup"]] = relationship(
-        "MachineAdminGroup", back_populates="machine", cascade="all, delete-orphan"
+    admin_users: Mapped[list["MachineAdmin"]] = relationship(
+        "MachineAdmin", back_populates="machine", cascade="all, delete-orphan"
     )
     authorizations: Mapped[list["MachineAuthorization"]] = relationship(
         "MachineAuthorization", back_populates="machine", cascade="all, delete-orphan"
@@ -42,15 +42,15 @@ class Machine(Base):
     )
 
 
-class MachineAdminGroup(Base):
-    __tablename__ = "machine_admin_groups"
+class MachineAdmin(Base):
+    __tablename__ = "machine_admins"
 
     machine_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("machines.id", ondelete="CASCADE"), primary_key=True
     )
-    oidc_group: Mapped[str] = mapped_column(String(255), primary_key=True)
+    oidc_sub: Mapped[str] = mapped_column(String(255), primary_key=True)
 
-    machine: Mapped["Machine"] = relationship("Machine", back_populates="admin_groups")
+    machine: Mapped["Machine"] = relationship("Machine", back_populates="admin_users")
 
 
 class MachineAuthorization(Base):
