@@ -21,7 +21,7 @@ from app.schemas.booking_target import (
     TopupRequest,
     TransferRequest,
 )
-from app.schemas.common import MessageResponse
+from app.schemas.common import MessageResponse, TopupResponse
 from app.schemas.transaction import TransactionResponse
 
 router = APIRouter()
@@ -61,7 +61,7 @@ def create_target(
 
 # --- ATM operations ---
 
-@router.post("/topup", response_model=MessageResponse)
+@router.post("/topup", response_model=TopupResponse)
 def topup_user(
     body: TopupRequest,
     device: Machine = Depends(get_current_device),
@@ -95,7 +95,7 @@ def topup_user(
         note=f"Topup via {device.name}",
     ))
     db.commit()
-    return {"detail": f"Topped up {body.amount} EUR. New balance: {user.balance} EUR"}
+    return {"detail": f"Topped up {body.amount} EUR. New balance: {user.balance} EUR", "balance": user.balance}
 
 
 @router.post("/target-topup", response_model=MessageResponse)
