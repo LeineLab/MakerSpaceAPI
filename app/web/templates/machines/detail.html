@@ -84,7 +84,7 @@
         <div x-show="authError" class="mb-3 bg-red-100 text-red-700 p-2 rounded text-sm" x-text="authError"></div>
 
         <!-- Auth table -->
-        <div class="overflow-x-auto mb-4">
+        <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
               <tr>
@@ -155,29 +155,32 @@
           </table>
         </div>
 
-        <!-- Add auth form -->
-        <details class="mt-2">
-          <summary class="text-sm text-blue-600 cursor-pointer hover:underline">{{ _('machines.btn_add_auth') }}</summary>
-          <form @submit.prevent="addAuth()" class="mt-3 space-y-3 max-w-sm">
-            <div x-show="addAuthError" class="text-red-600 text-xs" x-text="addAuthError"></div>
+        <!-- Add auth form (always visible) -->
+        <div class="mt-6 pt-5 border-t">
+          <h3 class="text-sm font-semibold text-gray-700 mb-3">{{ _('machines.btn_add_auth') }}</h3>
+          <div x-show="addAuthError" class="mb-2 bg-red-100 text-red-700 p-2 rounded text-xs" x-text="addAuthError"></div>
+          <div x-show="authUsers.length === 0" class="text-xs text-gray-400 mb-2">
+            {{ _('machines.no_users_available') }}
+          </div>
+          <form @submit.prevent="addAuth()" class="space-y-3 max-w-sm" x-show="authUsers.length > 0">
             <div>
               <label class="block text-xs font-medium text-gray-600 mb-1">{{ _('machines.select_user') }}</label>
               <select x-model="addAuthForm.nfc_id" required
                       class="w-full border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
                 <option value="">—</option>
-                <template x-for="u in usersWithName" :key="u.id">
+                <template x-for="u in authUsers" :key="u.id">
                   <option :value="u.id" x-text="u.name + ' (' + u.id + ')'"></option>
                 </template>
               </select>
             </div>
             <div class="grid grid-cols-3 gap-2">
               <div>
-                <label class="block text-xs text-gray-600 mb-1">{{ _('machines.auth_login_fee') }}</label>
+                <label class="block text-xs text-gray-600 mb-1">{{ _('machines.auth_login_fee') }} (€)</label>
                 <input type="number" step="0.01" min="0" x-model="addAuthForm.price_per_login"
                        class="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
               </div>
               <div>
-                <label class="block text-xs text-gray-600 mb-1">{{ _('machines.auth_per_minute') }}</label>
+                <label class="block text-xs text-gray-600 mb-1">{{ _('machines.auth_per_minute') }} (€)</label>
                 <input type="number" step="0.01" min="0" x-model="addAuthForm.price_per_minute"
                        class="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
               </div>
@@ -193,7 +196,7 @@
               <span x-show="addingAuth">…</span>
             </button>
           </form>
-        </details>
+        </div>
       </div>
 
       <!-- ── Machine Admins (admin only) ───────────────────────────── -->
@@ -203,7 +206,7 @@
 
           <div x-show="adminError" class="mb-3 bg-red-100 text-red-700 p-2 rounded text-sm" x-text="adminError"></div>
 
-          <div class="overflow-x-auto mb-4">
+          <div class="overflow-x-auto">
             <table class="w-full text-sm">
               <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
                 <tr>
@@ -230,11 +233,14 @@
             </table>
           </div>
 
-          <!-- Add admin form -->
-          <details class="mt-2">
-            <summary class="text-sm text-blue-600 cursor-pointer hover:underline">{{ _('machines.btn_add_admin') }}</summary>
-            <form @submit.prevent="addAdmin()" class="mt-3 space-y-3 max-w-sm">
-              <div x-show="addAdminError" class="text-red-600 text-xs" x-text="addAdminError"></div>
+          <!-- Add admin form (always visible) -->
+          <div class="mt-6 pt-5 border-t">
+            <h3 class="text-sm font-semibold text-gray-700 mb-3">{{ _('machines.btn_add_admin') }}</h3>
+            <div x-show="addAdminError" class="mb-2 bg-red-100 text-red-700 p-2 rounded text-xs" x-text="addAdminError"></div>
+            <div x-show="usersWithOidc.length === 0" class="text-xs text-gray-400 mb-2">
+              {{ _('machines.no_oidc_users') }}
+            </div>
+            <form @submit.prevent="addAdmin()" class="space-y-3 max-w-sm" x-show="usersWithOidc.length > 0">
               <div>
                 <label class="block text-xs font-medium text-gray-600 mb-1">{{ _('machines.select_user') }}</label>
                 <select x-model="addAdminForm.oidc_sub" required
@@ -251,7 +257,7 @@
                 <span x-show="addingAdmin">…</span>
               </button>
             </form>
-          </details>
+          </div>
         </div>
       </template>
 
@@ -267,7 +273,8 @@ function machineDetail(slug, isAdmin) {
     machine: null,
     authorizations: [],
     machineAdmins: [],
-    allUsers: [],
+    authUsers: [],   // named users for auth dropdown (from /{slug}/users)
+    allUsers: [],    // all users for admin dropdown (from /users, admin-only)
     loading: true,
     error: null,
 
@@ -291,10 +298,6 @@ function machineDetail(slug, isAdmin) {
     addAdminError: null,
     addingAdmin: false,
 
-    get usersWithName() {
-      return this.allUsers.filter(u => u.name);
-    },
-
     get usersWithOidc() {
       return this.allUsers.filter(u => u.oidc_sub);
     },
@@ -306,7 +309,7 @@ function machineDetail(slug, isAdmin) {
         const [mRes, aRes, uRes] = await Promise.all([
           apiFetch(`/api/v1/machines/${slug}`),
           apiFetch(`/api/v1/machines/${slug}/authorizations`),
-          apiFetch('/api/v1/users'),
+          apiFetch(`/api/v1/machines/${slug}/users`),
         ]);
 
         if (mRes.status === 403) { this.error = 'Access denied.'; this.loading = false; return; }
@@ -316,11 +319,15 @@ function machineDetail(slug, isAdmin) {
         this.editForm = { name: this.machine.name, slug: this.machine.slug, machine_type: this.machine.machine_type, active: this.machine.active };
 
         this.authorizations = aRes.ok ? await aRes.json() : [];
-        this.allUsers = uRes.ok ? await uRes.json() : [];
+        this.authUsers = uRes.ok ? await uRes.json() : [];
 
         if (isAdmin) {
-          const adRes = await apiFetch(`/api/v1/machines/${slug}/admins`);
+          const [adRes, allURes] = await Promise.all([
+            apiFetch(`/api/v1/machines/${slug}/admins`),
+            apiFetch('/api/v1/users'),
+          ]);
           this.machineAdmins = adRes.ok ? await adRes.json() : [];
+          this.allUsers = allURes.ok ? await allURes.json() : [];
         }
       } catch (e) {
         if (e !== 'unauthenticated') this.error = e.message || 'Failed to load.';
@@ -342,7 +349,6 @@ function machineDetail(slug, isAdmin) {
         const data = await r.json();
         if (!r.ok) { this.machineEditError = data.detail || 'Failed to save.'; return; }
         this.machine = data;
-        // If slug changed, update URL without reload
         if (data.slug !== this.slug) {
           this.slug = data.slug;
           history.replaceState(null, '', `/machines/${data.slug}`);
@@ -410,7 +416,8 @@ function machineDetail(slug, isAdmin) {
         });
         const data = await r.json();
         if (!r.ok) { this.addAuthError = data.detail || 'Failed to add.'; return; }
-        this.authorizations.push(data);
+        const user = this.authUsers.find(u => String(u.id) === String(this.addAuthForm.nfc_id));
+        this.authorizations.push({ ...data, user_name: user ? user.name : null });
         this.addAuthForm = { nfc_id: '', price_per_login: '0.00', price_per_minute: '0.00', booking_interval: 60 };
       } catch (e) {
         this.addAuthError = e.message;

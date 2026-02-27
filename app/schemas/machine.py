@@ -73,6 +73,15 @@ class AuthorizationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class MachineUserSummary(BaseModel):
+    """Minimal user info returned to machine managers for authorization dropdowns."""
+    id: int
+    name: Optional[str]
+    oidc_sub: Optional[str]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class AuthorizeUserResponse(BaseModel):
     """Response from GET /machines/{slug}/authorize/{nfc_id}"""
     authorized: bool

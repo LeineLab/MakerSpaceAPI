@@ -21,6 +21,7 @@ from app.schemas.machine import (
     MachineCreateResponse,
     MachineResponse,
     MachineUpdate,
+    MachineUserSummary,
 )
 from app.schemas.common import MessageResponse
 
@@ -211,6 +212,19 @@ def remove_machine_admin(
     db.delete(entry)
     db.commit()
     return {"detail": "Admin removed"}
+
+
+# --- Users (for authorization dropdown) ---
+
+@router.get("/{slug}/users", response_model=list[MachineUserSummary])
+def list_machine_users(
+    slug: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Named users — accessible to machine managers for authorization dropdowns."""
+    require_machine_manager(slug, request, db)
+    return db.query(User).filter(User.name.is_not(None)).order_by(User.name).all()
 
 
 # --- Authorizations ---

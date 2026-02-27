@@ -133,6 +133,8 @@
   "machines.admin_oidc_sub":        "OIDC sub",
   "machines.no_admins":             "No machine admins assigned.",
   "machines.btn_add_admin":         "+ Add Admin",
+  "machines.no_users_available":    "No users with a name found. Add users first.",
+  "machines.no_oidc_users":         "No users with OIDC linked found.",
 
   "users.title":            "Users",
   "users.col_nfc":          "NFC ID",
