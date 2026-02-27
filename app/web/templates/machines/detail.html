@@ -2,7 +2,7 @@
 {% block title %}{{ _('machines.detail_title') }} – MakerSpaceAPI{% endblock %}
 {% block content %}
 
-<div x-data="machineDetail({{ slug | tojson }}, {{ is_admin | tojson }})" x-cloak>
+<div x-data="machineDetail({{ slug | tojson }}, {{ user_is_admin | tojson }})" x-cloak>
 
   <!-- Back link -->
   <div class="mb-4">

@@ -102,7 +102,7 @@ def machines_list(
 ):
     return templates.TemplateResponse(
         "machines/list.html",
-        _ctx(request, user, is_admin=is_admin(user)),
+        _ctx(request, user, user_is_admin=is_admin(user)),
     )
 
 
@@ -114,7 +114,7 @@ def machine_detail(
 ):
     return templates.TemplateResponse(
         "machines/detail.html",
-        _ctx(request, user, slug=slug, is_admin=is_admin(user)),
+        _ctx(request, user, slug=slug, user_is_admin=is_admin(user)),
     )
 
 

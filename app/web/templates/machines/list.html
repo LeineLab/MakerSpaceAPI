@@ -2,7 +2,7 @@
 {% block title %}{{ _('machines.title') }} – MakerSpaceAPI{% endblock %}
 {% block content %}
 
-<div x-data="machineList({{ is_admin | tojson }})" x-cloak>
+<div x-data="machineList({{ user_is_admin | tojson }})" x-cloak>
   <div class="flex items-center justify-between mb-4">
     <h1 class="text-2xl font-bold">{{ _('machines.title') }}</h1>
     <button x-show="isAdmin" @click="showModal = true"
