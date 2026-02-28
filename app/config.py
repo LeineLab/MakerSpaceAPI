@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     BASE_URL: str = "http://localhost:8000"
 
+    # NFC self-service linking
+    OIDC_LINK_UPDATE_NAME: bool = False
+
     # Devices
     CHECKOUT_BOX_SLUGS: str = ""
 

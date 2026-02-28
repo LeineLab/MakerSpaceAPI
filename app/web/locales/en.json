@@ -188,5 +188,12 @@
   "rentals.placeholder_name":  "e.g. Angle Grinder",
   "rentals.placeholder_tid":   "e.g. E2003412012345678",
   "rentals.placeholder_desc":  "Short description or notes",
-  "rentals.btn_add_item":      "Add Item"
+  "rentals.btn_add_item":      "Add Item",
+
+  "connect.title_success":    "Card Linked",
+  "connect.title_failure":    "Link Failed",
+  "connect.heading_success":  "Card Linked!",
+  "connect.body_success_name":"Welcome, {name}. Your NFC card is now linked to your account.",
+  "connect.body_success":     "Your NFC card is now linked to your account.",
+  "connect.heading_failure":  "Linking Failed"
 }

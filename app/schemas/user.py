@@ -51,3 +51,7 @@ class UserSetPin(BaseModel):
 class UserPinVerify(BaseModel):
     nfc_id: int
     pin: str
+
+
+class LinkTokenResponse(BaseModel):
+    url: str

@@ -34,3 +34,31 @@ def verify_admin_jwt(token: str | None) -> dict | None:
         return dict(claims)
     except (JoseError, Exception):
         return None
+
+
+LINK_TOKEN_TTL = 900  # 15 minutes
+
+
+def create_link_token(nfc_id: int) -> str:
+    """Create a signed HS256 JWT for NFC-to-OIDC self-service linking. Expires in 15 minutes."""
+    payload = {
+        "type": "nfc_link",
+        "nfc_id": nfc_id,
+        "exp": int((datetime.now(UTC) + timedelta(seconds=LINK_TOKEN_TTL)).timestamp()),
+    }
+    token_bytes = jwt.encode({"alg": _ALGORITHM}, payload, _key())
+    return token_bytes.decode("utf-8") if isinstance(token_bytes, bytes) else token_bytes
+
+
+def verify_link_token(token: str | None) -> int | None:
+    """Verify a link token and return the nfc_id, or None if invalid/expired/wrong type."""
+    if not token:
+        return None
+    try:
+        claims = jwt.decode(token, _key())
+        claims.validate()
+        if claims.get("type") != "nfc_link":
+            return None
+        return int(claims["nfc_id"])
+    except (JoseError, Exception):
+        return None

@@ -188,5 +188,12 @@
   "rentals.placeholder_name":  "z.B. Winkelschleifer",
   "rentals.placeholder_tid":   "z.B. E2003412012345678",
   "rentals.placeholder_desc":  "Kurzbeschreibung oder Notizen",
-  "rentals.btn_add_item":      "Gegenstand hinzufügen"
+  "rentals.btn_add_item":      "Gegenstand hinzufügen",
+
+  "connect.title_success":    "Karte verknüpft",
+  "connect.title_failure":    "Verknüpfung fehlgeschlagen",
+  "connect.heading_success":  "Karte verknüpft!",
+  "connect.body_success_name":"Willkommen, {name}. Deine NFC-Karte ist jetzt mit deinem Konto verknüpft.",
+  "connect.body_success":     "Deine NFC-Karte ist jetzt mit deinem Konto verknüpft.",
+  "connect.heading_failure":  "Verknüpfung fehlgeschlagen"
 }

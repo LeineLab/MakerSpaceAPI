@@ -202,3 +202,43 @@ def test_link_oidc_requires_admin(client, test_user):
         f"/api/v1/users/{test_user.id}/oidc",
         json={"oidc_sub": "auth0|abc"},
     ).status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# POST /users/{nfc_id}/connect-link — device token
+# ---------------------------------------------------------------------------
+
+def test_generate_connect_link_success(client, machine_token, test_user):
+    token, _ = machine_token
+    resp = client.post(
+        f"/api/v1/users/{test_user.id}/connect-link",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "url" in data
+    assert "/auth/connect/" in data["url"]
+
+
+def test_generate_connect_link_already_linked(client, machine_token, test_user, db):
+    test_user.oidc_sub = "already|linked"
+    db.commit()
+    token, _ = machine_token
+    resp = client.post(
+        f"/api/v1/users/{test_user.id}/connect-link",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 409
+
+
+def test_generate_connect_link_user_not_found(client, machine_token):
+    token, _ = machine_token
+    resp = client.post(
+        "/api/v1/users/999999/connect-link",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 404
+
+
+def test_generate_connect_link_requires_device_token(client, test_user):
+    assert client.post(f"/api/v1/users/{test_user.id}/connect-link").status_code == 401

@@ -5,15 +5,33 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_device, require_admin_user, require_checkout_device
+from app.auth.jwt import create_link_token
+from app.config import settings
 from app.database import get_db
 from app.models.machine import Machine
 from app.models.user import User
 from app.schemas.common import MessageResponse
-from app.schemas.user import UserAuthResponse, UserCreate, UserResponse, UserUpdate
+from app.schemas.user import LinkTokenResponse, UserAuthResponse, UserCreate, UserResponse, UserUpdate
 
 router = APIRouter()
 
 _pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+@router.post("/{nfc_id}/connect-link", response_model=LinkTokenResponse)
+def generate_connect_link(
+    nfc_id: int,
+    device: Machine = Depends(get_current_device),
+    db: Session = Depends(get_db),
+):
+    """Generate a short-lived OIDC linking URL for an NFC card (device token required)."""
+    user = db.query(User).filter(User.id == nfc_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.oidc_sub:
+        raise HTTPException(status_code=409, detail="Card already linked to an OIDC account")
+    token = create_link_token(nfc_id)
+    return {"url": f"{settings.BASE_URL}/auth/connect/{token}"}
 
 
 @router.get("/nfc/{nfc_id}", response_model=UserAuthResponse)

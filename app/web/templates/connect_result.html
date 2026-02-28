@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}
+  {% if success %}{{ _('connect.title_success') }}{% else %}{{ _('connect.title_failure') }}{% endif %} – MakerSpace
+{% endblock %}
+
+{% block content %}
+<div class="max-w-md mx-auto mt-12 text-center space-y-4">
+  {% if success %}
+    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100">
+      <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+      </svg>
+    </div>
+    <h1 class="text-2xl font-bold text-gray-900">{{ _('connect.heading_success') }}</h1>
+    {% if display_name %}
+      <p class="text-gray-600">{{ _('connect.body_success_name', name=display_name) }}</p>
+    {% else %}
+      <p class="text-gray-600">{{ _('connect.body_success') }}</p>
+    {% endif %}
+  {% else %}
+    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-100">
+      <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+      </svg>
+    </div>
+    <h1 class="text-2xl font-bold text-gray-900">{{ _('connect.heading_failure') }}</h1>
+    <p class="text-gray-600">{{ error }}</p>
+  {% endif %}
+</div>
+{% endblock %}
