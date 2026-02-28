@@ -36,10 +36,10 @@ class Transaction(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(
+    user_id: Mapped[Optional[int]] = mapped_column(
         BigInteger,
         ForeignKey("users.id", onupdate="CASCADE", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
@@ -66,7 +66,7 @@ class Transaction(Base):
     note: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
 
-    user: Mapped["User"] = relationship(
+    user: Mapped[Optional["User"]] = relationship(
         "User", foreign_keys=[user_id], back_populates="transactions"
     )
     machine: Mapped[Optional["Machine"]] = relationship(

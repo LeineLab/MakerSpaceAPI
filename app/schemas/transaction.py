@@ -9,7 +9,7 @@ from app.models.transaction import TransactionType
 
 class TransactionResponse(BaseModel):
     id: int
-    user_id: int
+    user_id: Optional[int]
     amount: Decimal = Field(examples=[Decimal("1.50")])
     type: TransactionType
     machine_id: Optional[int]

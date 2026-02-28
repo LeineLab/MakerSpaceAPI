@@ -105,9 +105,6 @@ def topup_target_only(
     db: Session = Depends(get_db),
 ):
     """Increase a booking target balance without crediting any user (e.g. cash donation)."""
-    if body.amount <= 0:
-        raise HTTPException(status_code=400, detail="Amount must be positive")
-
     target = db.execute(
         select(BookingTarget).where(BookingTarget.slug == body.target_slug).with_for_update()
     ).scalar_one_or_none()
@@ -115,6 +112,14 @@ def topup_target_only(
         raise HTTPException(status_code=404, detail=f"Booking target '{body.target_slug}' not found")
 
     target.balance += body.amount
+    db.add(Transaction(
+        user_id=None,
+        amount=body.amount,
+        type=TransactionType.booking_target_topup,
+        machine_id=device.id,
+        target_id=target.id,
+        note=body.note,
+    ))
     db.commit()
     return {"detail": f"Target '{target.name}' balance increased by {body.amount} EUR"}
 
