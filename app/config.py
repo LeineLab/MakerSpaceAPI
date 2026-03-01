@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # Directory containing extra fonts (e.g. albertsans.ttf). Leave empty to use system fonts only.
     TYPST_FONT_DIR: str = ""
 
+    # Currency symbol appended to all monetary amounts (API messages and PDF statements)
+    CURRENCY: str = "€"
+
     @property
     def checkout_box_slug_list(self) -> list[str]:
         return [s.strip() for s in self.CHECKOUT_BOX_SLUGS.split(",") if s.strip()]

@@ -109,7 +109,7 @@ def _compile_month_pdf(target: BookingTarget, year: int, month: int, lang: str, 
         {
             "timestamp": tx.created_at.strftime("%d.%m.%Y %H:%M"),
             "description": tx.note or "",
-            "line_amount": f"{tx.amount:.2f} €",
+            "line_amount": f"{tx.amount:.2f} {settings.CURRENCY}",
         }
         for tx in txs
     ]
@@ -118,10 +118,10 @@ def _compile_month_pdf(target: BookingTarget, year: int, month: int, lang: str, 
         "title": target.name,
         "period_start": period_start.strftime("%d.%m.%Y"),
         "period_end": period_end.strftime("%d.%m.%Y"),
-        "balance_old": f"{balance_old:.2f} €",
-        "balance_new": f"{balance_new:.2f} €",
-        "sum_inflows": f"{sum_inflows:.2f} €",
-        "sum_outflows": f"{sum_outflows:.2f} €",
+        "balance_old": f"{balance_old:.2f} {settings.CURRENCY}",
+        "balance_new": f"{balance_new:.2f} {settings.CURRENCY}",
+        "sum_inflows": f"{sum_inflows:.2f} {settings.CURRENCY}",
+        "sum_outflows": f"{sum_outflows:.2f} {settings.CURRENCY}",
         "items": items,
         "labels": _statement_labels(lang),
     }
@@ -179,7 +179,7 @@ def _compile_month_pdf_all(year: int, month: int, lang: str, db: Session) -> byt
         items.append({
             "timestamp": tx.created_at.strftime("%d.%m.%Y %H:%M"),
             "description": description,
-            "line_amount": f"{tx.amount:.2f} €",
+            "line_amount": f"{tx.amount:.2f} {settings.CURRENCY}",
         })
 
     labels = _statement_labels(lang)
@@ -187,10 +187,10 @@ def _compile_month_pdf_all(year: int, month: int, lang: str, db: Session) -> byt
         "title": labels["title_all"],
         "period_start": period_start.strftime("%d.%m.%Y"),
         "period_end": period_end.strftime("%d.%m.%Y"),
-        "balance_old": f"{balance_old:.2f} €",
-        "balance_new": f"{balance_new:.2f} €",
-        "sum_inflows": f"{sum_inflows:.2f} €",
-        "sum_outflows": f"{sum_outflows:.2f} €",
+        "balance_old": f"{balance_old:.2f} {settings.CURRENCY}",
+        "balance_new": f"{balance_new:.2f} {settings.CURRENCY}",
+        "sum_inflows": f"{sum_inflows:.2f} {settings.CURRENCY}",
+        "sum_outflows": f"{sum_outflows:.2f} {settings.CURRENCY}",
         "items": items,
         "labels": labels,
     }
@@ -274,7 +274,7 @@ def topup_user(
         note=f"Topup via {device.name}",
     ))
     db.commit()
-    return {"detail": f"Topped up {body.amount} EUR. New balance: {user.balance} EUR", "balance": user.balance}
+    return {"detail": f"Topped up {body.amount} {settings.CURRENCY}. New balance: {user.balance} {settings.CURRENCY}", "balance": user.balance}
 
 
 @router.post("/target-topup", response_model=MessageResponse)
@@ -300,7 +300,7 @@ def topup_target_only(
         note=body.note,
     ))
     db.commit()
-    return {"detail": f"Target '{target.name}' balance increased by {body.amount} EUR"}
+    return {"detail": f"Target '{target.name}' balance increased by {body.amount} {settings.CURRENCY}"}
 
 
 @router.get("/transactions/{nfc_id}", response_model=list[TransactionResponse])
@@ -374,7 +374,7 @@ def transfer(
         created_at=now,
     ))
     db.commit()
-    return {"detail": f"Transferred {body.amount} EUR from {body.from_nfc_id} to {body.to_nfc_id}"}
+    return {"detail": f"Transferred {body.amount} {settings.CURRENCY} from {body.from_nfc_id} to {body.to_nfc_id}"}
 
 
 @router.post("/verify-pin", response_model=MessageResponse)
@@ -431,7 +431,7 @@ def payout(
         note=body.note,
     ))
     db.commit()
-    return {"detail": f"Payout of {body.amount} EUR from '{target.name}' successful"}
+    return {"detail": f"Payout of {body.amount} {settings.CURRENCY} from '{target.name}' successful"}
 
 
 # --- PIN management ---
