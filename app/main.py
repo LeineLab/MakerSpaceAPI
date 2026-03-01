@@ -2,7 +2,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
+from fastapi.responses import JSONResponse as _JSONResponse
+
+
+class JSONResponse(_JSONResponse):
+    """JSONResponse with an explicit UTF-8 charset declaration in Content-Type."""
+    media_type = "application/json; charset=utf-8"
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -29,6 +35,7 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
+    default_response_class=JSONResponse,
 )
 
 _LOGIN_REQUIRED_HTML = """\
