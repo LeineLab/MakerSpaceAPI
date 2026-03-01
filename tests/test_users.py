@@ -1,7 +1,11 @@
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
+from passlib.context import CryptContext
+
 from app.models.user import User
+
+_pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 # ---------------------------------------------------------------------------
@@ -38,6 +42,30 @@ def test_nfc_auth_invalid_token(client, test_user):
         f"/api/v1/users/nfc/{test_user.id}",
         headers={"Authorization": "Bearer bad-token"},
     ).status_code == 401
+
+
+def test_nfc_auth_has_pin_false(client, machine_token, test_user):
+    """Device NFC lookup returns has_pin=false when no PIN is set."""
+    token, _ = machine_token
+    resp = client.get(
+        f"/api/v1/users/nfc/{test_user.id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["has_pin"] is False
+
+
+def test_nfc_auth_has_pin_true(client, machine_token, test_user, db):
+    """Device NFC lookup returns has_pin=true when a PIN is set."""
+    test_user.pin_hash = _pwd.hash("secret")
+    db.commit()
+    token, _ = machine_token
+    resp = client.get(
+        f"/api/v1/users/nfc/{test_user.id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["has_pin"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -135,6 +163,14 @@ def test_get_user_success(admin_client, test_user):
     data = resp.json()
     assert data["id"] == test_user.id
     assert data["oidc_sub"] is None
+
+
+def test_get_user_has_pin_field(admin_client, test_user):
+    """Admin GET /users/{nfc_id} includes has_pin field."""
+    resp = admin_client.get(f"/api/v1/users/{test_user.id}")
+    assert resp.status_code == 200
+    assert "has_pin" in resp.json()
+    assert resp.json()["has_pin"] is False
 
 
 def test_get_user_not_found(admin_client):

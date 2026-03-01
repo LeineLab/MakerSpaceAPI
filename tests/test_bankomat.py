@@ -459,6 +459,32 @@ def test_payout_success(client, machine_token, test_user, target, db):
 
 
 # ---------------------------------------------------------------------------
+# DELETE /bankomat/pin/{nfc_id} — admin only
+# ---------------------------------------------------------------------------
+
+def test_clear_pin_success(admin_client, test_user, db):
+    """Admin sets a PIN then clears it; pin_hash should be None afterwards."""
+    admin_client.post("/api/v1/bankomat/pin", json={"nfc_id": test_user.id, "pin": "1234"})
+    db.refresh(test_user)
+    assert test_user.pin_hash is not None
+
+    resp = admin_client.delete(f"/api/v1/bankomat/pin/{test_user.id}")
+    assert resp.status_code == 200
+    db.refresh(test_user)
+    assert test_user.pin_hash is None
+
+
+def test_clear_pin_user_not_found(admin_client):
+    resp = admin_client.delete("/api/v1/bankomat/pin/999999")
+    assert resp.status_code == 404
+
+
+def test_clear_pin_requires_admin(client, test_user):
+    resp = client.delete(f"/api/v1/bankomat/pin/{test_user.id}")
+    assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
 # POST /bankomat/pin — admin only
 # ---------------------------------------------------------------------------
 

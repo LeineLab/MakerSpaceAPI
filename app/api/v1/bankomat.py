@@ -23,6 +23,7 @@ from app.schemas.booking_target import (
 )
 from app.schemas.common import MessageResponse, TopupResponse
 from app.schemas.transaction import TransactionResponse
+from app.schemas.user import UserPinVerify
 
 router = APIRouter()
 
@@ -198,6 +199,23 @@ def transfer(
     return {"detail": f"Transferred {body.amount} EUR from {body.from_nfc_id} to {body.to_nfc_id}"}
 
 
+@router.post("/verify-pin", response_model=MessageResponse)
+def verify_pin(
+    body: UserPinVerify,
+    device: Machine = Depends(get_current_device),
+    db: Session = Depends(get_db),
+):
+    """Verify a user's PIN without performing any payout. Returns 200 if valid, 403 if not."""
+    user = db.query(User).filter(User.id == body.nfc_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not user.pin_hash:
+        raise HTTPException(status_code=403, detail="User has no PIN set")
+    if not _pwd.verify(body.pin, user.pin_hash):
+        raise HTTPException(status_code=403, detail="Invalid PIN")
+    return {"detail": "PIN valid"}
+
+
 @router.post("/payout", response_model=MessageResponse)
 def payout(
     body: PayoutRequest,
@@ -253,3 +271,18 @@ def set_pin(
     user.pin_hash = _pwd.hash(body.pin)
     db.commit()
     return {"detail": "PIN updated"}
+
+
+@router.delete("/pin/{nfc_id}", response_model=MessageResponse)
+def clear_pin(
+    nfc_id: int,
+    admin: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Clear (remove) the PIN for a user's NFC card (admin only)."""
+    user = db.query(User).filter(User.id == nfc_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.pin_hash = None
+    db.commit()
+    return {"detail": "PIN cleared"}

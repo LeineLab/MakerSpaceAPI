@@ -155,6 +155,18 @@
   "bankomat.placeholder_slug": "e.g. electricity",
   "bankomat.btn_create":       "Create",
 
+  "bankomat.treasurers":        "Treasurers",
+  "bankomat.treasurers_empty":  "No treasurers set.",
+  "bankomat.btn_add_treasurer": "+ Add Treasurer",
+  "bankomat.add_treasurer_title": "Add Treasurer",
+  "bankomat.label_select_user": "User",
+  "bankomat.label_pin":         "PIN",
+  "bankomat.placeholder_pin":   "4–8 digits",
+  "bankomat.btn_set_pin":       "Set PIN",
+  "bankomat.btn_clear_pin":     "Clear",
+  "bankomat.confirm_clear_pin": "Remove PIN for {name}?",
+  "bankomat.btn_change_pin":    "Change PIN",
+
   "rentals.title":         "Rental System",
   "rentals.btn_add":       "+ Add Item",
   "rentals.items_title":   "Rental Items",

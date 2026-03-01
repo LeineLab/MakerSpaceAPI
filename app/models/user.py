@@ -47,3 +47,7 @@ class User(Base):
         "RentalPermission", back_populates="user", uselist=False, cascade="all, delete-orphan"
     )
     rentals: Mapped[list["Rental"]] = relationship("Rental", back_populates="user")
+
+    @property
+    def has_pin(self) -> bool:
+        return self.pin_hash is not None

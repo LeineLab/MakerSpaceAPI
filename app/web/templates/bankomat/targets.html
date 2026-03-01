@@ -29,6 +29,69 @@
     </template>
   </div>
 
+  <!-- Treasurers Section -->
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="text-xl font-semibold">{{ _('bankomat.treasurers') }}</h2>
+    <button @click="showAddModal = true"
+            class="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700">
+      {{ _('bankomat.btn_add_treasurer') }}
+    </button>
+  </div>
+
+  <template x-if="loadingUsers">
+    <div class="text-gray-400 text-sm mb-4">Loading…</div>
+  </template>
+  <template x-if="!loadingUsers && treasurers.length === 0">
+    <p class="text-gray-400 mb-4">{{ _('bankomat.treasurers_empty') }}</p>
+  </template>
+  <template x-if="!loadingUsers && treasurers.length > 0">
+    <div class="bg-white rounded-lg shadow overflow-hidden mb-6">
+      <table class="min-w-full text-sm">
+        <thead class="bg-gray-50 text-gray-500 uppercase text-xs">
+          <tr>
+            <th class="px-4 py-3 text-left">{{ _('users.col_nfc') }}</th>
+            <th class="px-4 py-3 text-left">{{ _('common.name') }}</th>
+            <th class="px-4 py-3 text-left">{{ _('bankomat.btn_change_pin') }}</th>
+            <th class="px-4 py-3 text-left">{{ _('bankomat.btn_clear_pin') }}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          <template x-for="t in treasurers" :key="t.id">
+            <tr class="hover:bg-gray-50">
+              <td class="px-4 py-3 font-mono text-xs text-gray-500" x-text="t.id"></td>
+              <td class="px-4 py-3 font-medium" x-text="t.name || '—'"></td>
+              <td class="px-4 py-3">
+                <button @click="toggleEditPin(t.id)"
+                        class="text-blue-600 hover:underline text-xs">
+                  {{ _('bankomat.btn_change_pin') }}
+                </button>
+                <div x-show="editingPin[t.id]" class="mt-2 flex gap-2 items-center">
+                  <input type="password"
+                         x-model="editingPin[t.id].pin"
+                         placeholder="{{ _('bankomat.placeholder_pin') }}"
+                         class="border rounded px-2 py-1 text-xs w-32 focus:outline-none focus:ring-1 focus:ring-blue-400">
+                  <button @click="setPin(t.id, editingPin[t.id].pin)"
+                          :disabled="editingPin[t.id].submitting"
+                          class="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
+                    <span x-show="!editingPin[t.id].submitting">{{ _('bankomat.btn_set_pin') }}</span>
+                    <span x-show="editingPin[t.id].submitting">…</span>
+                  </button>
+                  <span x-show="editingPin[t.id].error" class="text-red-600 text-xs" x-text="editingPin[t.id].error"></span>
+                </div>
+              </td>
+              <td class="px-4 py-3">
+                <button @click="clearPin(t.id, t.name)"
+                        class="text-red-600 hover:underline text-xs">
+                  {{ _('bankomat.btn_clear_pin') }}
+                </button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </template>
+
   <!-- Add Booking Target Modal -->
   <div x-show="showModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
     <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showModal = false">
@@ -59,6 +122,44 @@
       </form>
     </div>
   </div>
+
+  <!-- Add Treasurer Modal -->
+  <div x-show="showAddModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showAddModal = false">
+      <h2 class="text-lg font-bold mb-4">{{ _('bankomat.add_treasurer_title') }}</h2>
+      <div x-show="addError" class="mb-3 bg-red-100 text-red-700 p-2 rounded text-sm" x-text="addError"></div>
+      <form @submit.prevent="addTreasurer()" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('bankomat.label_select_user') }}</label>
+          <select x-model="addForm.nfc_id" required
+                  class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="">— {{ _('machines.select_user') }} —</option>
+            <template x-for="u in candidates" :key="u.id">
+              <option :value="u.id" x-text="(u.name || u.id) + ' (' + u.id + ')'"></option>
+            </template>
+          </select>
+          <template x-if="candidates.length === 0">
+            <p class="text-xs text-gray-400 mt-1">{{ _('machines.no_users_available') }}</p>
+          </template>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('bankomat.label_pin') }}</label>
+          <input type="password" x-model="addForm.pin" required
+                 placeholder="{{ _('bankomat.placeholder_pin') }}"
+                 class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" @click="showAddModal = false"
+                  class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">{{ _('common.cancel') }}</button>
+          <button type="submit" :disabled="addSubmitting"
+                  class="px-4 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:opacity-50">
+            <span x-show="!addSubmitting">{{ _('bankomat.btn_set_pin') }}</span>
+            <span x-show="addSubmitting">…</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -72,8 +173,16 @@ function targetList() {
     formError: null,
     form: { name: '', slug: '' },
 
+    users: [],
+    loadingUsers: true,
+    showAddModal: false,
+    addForm: { nfc_id: '', pin: '' },
+    addError: null,
+    addSubmitting: false,
+    editingPin: {},
+
     async init() {
-      await this.loadTargets();
+      await Promise.all([this.loadTargets(), this.loadUsers()]);
     },
 
     async loadTargets() {
@@ -87,6 +196,99 @@ function targetList() {
         this.error = e.message;
       } finally {
         this.loading = false;
+      }
+    },
+
+    async loadUsers() {
+      this.loadingUsers = true;
+      try {
+        const r = await apiFetch('/api/v1/users');
+        if (!r.ok) throw new Error('Failed to load users');
+        this.users = await r.json();
+      } catch (e) {
+        // silently ignore — admin may not be logged in
+      } finally {
+        this.loadingUsers = false;
+      }
+    },
+
+    get treasurers() {
+      return this.users.filter(u => u.has_pin);
+    },
+
+    get candidates() {
+      return this.users.filter(u => !u.has_pin && u.name);
+    },
+
+    toggleEditPin(nfc_id) {
+      if (this.editingPin[nfc_id]) {
+        delete this.editingPin[nfc_id];
+        this.editingPin = { ...this.editingPin };
+      } else {
+        this.editingPin = { ...this.editingPin, [nfc_id]: { pin: '', submitting: false, error: null } };
+      }
+    },
+
+    async setPin(nfc_id, pin) {
+      if (this.editingPin[nfc_id]) {
+        this.editingPin[nfc_id].submitting = true;
+        this.editingPin[nfc_id].error = null;
+      }
+      try {
+        const r = await apiFetch('/api/v1/bankomat/pin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nfc_id: parseInt(nfc_id), pin }),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          if (this.editingPin[nfc_id]) this.editingPin[nfc_id].error = data.detail || 'Error';
+          return false;
+        }
+        // Close inline form and reload
+        this.editingPin = { ...this.editingPin };
+        delete this.editingPin[nfc_id];
+        await this.loadUsers();
+        return true;
+      } catch (e) {
+        if (this.editingPin[nfc_id]) this.editingPin[nfc_id].error = e.message;
+        return false;
+      } finally {
+        if (this.editingPin[nfc_id]) this.editingPin[nfc_id].submitting = false;
+      }
+    },
+
+    async clearPin(nfc_id, name) {
+      const msg = {{ _('bankomat.confirm_clear_pin') | tojson }}.replace('{name}', name || nfc_id);
+      if (!confirm(msg)) return;
+      try {
+        const r = await apiFetch(`/api/v1/bankomat/pin/${nfc_id}`, { method: 'DELETE' });
+        if (!r.ok) {
+          const data = await r.json();
+          this.error = data.detail || 'Error clearing PIN';
+          return;
+        }
+        await this.loadUsers();
+      } catch (e) {
+        this.error = e.message;
+      }
+    },
+
+    async addTreasurer() {
+      this.addSubmitting = true;
+      this.addError = null;
+      try {
+        const ok = await this.setPin(this.addForm.nfc_id, this.addForm.pin);
+        if (ok) {
+          this.showAddModal = false;
+          this.addForm = { nfc_id: '', pin: '' };
+        } else {
+          this.addError = 'Failed to set PIN';
+        }
+      } catch (e) {
+        this.addError = e.message;
+      } finally {
+        this.addSubmitting = false;
       }
     },
 

@@ -155,6 +155,18 @@
   "bankomat.placeholder_slug": "z.B. strom",
   "bankomat.btn_create":       "Erstellen",
 
+  "bankomat.treasurers":        "Kassenwarte",
+  "bankomat.treasurers_empty":  "Keine Kassenwarte eingetragen.",
+  "bankomat.btn_add_treasurer": "+ Kassenwart hinzufügen",
+  "bankomat.add_treasurer_title": "Kassenwart hinzufügen",
+  "bankomat.label_select_user": "Benutzer",
+  "bankomat.label_pin":         "PIN",
+  "bankomat.placeholder_pin":   "4–8 Ziffern",
+  "bankomat.btn_set_pin":       "PIN setzen",
+  "bankomat.btn_clear_pin":     "Entfernen",
+  "bankomat.confirm_clear_pin": "PIN für {name} entfernen?",
+  "bankomat.btn_change_pin":    "PIN ändern",
+
   "rentals.title":         "Verleihsystem",
   "rentals.btn_add":       "+ Gegenstand hinzufügen",
   "rentals.items_title":   "Verleihgegenstände",

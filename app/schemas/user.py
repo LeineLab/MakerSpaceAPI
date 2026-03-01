@@ -10,6 +10,7 @@ class UserAuthResponse(BaseModel):
     id: int
     name: Optional[str]
     balance: Decimal = Field(ge=0, examples=[Decimal("12.50")])
+    has_pin: bool
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -25,6 +26,7 @@ class UserResponse(BaseModel):
     name: Optional[str]
     oidc_sub: Optional[str]
     balance: Decimal = Field(ge=0, examples=[Decimal("12.50")])
+    has_pin: bool
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
