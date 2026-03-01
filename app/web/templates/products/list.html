@@ -42,7 +42,7 @@
             <td class="px-4 py-2 text-gray-500 font-mono text-xs" x-text="p.ean"></td>
             <td class="px-4 py-2 text-right" x-text="parseFloat(p.price).toFixed(2) + ' €'"></td>
             <td class="px-4 py-2 text-right"
-                :class="p.stock === 0 ? 'text-red-500 font-semibold' : p.stock < 5 ? 'text-yellow-600' : ''"
+                :class="p.stock <= 0 ? 'text-red-500 font-semibold' : p.stock < 5 ? 'text-yellow-600' : ''"
                 x-text="p.stock"></td>
           </tr>
         </template>
