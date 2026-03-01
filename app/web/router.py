@@ -37,7 +37,6 @@ def _ctx(request: Request, user: dict, **extra) -> dict:
     """Build a base template context dict including i18n translator."""
     locale = detect_language(request.headers.get("accept-language", ""))
     return {
-        "request": request,
         "user": user,
         "flash": _pop_flash(request),
         "_": get_translator(locale),
@@ -54,8 +53,7 @@ def _ctx(request: Request, user: dict, **extra) -> dict:
 def index(request: Request, user: dict | None = Depends(get_session_user)):
     locale = detect_language(request.headers.get("accept-language", ""))
     return templates.TemplateResponse(
-        "index.html", {
-            "request": request,
+        request, "index.html", {
             "user": user,
             "flash": _pop_flash(request),
             "_": get_translator(locale),
@@ -68,9 +66,8 @@ def index(request: Request, user: dict | None = Depends(get_session_user)):
 def product_list(request: Request, user: dict | None = Depends(get_session_user)):
     locale = detect_language(request.headers.get("accept-language", ""))
     return templates.TemplateResponse(
-        "products/list.html",
+        request, "products/list.html",
         {
-            "request": request,
             "user": user,
             "flash": _pop_flash(request),
             "_": get_translator(locale),
@@ -88,7 +85,7 @@ def dashboard(
     request: Request,
     admin: dict = Depends(require_admin_user),
 ):
-    return templates.TemplateResponse("dashboard.html", _ctx(request, admin))
+    return templates.TemplateResponse(request, "dashboard.html", _ctx(request, admin))
 
 
 # ---------------------------------------------------------------------------
@@ -101,7 +98,7 @@ def machines_list(
     user: dict = Depends(require_session_user),
 ):
     return templates.TemplateResponse(
-        "machines/list.html",
+        request, "machines/list.html",
         _ctx(request, user, user_is_admin=is_admin(user)),
     )
 
@@ -113,7 +110,7 @@ def machine_detail(
     user: dict = Depends(require_session_user),
 ):
     return templates.TemplateResponse(
-        "machines/detail.html",
+        request, "machines/detail.html",
         _ctx(request, user, slug=slug, user_is_admin=is_admin(user)),
     )
 
@@ -127,7 +124,7 @@ def products_manage(
     request: Request,
     user: dict = Depends(require_product_manager_user),
 ):
-    return templates.TemplateResponse("products/manage.html", _ctx(request, user))
+    return templates.TemplateResponse(request, "products/manage.html", _ctx(request, user))
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +136,7 @@ def bankomat_targets(
     request: Request,
     admin: dict = Depends(require_admin_user),
 ):
-    return templates.TemplateResponse("bankomat/targets.html", _ctx(request, admin))
+    return templates.TemplateResponse(request, "bankomat/targets.html", _ctx(request, admin))
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +148,7 @@ def users_list(
     request: Request,
     admin: dict = Depends(require_admin_user),
 ):
-    return templates.TemplateResponse("users/list.html", _ctx(request, admin))
+    return templates.TemplateResponse(request, "users/list.html", _ctx(request, admin))
 
 
 # ---------------------------------------------------------------------------
@@ -163,4 +160,4 @@ def rentals_page(
     request: Request,
     admin: dict = Depends(require_admin_user),
 ):
-    return templates.TemplateResponse("rentals/items.html", _ctx(request, admin))
+    return templates.TemplateResponse(request, "rentals/items.html", _ctx(request, admin))

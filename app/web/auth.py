@@ -64,8 +64,8 @@ async def connect_callback(request: Request, db: Session = Depends(get_db)):
 
     def _error(msg: str):
         return _templates.TemplateResponse(
-            "connect_result.html",
-            {"request": request, "user": None, "flash": None,
+            request, "connect_result.html",
+            {"user": None, "flash": None,
              "_": get_translator(locale), "lang": locale,
              "success": False, "error": msg},
         )
@@ -107,8 +107,8 @@ async def connect_callback(request: Request, db: Session = Depends(get_db)):
 
     display_name = user.name or user_info.get("name")
     return _templates.TemplateResponse(
-        "connect_result.html",
-        {"request": request, "user": None, "flash": None,
+        request, "connect_result.html",
+        {"user": None, "flash": None,
          "_": get_translator(locale), "lang": locale,
          "success": True, "display_name": display_name},
     )
@@ -121,8 +121,8 @@ async def connect_start(token: str, request: Request):
     nfc_id = verify_link_token(token)
     if nfc_id is None:
         return _templates.TemplateResponse(
-            "connect_result.html",
-            {"request": request, "user": None, "flash": None,
+            request, "connect_result.html",
+            {"user": None, "flash": None,
              "_": get_translator(locale), "lang": locale,
              "success": False, "error": "This link is invalid or has expired. Please scan the QR code again."},
         )
