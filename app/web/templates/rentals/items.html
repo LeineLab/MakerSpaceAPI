@@ -21,6 +21,7 @@
         <h2 class="font-semibold">{{ _('rentals.items_title') }}</h2>
         <span class="text-xs text-gray-400" x-text="items.length + ' {{ _('rentals.items_word') }}'"></span>
       </div>
+      <div class="overflow-x-auto">
       <table class="w-full text-sm">
         <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
           <tr>
@@ -53,6 +54,7 @@
           </template>
         </tbody>
       </table>
+      </div>
     </div>
 
     <!-- Currently Rented -->
@@ -60,6 +62,7 @@
       <div class="px-5 py-4 border-b">
         <h2 class="font-semibold">{{ _('rentals.rented_title') }}</h2>
       </div>
+      <div class="overflow-x-auto">
       <table class="w-full text-sm">
         <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
           <tr>
@@ -85,6 +88,7 @@
           </template>
         </tbody>
       </table>
+      </div>
     </div>
 
   </div>
@@ -96,6 +100,7 @@
       <button @click="showPermModal = true"
               class="text-sm text-blue-600 hover:underline">{{ _('rentals.btn_add_perm') }}</button>
     </div>
+    <div class="overflow-x-auto">
     <table class="w-full text-sm">
       <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
         <tr>
@@ -126,6 +131,7 @@
         </template>
       </tbody>
     </table>
+    </div>
   </div>
 
   <!-- Edit Rental Item Modal -->

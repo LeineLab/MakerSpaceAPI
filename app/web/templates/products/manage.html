@@ -16,6 +16,7 @@
 
   <!-- Products table -->
   <div class="bg-white rounded-lg shadow overflow-hidden mb-8">
+    <div class="overflow-x-auto">
     <table class="w-full text-sm">
       <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
         <tr>
@@ -64,6 +65,7 @@
         </template>
       </tbody>
     </table>
+    </div>
   </div>
 
   <!-- Categories and Aliases side by side -->
@@ -105,7 +107,8 @@
         <span class="text-xs text-gray-400" x-text="aliases.length"></span>
       </div>
       <div class="px-5 py-4">
-        <table x-show="aliases.length > 0" class="w-full text-sm mb-4">
+        <div x-show="aliases.length > 0" class="overflow-x-auto">
+        <table class="w-full text-sm mb-4">
           <thead class="text-xs text-gray-500 uppercase">
             <tr>
               <th class="text-left pb-1">{{ _('manage.col_alias_ean') }}</th>
@@ -129,6 +132,7 @@
             </template>
           </tbody>
         </table>
+        </div>
         <p x-show="aliases.length === 0" class="text-sm text-gray-400 mb-4">{{ _('manage.no_aliases') }}</p>
         <div x-show="aliasError" class="mb-2 text-xs text-red-600" x-text="aliasError"></div>
         <div class="space-y-2">
