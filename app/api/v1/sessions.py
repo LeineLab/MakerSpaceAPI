@@ -184,17 +184,18 @@ def extend_session(
             detail="Insufficient balance — session terminated",
         )
 
-    user.balance -= interval_cost
     session.paid_until += timedelta(minutes=auth.booking_interval)
 
-    db.add(Transaction(
-        user_id=session.user_id,
-        amount=-interval_cost,
-        type=TransactionType.machine_usage,
-        machine_id=device.id,
-        session_id=session.id,
-        note=f"Extended {auth.booking_interval}min interval",
-    ))
+    if interval_cost > 0:
+        user.balance -= interval_cost
+        db.add(Transaction(
+            user_id=session.user_id,
+            amount=-interval_cost,
+            type=TransactionType.machine_usage,
+            machine_id=device.id,
+            session_id=session.id,
+            note=f"Extended {auth.booking_interval}min interval",
+        ))
     db.commit()
     remaining_seconds = (session.paid_until - now).total_seconds()
 
