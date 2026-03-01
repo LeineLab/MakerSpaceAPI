@@ -24,6 +24,8 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: mysql+pymysql://${DB_USER:-makerspace}:${DB_PASSWORD:-makerspace}@db:3306/${DB_NAME:-makerspaceapi}
+    volumes:
+      - ./logo.svg:/app/statements/logo.svg
     depends_on:
       db:
         condition: service_healthy
