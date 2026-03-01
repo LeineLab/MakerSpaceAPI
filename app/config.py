@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     # Devices
     CHECKOUT_BOX_SLUGS: str = ""
 
+    # PDF statement generation (typst)
+    # Directory containing extra fonts (e.g. albertsans.ttf). Leave empty to use system fonts only.
+    TYPST_FONT_DIR: str = ""
+
     @property
     def checkout_box_slug_list(self) -> list[str]:
         return [s.strip() for s in self.CHECKOUT_BOX_SLUGS.split(",") if s.strip()]

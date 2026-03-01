@@ -173,6 +173,14 @@
   "bankomat.confirm_clear_pin": "Remove PIN for {name}?",
   "bankomat.btn_change_pin":    "Change PIN",
 
+  "bankomat.statement_title":     "Generate Statement",
+  "bankomat.statement_from":      "From",
+  "bankomat.statement_to":        "To",
+  "bankomat.statement_generate":  "Generate PDF",
+  "bankomat.statement_hint":      "Full months in the past only. Multi-month range produces a ZIP of individual PDFs.",
+  "bankomat.btn_statement_all":   "Combined Statement",
+  "bankomat.statement_all_subtitle": "All booking targets combined",
+
   "rentals.title":         "Rental System",
   "rentals.btn_add":       "+ Add Item",
   "rentals.items_title":   "Rental Items",

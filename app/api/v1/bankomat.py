@@ -1,12 +1,19 @@
-from datetime import UTC, datetime
+import io
+import json
+import zipfile
+from calendar import monthrange
+from datetime import UTC, date, datetime
 from decimal import Decimal
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from passlib.context import CryptContext
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_device, require_admin_user
+from app.config import settings
 from app.database import get_db
 from app.models.booking_target import BookingTarget
 from app.models.machine import Machine
@@ -24,6 +31,177 @@ from app.schemas.booking_target import (
 from app.schemas.common import MessageResponse, TopupResponse
 from app.schemas.transaction import TransactionResponse
 from app.schemas.user import UserPinVerify
+
+_TYP_PATH = Path(__file__).parent.parent.parent.parent / "statements" / "uni.typ"
+
+_STATEMENT_TYPES = [
+    TransactionType.topup,
+    TransactionType.booking_target_topup,
+    TransactionType.booking_target_payout,
+]
+
+
+def _statement_labels(lang: str) -> dict:
+    if lang == "de":
+        return {
+            "period_prefix": "Vom",
+            "period_connector": "bis",
+            "balance_old": "Alter Barbestand zum Tagesbeginn des",
+            "balance_new": "Neuer Barbestand am Tagesende des",
+            "sum_inflows": "Summe Einzahlungen im Zeitraum",
+            "sum_outflows": "Summe Entnahmen im Zeitraum",
+            "section_summary": "Barbestand und Aktivitäten",
+            "section_transactions": "Einzahlungen und Entnahmen",
+            "col_timestamp": "Zeitstempel",
+            "col_description": "Beschreibung",
+            "col_amount": "Bestandsänderung",
+            "generated": "Dieser Auszug wurde generiert am",
+            "title_all": "Gesamtübersicht Bankomat",
+        }
+    return {
+        "period_prefix": "From",
+        "period_connector": "to",
+        "balance_old": "Opening balance at start of",
+        "balance_new": "Closing balance at end of",
+        "sum_inflows": "Total inflows in period",
+        "sum_outflows": "Total outflows in period",
+        "section_summary": "Balance and Activity",
+        "section_transactions": "Inflows and Outflows",
+        "col_timestamp": "Timestamp",
+        "col_description": "Description",
+        "col_amount": "Amount",
+        "generated": "This statement was generated on",
+        "title_all": "Combined Bankomat Statement",
+    }
+
+
+def _compile_month_pdf(target: BookingTarget, year: int, month: int, lang: str, db: Session) -> bytes:
+    import typst  # optional dependency
+
+    period_start = date(year, month, 1)
+    last_day = monthrange(year, month)[1]
+    period_end = date(year, month, last_day)
+    ds = datetime(year, month, 1)
+    de = datetime(year + 1, 1, 1) if month == 12 else datetime(year, month + 1, 1)
+
+    base_filter = [
+        Transaction.target_id == target.id,
+        Transaction.type.in_(_STATEMENT_TYPES),
+    ]
+
+    def _sum_amount(*extra):
+        result = db.query(func.sum(Transaction.amount)).filter(*base_filter, *extra).scalar()
+        return Decimal(result or 0)
+
+    balance_old = _sum_amount(Transaction.created_at < ds)
+    balance_new = _sum_amount(Transaction.created_at < de)
+    sum_inflows = _sum_amount(Transaction.created_at >= ds, Transaction.created_at < de, Transaction.amount > 0)
+    sum_outflows = _sum_amount(Transaction.created_at >= ds, Transaction.created_at < de, Transaction.amount < 0)
+
+    txs = (
+        db.query(Transaction)
+        .filter(*base_filter, Transaction.created_at >= ds, Transaction.created_at < de)
+        .order_by(Transaction.created_at)
+        .all()
+    )
+
+    items = [
+        {
+            "timestamp": tx.created_at.strftime("%d.%m.%Y %H:%M"),
+            "description": tx.note or "",
+            "line_amount": f"{tx.amount:.2f} €",
+        }
+        for tx in txs
+    ]
+
+    data = {
+        "title": target.name,
+        "period_start": period_start.strftime("%d.%m.%Y"),
+        "period_end": period_end.strftime("%d.%m.%Y"),
+        "balance_old": f"{balance_old:.2f} €",
+        "balance_new": f"{balance_new:.2f} €",
+        "sum_inflows": f"{sum_inflows:.2f} €",
+        "sum_outflows": f"{sum_outflows:.2f} €",
+        "items": items,
+        "labels": _statement_labels(lang),
+    }
+
+    font_paths = [settings.TYPST_FONT_DIR] if settings.TYPST_FONT_DIR else []
+    return typst.compile(
+        input=str(_TYP_PATH),
+        sys_inputs={"data": json.dumps(data, ensure_ascii=False)},
+        font_paths=font_paths,
+    )
+
+def _compile_month_pdf_all(year: int, month: int, lang: str, db: Session) -> bytes:
+    import typst  # optional dependency
+
+    period_start = date(year, month, 1)
+    last_day = monthrange(year, month)[1]
+    period_end = date(year, month, last_day)
+    ds = datetime(year, month, 1)
+    de = datetime(year + 1, 1, 1) if month == 12 else datetime(year, month + 1, 1)
+
+    base_filter = [Transaction.type.in_(_STATEMENT_TYPES)]
+
+    def _sum_amount(*extra):
+        result = db.query(func.sum(Transaction.amount)).filter(*base_filter, *extra).scalar()
+        return Decimal(result or 0)
+
+    balance_old = _sum_amount(Transaction.created_at < ds)
+    balance_new = _sum_amount(Transaction.created_at < de)
+    sum_inflows = _sum_amount(Transaction.created_at >= ds, Transaction.created_at < de, Transaction.amount > 0)
+    sum_outflows = _sum_amount(Transaction.created_at >= ds, Transaction.created_at < de, Transaction.amount < 0)
+
+    txs = (
+        db.query(Transaction)
+        .filter(*base_filter, Transaction.created_at >= ds, Transaction.created_at < de)
+        .order_by(Transaction.created_at)
+        .all()
+    )
+
+    # Pre-load target names to avoid N+1 queries
+    target_ids = {tx.target_id for tx in txs if tx.target_id is not None}
+    target_names: dict[int, str] = {}
+    if target_ids:
+        for t in db.query(BookingTarget).filter(BookingTarget.id.in_(target_ids)).all():
+            target_names[t.id] = t.name
+
+    items = []
+    for tx in txs:
+        target_name = target_names.get(tx.target_id, "") if tx.target_id else ""
+        if target_name and tx.note:
+            description = f"{target_name}: {tx.note}"
+        elif target_name:
+            description = target_name
+        else:
+            description = tx.note or ""
+        items.append({
+            "timestamp": tx.created_at.strftime("%d.%m.%Y %H:%M"),
+            "description": description,
+            "line_amount": f"{tx.amount:.2f} €",
+        })
+
+    labels = _statement_labels(lang)
+    data = {
+        "title": labels["title_all"],
+        "period_start": period_start.strftime("%d.%m.%Y"),
+        "period_end": period_end.strftime("%d.%m.%Y"),
+        "balance_old": f"{balance_old:.2f} €",
+        "balance_new": f"{balance_new:.2f} €",
+        "sum_inflows": f"{sum_inflows:.2f} €",
+        "sum_outflows": f"{sum_outflows:.2f} €",
+        "items": items,
+        "labels": labels,
+    }
+
+    font_paths = [settings.TYPST_FONT_DIR] if settings.TYPST_FONT_DIR else []
+    return typst.compile(
+        input=str(_TYP_PATH),
+        sys_inputs={"data": json.dumps(data, ensure_ascii=False)},
+        font_paths=font_paths,
+    )
+
 
 router = APIRouter()
 
@@ -271,6 +449,130 @@ def set_pin(
     user.pin_hash = _pwd.hash(body.pin)
     db.commit()
     return {"detail": "PIN updated"}
+
+
+@router.get("/statement/{target_slug}")
+def get_statement(
+    target_slug: str,
+    from_year: int = Query(...),
+    from_month: int = Query(...),
+    to_year: int = Query(...),
+    to_month: int = Query(...),
+    lang: str = Query(default="de"),
+    admin: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Generate a PDF (single month) or ZIP of PDFs (multi-month) for a booking target."""
+    today = date.today()
+    current_month_start = date(today.year, today.month, 1)
+
+    if not (1 <= from_month <= 12 and 1 <= to_month <= 12):
+        raise HTTPException(400, "Month must be between 1 and 12")
+
+    from_date = date(from_year, from_month, 1)
+    to_date = date(to_year, to_month, 1)
+
+    if from_date > to_date:
+        raise HTTPException(400, "Start must not be after end")
+    if to_date >= current_month_start:
+        raise HTTPException(400, "End month must be fully in the past")
+
+    target = db.query(BookingTarget).filter(BookingTarget.slug == target_slug).first()
+    if not target:
+        raise HTTPException(404, f"Booking target '{target_slug}' not found")
+
+    # Build list of (year, month) tuples in range
+    months = []
+    y, m = from_year, from_month
+    while (y, m) <= (to_year, to_month):
+        months.append((y, m))
+        m += 1
+        if m > 12:
+            m, y = 1, y + 1
+
+    try:
+        if len(months) == 1:
+            y, m = months[0]
+            pdf = _compile_month_pdf(target, y, m, lang, db)
+            filename = f"statement_{target_slug}_{y}_{m:02d}.pdf"
+            return Response(
+                content=pdf,
+                media_type="application/pdf",
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for y, m in months:
+                pdf = _compile_month_pdf(target, y, m, lang, db)
+                zf.writestr(f"statement_{target_slug}_{y}_{m:02d}.pdf", pdf)
+        filename = f"statements_{target_slug}_{from_year}_{from_month:02d}_to_{to_year}_{to_month:02d}.zip"
+        return Response(
+            content=zip_buf.getvalue(),
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as e:
+        raise HTTPException(500, f"PDF generation failed: {e}") from e
+
+
+@router.get("/statement-all")
+def get_statement_all(
+    from_year: int = Query(...),
+    from_month: int = Query(...),
+    to_year: int = Query(...),
+    to_month: int = Query(...),
+    lang: str = Query(default="de"),
+    admin: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Generate a combined PDF (or ZIP) for all booking targets."""
+    today = date.today()
+    current_month_start = date(today.year, today.month, 1)
+
+    if not (1 <= from_month <= 12 and 1 <= to_month <= 12):
+        raise HTTPException(400, "Month must be between 1 and 12")
+
+    from_date = date(from_year, from_month, 1)
+    to_date = date(to_year, to_month, 1)
+
+    if from_date > to_date:
+        raise HTTPException(400, "Start must not be after end")
+    if to_date >= current_month_start:
+        raise HTTPException(400, "End month must be fully in the past")
+
+    months = []
+    y, m = from_year, from_month
+    while (y, m) <= (to_year, to_month):
+        months.append((y, m))
+        m += 1
+        if m > 12:
+            m, y = 1, y + 1
+
+    try:
+        if len(months) == 1:
+            y, m = months[0]
+            pdf = _compile_month_pdf_all(y, m, lang, db)
+            filename = f"statement_all_{y}_{m:02d}.pdf"
+            return Response(
+                content=pdf,
+                media_type="application/pdf",
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for y, m in months:
+                pdf = _compile_month_pdf_all(y, m, lang, db)
+                zf.writestr(f"statement_all_{y}_{m:02d}.pdf", pdf)
+        filename = f"statements_all_{from_year}_{from_month:02d}_to_{to_year}_{to_month:02d}.zip"
+        return Response(
+            content=zip_buf.getvalue(),
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as e:
+        raise HTTPException(500, f"PDF generation failed: {e}") from e
 
 
 @router.delete("/pin/{nfc_id}", response_model=MessageResponse)

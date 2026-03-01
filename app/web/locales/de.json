@@ -173,6 +173,14 @@
   "bankomat.confirm_clear_pin": "PIN für {name} entfernen?",
   "bankomat.btn_change_pin":    "PIN ändern",
 
+  "bankomat.statement_title":     "Kontoauszug erstellen",
+  "bankomat.statement_from":      "Von",
+  "bankomat.statement_to":        "Bis",
+  "bankomat.statement_generate":  "PDF erstellen",
+  "bankomat.statement_hint":      "Nur vollständige Monate in der Vergangenheit. Mehrere Monate erzeugen eine ZIP-Datei.",
+  "bankomat.btn_statement_all":   "Gesamtübersicht",
+  "bankomat.statement_all_subtitle": "Alle Buchungsziele zusammen",
+
   "rentals.title":         "Verleihsystem",
   "rentals.btn_add":       "+ Gegenstand hinzufügen",
   "rentals.items_title":   "Verleihgegenstände",
