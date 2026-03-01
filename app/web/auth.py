@@ -36,7 +36,8 @@ async def callback(request: Request):
         user_info = await oauth.oidc.userinfo(token=token)
 
     jwt_token = create_admin_jwt(dict(user_info))
-    response = RedirectResponse(url="/dashboard")
+    redirect_url = "/dashboard" if is_admin(dict(user_info)) else "/"
+    response = RedirectResponse(url=redirect_url)
     response.set_cookie(
         key="auth_token",
         value=jwt_token,
