@@ -55,6 +55,8 @@
                       class="text-xs text-blue-600 hover:underline">{{ _('common.edit') }}</button>
               <button @click="openStockModal(p)"
                       class="text-xs text-gray-500 hover:underline">{{ _('common.stock') }}</button>
+              <button @click="openStocktakingModal(p)"
+                      class="text-xs text-gray-500 hover:underline">{{ _('manage.stocktaking_link') }}</button>
               <a :href="'/api/v1/products/' + p.ean + '/audit'" target="_blank"
                  class="text-xs text-gray-400 hover:underline">{{ _('common.history') }}</a>
             </td>
@@ -260,6 +262,40 @@
     </div>
   </div>
 
+  <!-- Stocktaking Modal -->
+  <div x-show="showStocktakingModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-sm p-6" @click.outside="showStocktakingModal = false">
+      <h2 class="text-lg font-bold mb-1">{{ _('manage.stocktaking_title') }}</h2>
+      <p class="text-xs text-gray-500 mb-1"
+         x-text="stocktakingForm.name + ' (' + stocktakingForm.ean + ')'"></p>
+      <p class="text-sm text-gray-600 mb-4">
+        {{ _('products.col_stock') }}: <span class="font-semibold" x-text="stocktakingForm.current"></span>
+      </p>
+      <div x-show="stocktakingError" class="mb-3 bg-red-100 text-red-700 p-2 rounded text-sm" x-text="stocktakingError"></div>
+      <form @submit.prevent="doStocktaking()" class="space-y-3">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('manage.label_stock_count') }}</label>
+          <input type="number" x-model="stocktakingForm.count" required min="0"
+                 placeholder="{{ _('manage.placeholder_stock_count') }}"
+                 class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('common.note_optional') }}</label>
+          <input type="text" x-model="stocktakingForm.note" placeholder="{{ _('manage.placeholder_reason') }}"
+                 class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" @click="showStocktakingModal = false"
+                  class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">{{ _('common.cancel') }}</button>
+          <button type="submit" :disabled="submitting"
+                  class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
+            {{ _('manage.btn_set_stock') }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Stock Adjustment Modal -->
   <div x-show="showStockModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
     <div class="bg-white rounded-lg shadow-xl w-full max-w-sm p-6" @click.outside="showStockModal = false">
@@ -329,6 +365,11 @@ function productManage() {
     stockError: null,
     stockForm: { ean: '', name: '', current: 0, delta: '', note: '' },
 
+    // Stocktaking modal
+    showStocktakingModal: false,
+    stocktakingError: null,
+    stocktakingForm: { ean: '', name: '', current: 0, count: '', note: '' },
+
     async init() {
       this.loading = true;
       this.error = null;
@@ -381,6 +422,12 @@ function productManage() {
       this.stockForm = { ean: p.ean, name: p.name, current: p.stock, delta: '', note: '' };
       this.stockError = null;
       this.showStockModal = true;
+    },
+
+    openStocktakingModal(p) {
+      this.stocktakingForm = { ean: p.ean, name: p.name, current: p.stock, count: p.stock, note: '' };
+      this.stocktakingError = null;
+      this.showStocktakingModal = true;
     },
 
     async createProduct() {
@@ -455,6 +502,30 @@ function productManage() {
         await this.init();
       } catch (e) {
         this.stockError = e.message;
+      } finally {
+        this.submitting = false;
+      }
+    },
+
+    async doStocktaking() {
+      this.submitting = true;
+      this.stocktakingError = null;
+      try {
+        const r = await apiFetch(`/api/v1/products/${this.stocktakingForm.ean}/stocktaking`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            count: parseInt(this.stocktakingForm.count),
+            note: this.stocktakingForm.note || null,
+          }),
+        });
+        const data = await r.json();
+        if (!r.ok) { this.stocktakingError = data.detail || 'Error'; return; }
+        this.showStocktakingModal = false;
+        this.flashSuccess('Stock set.');
+        await this.init();
+      } catch (e) {
+        this.stocktakingError = e.message;
       } finally {
         this.submitting = false;
       }

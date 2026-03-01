@@ -94,6 +94,12 @@
   "manage.placeholder_reason":  "Grund für die Änderung",
   "manage.btn_update_stock":    "Bestand aktualisieren",
 
+  "manage.stocktaking_title":     "Inventur",
+  "manage.stocktaking_link":      "inventur",
+  "manage.label_stock_count":     "Tatsächlicher Bestand",
+  "manage.btn_set_stock":         "Bestand setzen",
+  "manage.placeholder_stock_count": "z.B. 24",
+
   "manage.confirm_remove_alias": "Alias {ean} entfernen?",
 
   "machines.title":          "Maschinen & Geräte",

@@ -94,6 +94,12 @@
   "manage.placeholder_reason":  "Reason for change",
   "manage.btn_update_stock":    "Update Stock",
 
+  "manage.stocktaking_title":     "Stocktaking",
+  "manage.stocktaking_link":      "stocktake",
+  "manage.label_stock_count":     "Actual count",
+  "manage.btn_set_stock":         "Set Stock",
+  "manage.placeholder_stock_count": "e.g. 24",
+
   "manage.confirm_remove_alias": "Remove alias {ean}?",
 
   "machines.title":          "Machines & Devices",
