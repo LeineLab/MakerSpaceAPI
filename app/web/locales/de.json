@@ -178,7 +178,7 @@
   "bankomat.statement_to":        "Bis",
   "bankomat.statement_generate":  "PDF erstellen",
   "bankomat.statement_hint":      "Nur vollständige Monate in der Vergangenheit. Mehrere Monate erzeugen eine ZIP-Datei.",
-  "bankomat.btn_statement_all":   "Gesamtübersicht",
+  "bankomat.btn_statement_all":   "Übergreifende Kontoauszüge",
   "bankomat.statement_all_subtitle": "Alle Buchungsziele zusammen",
 
   "rentals.title":         "Verleihsystem",

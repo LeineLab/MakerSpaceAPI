@@ -56,7 +56,8 @@ def _statement_labels(lang: str) -> dict:
             "col_description": "Beschreibung",
             "col_amount": "Bestandsänderung",
             "generated": "Dieser Auszug wurde generiert am",
-            "title_all": "Gesamtübersicht Bankomat",
+            "title_prefix": "Kontoauszug",
+            "title_all": "Kontoauszug: Gesamtübersicht",
         }
     return {
         "period_prefix": "From",
@@ -71,7 +72,8 @@ def _statement_labels(lang: str) -> dict:
         "col_description": "Description",
         "col_amount": "Amount",
         "generated": "This statement was generated on",
-        "title_all": "Combined Bankomat Statement",
+        "title_prefix": "Statement",
+        "title_all": "Statement: Combined",
     }
 
 
@@ -114,8 +116,9 @@ def _compile_month_pdf(target: BookingTarget, year: int, month: int, lang: str, 
         for tx in txs
     ]
 
+    labels = _statement_labels(lang)
     data = {
-        "title": target.name,
+        "title": f"{labels['title_prefix']}: {target.name}",
         "period_start": period_start.strftime("%d.%m.%Y"),
         "period_end": period_end.strftime("%d.%m.%Y"),
         "balance_old": f"{balance_old:.2f} {settings.CURRENCY}",
@@ -123,7 +126,7 @@ def _compile_month_pdf(target: BookingTarget, year: int, month: int, lang: str, 
         "sum_inflows": f"{sum_inflows:.2f} {settings.CURRENCY}",
         "sum_outflows": f"{sum_outflows:.2f} {settings.CURRENCY}",
         "items": items,
-        "labels": _statement_labels(lang),
+        "labels": labels,
     }
 
     font_paths = [settings.TYPST_FONT_DIR] if settings.TYPST_FONT_DIR else []
