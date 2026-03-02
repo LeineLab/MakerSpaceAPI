@@ -6,8 +6,11 @@ Unified REST API and web frontend for makerspace NFC devices — machines, check
 
 - **Machine sessions** — NFC-authenticated machine access with per-minute billing and balance checks
 - **Product checkout** — EAN barcode scanning, alias EANs, stock tracking, full audit trail
-- **Bankomat (ATM)** — top-up, balance transfer between members, PIN-protected payout to booking targets
+- **Bankomat (ATM)** — top-up, balance transfer between members, PIN-protected payout to booking targets; PDF account statements per booking target
+- **Treasurer management** — users with a PIN set are treasurers; PIN can be set/cleared by admins; `has_pin` exposed in all user API responses
 - **Rental system** — UHF RFID item tracking with per-user permissions
+- **User self-service** — logged-in users can view their own balance, transaction history, current rentals and authorised machines at `/me`
+- **OIDC self-service card linking** — devices generate a short-lived QR link; the user scans it and logs in via OIDC to link their NFC card to their account without admin intervention
 - **Admin web UI** — dashboard, machine registration, product/inventory management, user list, booking targets, rentals; i18n (English / German, detected from browser)
 - **OIDC login** — admin group and optional product-manager group via configurable OIDC claims
 - **Device API tokens** — machines authenticate with bearer tokens; separate checkout-only restriction
@@ -62,9 +65,12 @@ All settings are loaded from environment variables or a `.env` file.
 | `OIDC_GROUP_CLAIM` | `groups` | JWT claim that contains group memberships |
 | `OIDC_ADMIN_GROUP` | `makerspace-admins` | Group name that grants full admin access |
 | `OIDC_PRODUCT_MANAGER_GROUP` | *(empty)* | Group name for product-manager role (optional, see below) |
+| `OIDC_LINK_UPDATE_NAME` | `false` | Set `true` to overwrite a user's display name from OIDC claims on self-service card linking |
 | `CHECKOUT_BOX_SLUGS` | *(empty)* | Comma-separated machine slugs restricted to checkout operations |
 
 For Docker Compose, also set `DB_ROOT_PASSWORD`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`.
+
+> **OIDC redirect URIs:** Register both `{BASE_URL}/auth/callback` and `{BASE_URL}/auth/connect/callback` as allowed redirect URIs in your OIDC provider.
 
 ### Product-manager role
 
@@ -77,6 +83,12 @@ Set `OIDC_PRODUCT_MANAGER_GROUP` to a group name to allow members of that group 
 Admins log in via OIDC. After a successful OIDC callback, the server issues a signed HS256 JWT (8-hour expiry) stored in an `auth_token` httpOnly cookie. The JWT encodes the OIDC claims including group membership, which determines admin/product-manager access. The cookie is sent automatically by the browser on all same-origin requests.
 
 The frontend can query `GET /auth/me` to retrieve the current user's identity and role flags (`is_admin`, `is_product_manager`) without exposing the token.
+
+Any user whose OIDC account is linked to an NFC card can log in and view their own account at `/me`.
+
+### Self-service card linking
+
+A device (e.g. the checkout terminal) calls `POST /api/v1/users/{nfc_id}/connect-link` to generate a 15-minute signed URL. The URL is typically shown as a QR code. The user scans it, is redirected to the OIDC provider, and after a successful login their NFC card is linked to their OIDC account. No admin action is required.
 
 ### Devices (API tokens)
 
@@ -92,11 +104,16 @@ All device-facing endpoints live under `/api/v1`. Full interactive docs at `/api
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/v1/users/nfc/{nfc_id}` | Device | Look up user by NFC card UID |
+| `GET` | `/api/v1/users/nfc/{nfc_id}` | Device | Look up user by NFC card UID; includes `has_pin` |
 | `POST` | `/api/v1/users` | Checkout device | Register new NFC card |
 | `GET` | `/api/v1/users` | Admin | List all users |
-| `GET` | `/api/v1/users/{nfc_id}` | Admin | Get user details |
+| `GET` | `/api/v1/users/{nfc_id}` | Admin | Get user details; includes `has_pin` |
 | `PUT` | `/api/v1/users/{nfc_id}/oidc` | Admin | Link OIDC subject to card |
+| `POST` | `/api/v1/users/{nfc_id}/connect-link` | Device | Generate 15-min self-service card-linking URL |
+| `GET` | `/api/v1/users/me` | OIDC session | Logged-in user's profile and balance |
+| `GET` | `/api/v1/users/me/transactions` | OIDC session | Paginated transaction history (`?limit=&offset=`) |
+| `GET` | `/api/v1/users/me/rentals` | OIDC session | Currently rented items |
+| `GET` | `/api/v1/users/me/machines` | OIDC session | Authorised machines with pricing |
 
 ### Machines
 
@@ -105,9 +122,10 @@ All device-facing endpoints live under `/api/v1`. Full interactive docs at `/api
 | `GET/POST` | `/api/v1/machines` | Admin | List / register machines |
 | `GET/PUT/DELETE` | `/api/v1/machines/{slug}` | Admin | Get / update / deactivate |
 | `POST` | `/api/v1/machines/{slug}/token` | Admin | Rotate API token |
-| `*` | `/api/v1/machines/{slug}/admin-groups` | Admin | Manage machine sub-admins |
-| `*` | `/api/v1/machines/{slug}/authorizations` | Machine manager | Grant / update / revoke user access |
+| `GET/POST/DELETE` | `/api/v1/machines/{slug}/admins` | Admin | Manage per-machine sub-admins (by OIDC sub) |
+| `GET/POST/PUT/DELETE` | `/api/v1/machines/{slug}/authorizations` | Machine manager | Grant / update / revoke user access |
 | `GET` | `/api/v1/machines/{slug}/authorize/{nfc_id}` | Device | Check authorisation & pricing |
+| `GET` | `/api/v1/machines/my` | OIDC session | Machines the current user manages |
 
 ### Sessions
 
@@ -129,7 +147,7 @@ All device-facing endpoints live under `/api/v1`. Full interactive docs at `/api
 | `POST` | `/api/v1/products/{ean}/stocktaking` | Product manager | Set absolute stock |
 | `GET` | `/api/v1/products/{ean}/audit` | Product manager | Change history |
 | `GET` | `/api/v1/products/{ean}/popularity` | Product manager | Purchase count (last N days) |
-| `*` | `/api/v1/products/{ean}/aliases` | Product manager | Manage alias EANs |
+| `GET/POST/DELETE` | `/api/v1/products/{ean}/aliases` | Product manager | Manage alias EANs |
 | `POST` | `/api/v1/products/{ean}/purchase` | Checkout device | Purchase product |
 | `GET` | `/api/v1/categories` | Public | List product categories |
 | `POST` | `/api/v1/categories` | Product manager | Create category |
@@ -146,7 +164,10 @@ All device-facing endpoints live under `/api/v1`. Full interactive docs at `/api
 | `POST` | `/api/v1/bankomat/transfer` | Device | Transfer balance between users |
 | `POST` | `/api/v1/bankomat/payout` | Device | Withdraw from target (PIN required) |
 | `GET` | `/api/v1/bankomat/transactions/{nfc_id}` | Device | Recent transactions for a user |
-| `POST` | `/api/v1/bankomat/pin` | Admin | Set user PIN |
+| `POST` | `/api/v1/bankomat/pin` | Admin | Set or update user PIN (bcrypt stored) |
+| `DELETE` | `/api/v1/bankomat/pin/{nfc_id}` | Admin | Clear user PIN (removes treasurer status) |
+
+Users with a PIN set are considered treasurers and are shown in a dedicated section of the Bankomat admin page. The `has_pin` boolean field is included in all user API responses.
 
 ### Rentals
 
@@ -159,7 +180,7 @@ All device-facing endpoints live under `/api/v1`. Full interactive docs at `/api
 | `POST` | `/api/v1/rentals` | Device | Rent an item |
 | `DELETE` | `/api/v1/rentals/{id}` | Device | Return item |
 | `GET` | `/api/v1/rentals/active` | Admin | List all currently rented items |
-| `*` | `/api/v1/rentals/permissions/{nfc_id}` | Admin | Grant / revoke permission |
+| `GET/POST/DELETE` | `/api/v1/rentals/permissions/{nfc_id}` | Admin | Grant / revoke rental permission |
 
 ## Database migrations
 
@@ -175,16 +196,17 @@ alembic revision --autogenerate -m "describe the change"
 
 ## Web UI
 
-The admin frontend is served at `/` and uses Tailwind CSS with Alpine.js. Jinja2 renders the HTML shell and navigation; Alpine.js components fetch data from the `/api/v1/` REST endpoints directly. Language is auto-detected from the browser's `Accept-Language` header with English as the fallback. German and English are supported.
+The frontend is served at `/` and uses Tailwind CSS with Alpine.js. Jinja2 renders the HTML shell and navigation; Alpine.js components fetch data from the `/api/v1/` REST endpoints directly. Language is auto-detected from the browser's `Accept-Language` header with English as the fallback. German and English are supported.
 
 | Path | Access | Description |
 |---|---|---|
 | `/` | Public | Landing page |
 | `/products` | Public | Product catalogue |
+| `/me` | OIDC session | Self-service: balance, transactions, rentals, authorised machines |
 | `/dashboard` | Admin | Stats overview |
-| `/machines` | Admin | Machine list and registration |
+| `/machines` | Admin / machine sub-admin | Machine list, registration, authorisations |
 | `/users` | Admin | Member list |
-| `/bankomat` | Admin | Booking targets |
+| `/bankomat` | Admin | Booking targets and treasurer management |
 | `/rentals` | Admin | Rental items and permissions |
 | `/products/manage` | Admin / Product manager | Product, category and alias management |
 
