@@ -32,10 +32,10 @@
   "index.title":         "MakerSpace NFC System",
   "index.subtitle":      "Unified API for machines, checkout, ATM and rental station.",
   "index.btn_products":  "View Products",
-  "index.btn_login":     "Admin Login",
+  "index.btn_login":     "Login",
   "index.btn_dashboard": "Dashboard",
 
-  "login.title":    "Admin Login",
+  "login.title":    "Login",
   "login.subtitle": "Sign in with your organisation account via OIDC.",
   "login.btn":      "Continue with OIDC",
 
