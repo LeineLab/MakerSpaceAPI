@@ -32,6 +32,7 @@
       <div class="hidden md:flex items-center gap-6 flex-1">
         <a href="/products" class="hover:text-gray-300 text-sm">{{ _('nav.products') }}</a>
         {% if user %}
+          <a href="/me"       class="hover:text-gray-300 text-sm">{{ _('nav.me') }}</a>
           <a href="/machines" class="hover:text-gray-300 text-sm">{{ _('nav.machines') }}</a>
           {% if is_admin(user) %}
             <a href="/dashboard"   class="hover:text-gray-300 text-sm">{{ _('nav.dashboard') }}</a>
@@ -78,6 +79,7 @@
       <a href="/products"
          class="hover:text-gray-300 text-sm py-2">{{ _('nav.products') }}</a>
       {% if user %}
+        <a href="/me"       class="hover:text-gray-300 text-sm py-2">{{ _('nav.me') }}</a>
         <a href="/machines" class="hover:text-gray-300 text-sm py-2">{{ _('nav.machines') }}</a>
         {% if is_admin(user) %}
           <a href="/dashboard"   class="hover:text-gray-300 text-sm py-2">{{ _('nav.dashboard') }}</a>

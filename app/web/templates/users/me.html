@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% block title %}{{ _('me.title') }} – MakerSpaceAPI{% endblock %}
+{% block content %}
+
+<div x-data="mePage()" x-cloak>
+
+  <!-- No card linked -->
+  <template x-if="!loading && !profile">
+    <div class="bg-white rounded-lg shadow p-10 text-center text-gray-500 text-sm">
+      {{ _('me.no_card') }}
+    </div>
+  </template>
+
+  <template x-if="profile">
+    <div>
+
+      <!-- Profile card -->
+      <div class="bg-white rounded-lg shadow p-6 mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 class="text-2xl font-bold mb-1" x-text="profile.name || '—'"></h1>
+          <p class="text-xs text-gray-400 font-mono">{{ _('me.card_id') }}: <span x-text="profile.id"></span></p>
+        </div>
+        <div class="text-right">
+          <div class="text-3xl font-bold tabular-nums"
+               :class="parseFloat(profile.balance) < 1 ? 'text-red-500' : parseFloat(profile.balance) < 5 ? 'text-yellow-600' : 'text-green-600'"
+               x-text="parseFloat(profile.balance).toFixed(2) + ' €'"></div>
+          <div class="text-xs text-gray-400 mt-1">{{ _('me.balance') }}</div>
+        </div>
+      </div>
+
+      <!-- Two-column: rentals + machines -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+
+        <!-- Currently Rented -->
+        <div class="bg-white rounded-lg shadow">
+          <div class="px-5 py-4 border-b">
+            <h2 class="font-semibold">{{ _('me.rentals_title') }}</h2>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <tbody>
+                <template x-if="loadingRentals">
+                  <tr><td class="px-4 py-6 text-center text-gray-400">Loading…</td></tr>
+                </template>
+                <template x-if="!loadingRentals && rentals.length === 0">
+                  <tr><td class="px-4 py-6 text-center text-gray-400">{{ _('me.rentals_empty') }}</td></tr>
+                </template>
+                <template x-for="r in rentals" :key="r.rental_id">
+                  <tr class="border-t hover:bg-gray-50">
+                    <td class="px-4 py-2 font-medium" x-text="r.item_name"></td>
+                    <td class="px-4 py-2 text-xs text-gray-400 text-right"
+                        x-text="r.rented_at ? r.rented_at.substring(0,16).replace('T',' ') : ''"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Authorized Machines -->
+        <div class="bg-white rounded-lg shadow">
+          <div class="px-5 py-4 border-b">
+            <h2 class="font-semibold">{{ _('me.machines_title') }}</h2>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <tbody>
+                <template x-if="loadingMachines">
+                  <tr><td class="px-4 py-6 text-center text-gray-400">Loading…</td></tr>
+                </template>
+                <template x-if="!loadingMachines && machines.length === 0">
+                  <tr><td class="px-4 py-6 text-center text-gray-400">{{ _('me.machines_empty') }}</td></tr>
+                </template>
+                <template x-for="m in machines" :key="m.machine_id">
+                  <tr class="border-t hover:bg-gray-50">
+                    <td class="px-4 py-2 font-medium">
+                      <a :href="'/machines/' + m.machine_slug" class="hover:underline text-blue-600"
+                         x-text="m.machine_name"></a>
+                    </td>
+                    <td class="px-4 py-2 text-xs text-gray-400 text-right"
+                        x-text="parseFloat(m.price_per_minute) > 0
+                          ? parseFloat(m.price_per_minute).toFixed(2) + ' €/min'
+                          : {{ _('me.free') | tojson }}"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Transaction history -->
+      <div class="bg-white rounded-lg shadow">
+        <div class="px-5 py-4 border-b">
+          <h2 class="font-semibold">{{ _('me.transactions_title') }}</h2>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
+              <tr>
+                <th class="px-4 py-2 text-left">{{ _('me.col_date') }}</th>
+                <th class="px-4 py-2 text-left">{{ _('me.col_type') }}</th>
+                <th class="px-4 py-2 text-left">{{ _('me.col_note') }}</th>
+                <th class="px-4 py-2 text-right">{{ _('me.col_amount') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-if="loadingTx">
+                <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400">Loading…</td></tr>
+              </template>
+              <template x-if="!loadingTx && transactions.length === 0">
+                <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400">{{ _('me.tx_empty') }}</td></tr>
+              </template>
+              <template x-for="t in transactions" :key="t.id">
+                <tr class="border-t hover:bg-gray-50">
+                  <td class="px-4 py-2 text-xs text-gray-500 whitespace-nowrap"
+                      x-text="t.created_at ? t.created_at.substring(0,16).replace('T',' ') : ''"></td>
+                  <td class="px-4 py-2 text-xs" x-text="txLabel(t.type)"></td>
+                  <td class="px-4 py-2 text-xs text-gray-500"
+                      x-text="t.note || t.machine_name || '—'"></td>
+                  <td class="px-4 py-2 text-right font-medium tabular-nums text-sm"
+                      :class="parseFloat(t.amount) >= 0 ? 'text-green-600' : 'text-red-500'"
+                      x-text="(parseFloat(t.amount) >= 0 ? '+' : '') + parseFloat(t.amount).toFixed(2) + ' €'"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <div x-show="!loadingTx && hasMore" class="px-5 py-3 border-t text-center">
+          <button @click="loadMoreTx()" :disabled="loadingMoreTx"
+                  class="text-sm text-blue-600 hover:underline disabled:opacity-50">
+            <span x-show="!loadingMoreTx">{{ _('me.load_more') }}</span>
+            <span x-show="loadingMoreTx">…</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </template>
+
+</div>
+
+<script>
+const _TX_LABELS = {
+  'purchase':              {{ _('me.type_purchase') | tojson }},
+  'topup':                 {{ _('me.type_topup') | tojson }},
+  'transfer_in':           {{ _('me.type_transfer_in') | tojson }},
+  'transfer_out':          {{ _('me.type_transfer_out') | tojson }},
+  'machine_login':         {{ _('me.type_machine_login') | tojson }},
+  'machine_usage':         {{ _('me.type_machine_usage') | tojson }},
+  'booking_target_topup':  {{ _('me.type_btt') | tojson }},
+  'booking_target_payout': {{ _('me.type_btp') | tojson }},
+  'admin_adjustment':      {{ _('me.type_admin') | tojson }},
+};
+
+function mePage() {
+  return {
+    profile: null,
+    rentals: [],
+    machines: [],
+    transactions: [],
+    loading: true,
+    loadingRentals: true,
+    loadingMachines: true,
+    loadingTx: true,
+    loadingMoreTx: false,
+    txOffset: 0,
+    txLimit: 50,
+    hasMore: false,
+
+    async init() {
+      try {
+        const r = await apiFetch('/api/v1/users/me');
+        if (r.status === 404) { this.loading = false; return; }
+        if (!r.ok) throw new Error();
+        this.profile = await r.json();
+      } catch {
+        this.loading = false;
+        return;
+      }
+      this.loading = false;
+      await Promise.all([this.loadRentals(), this.loadMachines(), this.loadTx()]);
+    },
+
+    async loadRentals() {
+      this.loadingRentals = true;
+      try {
+        const r = await apiFetch('/api/v1/users/me/rentals');
+        this.rentals = r.ok ? await r.json() : [];
+      } finally {
+        this.loadingRentals = false;
+      }
+    },
+
+    async loadMachines() {
+      this.loadingMachines = true;
+      try {
+        const r = await apiFetch('/api/v1/users/me/machines');
+        this.machines = r.ok ? await r.json() : [];
+      } finally {
+        this.loadingMachines = false;
+      }
+    },
+
+    async loadTx() {
+      this.loadingTx = true;
+      try {
+        const r = await apiFetch(`/api/v1/users/me/transactions?limit=${this.txLimit}&offset=${this.txOffset}`);
+        if (!r.ok) return;
+        const data = await r.json();
+        this.transactions = [...this.transactions, ...data];
+        this.hasMore = data.length === this.txLimit;
+        this.txOffset += data.length;
+      } finally {
+        this.loadingTx = false;
+      }
+    },
+
+    async loadMoreTx() {
+      this.loadingMoreTx = true;
+      await this.loadTx();
+      this.loadingMoreTx = false;
+    },
+
+    txLabel(type) {
+      return _TX_LABELS[type] || type;
+    },
+  }
+}
+</script>
+{% endblock %}

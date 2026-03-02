@@ -21,3 +21,13 @@ class TransactionResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class MeTransactionResponse(BaseModel):
+    """Enriched transaction for the self-service /users/me/transactions endpoint."""
+    id: int
+    amount: Decimal = Field(examples=[Decimal("1.50")])
+    type: TransactionType
+    note: Optional[str]
+    machine_name: Optional[str]
+    created_at: datetime

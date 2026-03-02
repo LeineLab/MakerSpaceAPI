@@ -161,3 +161,15 @@ def rentals_page(
     admin: dict = Depends(require_admin_user),
 ):
     return templates.TemplateResponse(request, "rentals/items.html", _ctx(request, admin))
+
+
+# ---------------------------------------------------------------------------
+# Self-service: My Account
+# ---------------------------------------------------------------------------
+
+@router.get("/me", response_class=HTMLResponse)
+def me_page(
+    request: Request,
+    user: dict = Depends(require_session_user),
+):
+    return templates.TemplateResponse(request, "users/me.html", _ctx(request, user))

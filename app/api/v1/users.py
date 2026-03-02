@@ -1,22 +1,134 @@
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
-from app.auth.deps import get_current_device, require_admin_user, require_checkout_device
+from app.auth.deps import get_current_device, require_admin_user, require_checkout_device, require_session_user
 from app.auth.jwt import create_link_token
 from app.config import settings
 from app.database import get_db
-from app.models.machine import Machine
+from app.models.machine import Machine, MachineAuthorization
+from app.models.rental import Rental
+from app.models.transaction import Transaction
 from app.models.user import User
 from app.schemas.common import MessageResponse
-from app.schemas.user import LinkTokenResponse, UserAuthResponse, UserCreate, UserLinkOidc, UserResponse, UserUpdate
+from app.schemas.transaction import MeTransactionResponse
+from app.schemas.user import (
+    LinkTokenResponse, UserAuthResponse, UserCreate, UserLinkOidc,
+    UserMeMachineResponse, UserMeRentalResponse, UserResponse, UserUpdate,
+)
 
 router = APIRouter()
 
 _pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+
+# ---------------------------------------------------------------------------
+# Self-service: GET /users/me and sub-resources
+# ---------------------------------------------------------------------------
+
+def _me_user(user: dict, db: Session) -> User:
+    """Return the DB user for the current OIDC session, or raise 404."""
+    db_user = db.query(User).filter(User.oidc_sub == user.get("sub")).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="No NFC card linked to your account")
+    return db_user
+
+
+@router.get("/me", response_model=UserResponse)
+def get_me(
+    user: dict = Depends(require_session_user),
+    db: Session = Depends(get_db),
+):
+    """Return the current user's own profile (requires a linked NFC card)."""
+    return _me_user(user, db)
+
+
+@router.get("/me/transactions", response_model=list[MeTransactionResponse])
+def get_me_transactions(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    user: dict = Depends(require_session_user),
+    db: Session = Depends(get_db),
+):
+    """Transaction history for the currently logged-in user."""
+    db_user = _me_user(user, db)
+    txns = (
+        db.query(Transaction)
+        .filter(Transaction.user_id == db_user.id)
+        .order_by(Transaction.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return [
+        MeTransactionResponse(
+            id=t.id,
+            amount=t.amount,
+            type=t.type,
+            note=t.note,
+            machine_name=t.machine.name if t.machine else None,
+            created_at=t.created_at,
+        )
+        for t in txns
+    ]
+
+
+@router.get("/me/rentals", response_model=list[UserMeRentalResponse])
+def get_me_rentals(
+    user: dict = Depends(require_session_user),
+    db: Session = Depends(get_db),
+):
+    """Currently rented items for the logged-in user."""
+    db_user = _me_user(user, db)
+    rentals = (
+        db.query(Rental)
+        .filter(Rental.user_id == db_user.id, Rental.returned_at.is_(None))
+        .order_by(Rental.rented_at.desc())
+        .all()
+    )
+    return [
+        UserMeRentalResponse(
+            rental_id=r.id,
+            item_name=r.item.name,
+            uhf_tid=r.item.uhf_tid,
+            rented_at=r.rented_at,
+        )
+        for r in rentals
+    ]
+
+
+@router.get("/me/machines", response_model=list[UserMeMachineResponse])
+def get_me_machines(
+    user: dict = Depends(require_session_user),
+    db: Session = Depends(get_db),
+):
+    """Machines the logged-in user is authorized to use."""
+    db_user = _me_user(user, db)
+    auths = (
+        db.query(MachineAuthorization)
+        .join(Machine, Machine.id == MachineAuthorization.machine_id)
+        .filter(MachineAuthorization.user_id == db_user.id, Machine.active.is_(True))
+        .order_by(Machine.name)
+        .all()
+    )
+    return [
+        UserMeMachineResponse(
+            machine_id=a.machine.id,
+            machine_name=a.machine.name,
+            machine_slug=a.machine.slug,
+            price_per_login=a.price_per_login,
+            price_per_minute=a.price_per_minute,
+            booking_interval=a.booking_interval,
+        )
+        for a in auths
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Device endpoints
+# ---------------------------------------------------------------------------
 
 @router.post("/{nfc_id}/connect-link", response_model=LinkTokenResponse)
 def generate_connect_link(

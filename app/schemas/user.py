@@ -57,3 +57,19 @@ class UserPinVerify(BaseModel):
 
 class LinkTokenResponse(BaseModel):
     url: str
+
+
+class UserMeRentalResponse(BaseModel):
+    rental_id: int
+    item_name: str
+    uhf_tid: str
+    rented_at: datetime
+
+
+class UserMeMachineResponse(BaseModel):
+    machine_id: int
+    machine_name: str
+    machine_slug: str
+    price_per_login: Decimal = Field(ge=0, examples=[Decimal("0.00")])
+    price_per_minute: Decimal = Field(ge=0, examples=[Decimal("0.05")])
+    booking_interval: int
