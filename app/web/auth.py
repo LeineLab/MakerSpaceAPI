@@ -70,15 +70,17 @@ async def connect_callback(request: Request, db: Session = Depends(get_db)):
              "success": False, "error": msg},
         )
 
+    _ = get_translator(locale)
+
     link_token = request.session.pop("_link_token", None)
     nfc_id = verify_link_token(link_token)
     if nfc_id is None:
-        return _error("Session expired or link invalid. Please scan the QR code again.")
+        return _error(_("connect.err_session"))
 
     try:
         token = await oauth.oidc.authorize_access_token(request)
     except Exception:
-        return _error("OIDC authentication failed.")
+        return _error(_("connect.err_oidc"))
 
     user_info = token.get("userinfo")
     if not user_info:
@@ -86,17 +88,17 @@ async def connect_callback(request: Request, db: Session = Depends(get_db)):
 
     sub = user_info.get("sub")
     if not sub:
-        return _error("No sub claim in OIDC response.")
+        return _error(_("connect.err_no_sub"))
 
     user = db.query(User).filter(User.id == nfc_id).first()
     if not user:
-        return _error("NFC user not found.")
+        return _error(_("connect.err_user_not_found"))
     if user.oidc_sub:
-        return _error("This card is already linked to an account.")
+        return _error(_("connect.err_card_taken"))
 
     existing = db.query(User).filter(User.oidc_sub == sub).first()
     if existing:
-        return _error("This OIDC account is already linked to another card.")
+        return _error(_("connect.err_oidc_taken"))
 
     user.oidc_sub = sub
     if settings.OIDC_LINK_UPDATE_NAME:

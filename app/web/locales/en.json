@@ -245,10 +245,16 @@
   "me.col_rented_since":   "Since",
   "me.col_per_min":        "Rate",
 
-  "connect.title_success":    "Card Linked",
-  "connect.title_failure":    "Link Failed",
-  "connect.heading_success":  "Card Linked!",
-  "connect.body_success_name":"Welcome, {name}. Your NFC card is now linked to your account.",
-  "connect.body_success":     "Your NFC card is now linked to your account.",
-  "connect.heading_failure":  "Linking Failed"
+  "connect.title_success":      "Card Linked",
+  "connect.title_failure":      "Link Failed",
+  "connect.heading_success":    "Card Linked!",
+  "connect.body_success_name":  "Welcome, {name}. Your NFC card is now linked to your account.",
+  "connect.body_success":       "Your NFC card is now linked to your account.",
+  "connect.heading_failure":    "Linking Failed",
+  "connect.err_session":        "Session expired or link invalid. Please scan the QR code again.",
+  "connect.err_oidc":           "OIDC authentication failed.",
+  "connect.err_no_sub":         "No sub claim in OIDC response.",
+  "connect.err_user_not_found": "NFC user not found.",
+  "connect.err_card_taken":     "This card is already linked to an account.",
+  "connect.err_oidc_taken":     "This OIDC account is already linked to another card."
 }
