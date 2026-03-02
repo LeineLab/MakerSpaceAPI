@@ -72,6 +72,14 @@ class ProductAuditResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class CategoryCreate(BaseModel):
+    name: str
+
+
+class PurchaseBody(BaseModel):
+    nfc_id: int
+
+
 class ProductPurchase(BaseModel):
     nfc_id: int
     ean: str

@@ -211,7 +211,7 @@ def test_link_oidc_replaces_existing(admin_client, test_user, db):
 
 def test_link_oidc_missing_sub(admin_client, test_user):
     resp = admin_client.put(f"/api/v1/users/{test_user.id}/oidc", json={})
-    assert resp.status_code == 400
+    assert resp.status_code == 422  # Pydantic validation: oidc_sub is required
 
 
 def test_link_oidc_sub_already_taken(admin_client, test_user, db):

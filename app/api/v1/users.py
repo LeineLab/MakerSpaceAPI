@@ -11,7 +11,7 @@ from app.database import get_db
 from app.models.machine import Machine
 from app.models.user import User
 from app.schemas.common import MessageResponse
-from app.schemas.user import LinkTokenResponse, UserAuthResponse, UserCreate, UserResponse, UserUpdate
+from app.schemas.user import LinkTokenResponse, UserAuthResponse, UserCreate, UserLinkOidc, UserResponse, UserUpdate
 
 router = APIRouter()
 
@@ -113,7 +113,7 @@ def update_user(
 @router.put("/{nfc_id}/oidc", response_model=UserResponse)
 def link_oidc(
     nfc_id: int,
-    body: dict,
+    body: UserLinkOidc,
     admin: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ):
@@ -121,9 +121,7 @@ def link_oidc(
     user = db.query(User).filter(User.id == nfc_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    oidc_sub = body.get("oidc_sub")
-    if not oidc_sub:
-        raise HTTPException(status_code=400, detail="oidc_sub is required")
+    oidc_sub = body.oidc_sub
     existing = db.query(User).filter(User.oidc_sub == oidc_sub, User.id != nfc_id).first()
     if existing:
         raise HTTPException(status_code=409, detail="OIDC sub already linked to another user")

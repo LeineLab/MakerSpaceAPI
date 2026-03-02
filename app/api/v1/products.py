@@ -19,6 +19,7 @@ from app.models.transaction import Transaction, TransactionType
 from app.models.user import User
 from app.schemas.common import MessageResponse
 from app.schemas.product import (
+    CategoryCreate,
     ProductAliasCreate,
     ProductAliasResponse,
     ProductAuditResponse,
@@ -29,6 +30,7 @@ from app.schemas.product import (
     ProductStockAdjust,
     ProductStocktaking,
     ProductUpdate,
+    PurchaseBody,
 )
 
 router = APIRouter()
@@ -78,12 +80,12 @@ def list_categories(db: Session = Depends(get_db)):
 
 @router.post("/categories", response_model=str, status_code=201)
 def create_category(
-    body: dict,
+    body: CategoryCreate,
     user: dict = Depends(require_product_manager_user),
     db: Session = Depends(get_db),
 ):
     """Create a new product category (product manager only)."""
-    name = (body.get("name") or "").strip()
+    name = body.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Category name cannot be empty")
     if db.query(ProductCategory).filter(ProductCategory.name == name).first():
@@ -333,14 +335,12 @@ def delete_alias(
 @router.post("/products/{ean}/purchase")
 def purchase_product(
     ean: str,
-    body: dict,
+    body: PurchaseBody,
     device: Machine = Depends(require_checkout_device),
     db: Session = Depends(get_db),
 ):
     """Buy a product (checkout device only). Deducts price from user's balance."""
-    nfc_id = body.get("nfc_id")
-    if not nfc_id:
-        raise HTTPException(status_code=400, detail="nfc_id required")
+    nfc_id = body.nfc_id
 
     product = _resolve_product(ean, db)
     if not product.active:
