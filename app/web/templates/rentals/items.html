@@ -210,8 +210,16 @@
       <form @submit.prevent="grantPermission()" class="space-y-4">
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('rentals.label_uid') }}</label>
-          <input type="number" x-model="permForm.nfc_id" required placeholder="{{ _('rentals.placeholder_uid') }}"
-                 class="w-full border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <select x-model="permForm.nfc_id" required
+                  class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="">— {{ _('machines.select_user') }} —</option>
+            <template x-for="u in permCandidates" :key="u.id">
+              <option :value="u.id" x-text="u.name + ' (' + u.id + ')'"></option>
+            </template>
+          </select>
+          <template x-if="!loadingUsers && permCandidates.length === 0">
+            <p class="text-xs text-gray-400 mt-1">{{ _('machines.no_users_available') }}</p>
+          </template>
         </div>
         <div class="flex justify-end gap-3 pt-2">
           <button type="button" @click="showPermModal = false"
@@ -233,6 +241,8 @@ function rentalPage() {
     items: [],
     activeRentals: [],
     permissions: [],
+    users: [],
+    loadingUsers: true,
     loading: true,
     error: null,
     showModal: false,
@@ -248,22 +258,30 @@ function rentalPage() {
     permError: null,
     permForm: { nfc_id: '' },
 
+    get permCandidates() {
+      const granted = new Set(this.permissions.map(p => p.user_id));
+      return this.users.filter(u => u.name && !granted.has(u.id));
+    },
+
     async init() {
       this.loading = true;
       this.error = null;
       try {
-        const [items, rentals, perms] = await Promise.all([
+        const [items, rentals, perms, users] = await Promise.all([
           apiFetch('/api/v1/rentals/items').then(r => r.ok ? r.json() : Promise.reject('items')),
           apiFetch('/api/v1/rentals/active').then(r => r.ok ? r.json() : Promise.reject('rentals')),
           apiFetch('/api/v1/rentals/permissions').then(r => r.ok ? r.json() : Promise.reject('perms')),
+          apiFetch('/api/v1/users').then(r => r.ok ? r.json() : []),
         ]);
         this.items = items;
         this.activeRentals = rentals;
         this.permissions = perms;
+        this.users = users;
       } catch (e) {
         this.error = 'Failed to load rental data';
       } finally {
         this.loading = false;
+        this.loadingUsers = false;
       }
     },
 
@@ -340,7 +358,7 @@ function rentalPage() {
         }
         this.showPermModal = false;
         this.permForm = { nfc_id: '' };
-        this.permissions.push(data);
+        await this.init();
       } catch (e) {
         if (e !== 'unauthenticated') this.permError = e.message;
       } finally {
