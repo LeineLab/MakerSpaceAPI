@@ -82,6 +82,33 @@ def require_checkout_device(
 
 
 # ---------------------------------------------------------------------------
+# Combined: device token OR admin session
+# ---------------------------------------------------------------------------
+
+def require_device_or_admin(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    db: Session = Depends(get_db),
+) -> Machine | dict:
+    """Accept either an active device API token or an admin OIDC session.
+
+    Returns the Machine object when authenticated via device token, or the
+    admin user dict when authenticated via OIDC session.
+    """
+    if credentials is not None:
+        token = credentials.credentials
+        # Try as machine API token first (verify_admin_jwt returns None on non-JWT input)
+        for m in db.query(Machine).filter(Machine.active.is_(True)).all():
+            if verify_api_token(token, m.api_token_hash):
+                return m
+    # Try admin session (cookie or Bearer JWT)
+    user = get_session_user(request)
+    if user and is_admin(user):
+        return user
+    raise HTTPException(status_code=401, detail="Device token or admin session required")
+
+
+# ---------------------------------------------------------------------------
 # Combined: admin OR machine sub-admin for a specific machine
 # ---------------------------------------------------------------------------
 

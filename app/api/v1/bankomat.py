@@ -12,7 +12,7 @@ from passlib.context import CryptContext
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth.deps import get_current_device, require_admin_user
+from app.auth.deps import get_current_device, require_admin_user, require_device_or_admin
 from app.config import settings
 from app.database import get_db
 from app.models.booking_target import BookingTarget
@@ -221,8 +221,11 @@ def _get_target(slug: str, db: Session) -> BookingTarget:
 # --- Booking Targets ---
 
 @router.get("/targets", response_model=list[BookingTargetResponse])
-def list_targets(db: Session = Depends(get_db)):
-    """Public: list all booking targets and their balances."""
+def list_targets(
+    _auth: Machine | dict = Depends(require_device_or_admin),
+    db: Session = Depends(get_db),
+):
+    """List all booking targets and their balances (device token or admin required)."""
     return db.query(BookingTarget).order_by(BookingTarget.name).all()
 
 

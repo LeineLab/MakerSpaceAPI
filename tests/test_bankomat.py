@@ -34,22 +34,35 @@ def second_user(db):
 
 
 # ---------------------------------------------------------------------------
-# GET /bankomat/targets — public
+# GET /bankomat/targets — device token or admin required
 # ---------------------------------------------------------------------------
 
-def test_list_targets_empty(client):
+def test_list_targets_requires_auth(client):
     resp = client.get("/api/v1/bankomat/targets")
+    assert resp.status_code == 401
+
+
+def test_list_targets_empty(client, machine_token):
+    token, _ = machine_token
+    resp = client.get("/api/v1/bankomat/targets", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
     assert resp.json() == []
 
 
-def test_list_targets_returns_all(client, target):
-    resp = client.get("/api/v1/bankomat/targets")
+def test_list_targets_returns_all(client, machine_token, target):
+    token, _ = machine_token
+    resp = client.get("/api/v1/bankomat/targets", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
     data = resp.json()
     assert len(data) == 1
     assert data[0]["slug"] == "test-fund"
     assert Decimal(str(data[0]["balance"])) == Decimal("100.00")
+
+
+def test_list_targets_admin_allowed(admin_client, target):
+    resp = admin_client.get("/api/v1/bankomat/targets")
+    assert resp.status_code == 200
+    assert len(resp.json()) == 1
 
 
 # ---------------------------------------------------------------------------
