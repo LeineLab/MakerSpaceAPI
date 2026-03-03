@@ -157,7 +157,7 @@ All device-facing endpoints live under `/api/v1`. Full interactive docs at `/api
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/v1/bankomat/targets` | Public | List booking targets and balances |
+| `GET` | `/api/v1/bankomat/targets` | Device or Admin | List booking targets and balances |
 | `POST` | `/api/v1/bankomat/targets` | Admin | Create booking target |
 | `POST` | `/api/v1/bankomat/topup` | Device | Top up user balance + booking target |
 | `POST` | `/api/v1/bankomat/target-topup` | Device | Increase target only (e.g. donation) |
