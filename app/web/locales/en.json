@@ -17,6 +17,7 @@
   "common.active":         "active",
   "common.inactive":       "inactive",
   "common.created":        "Created",
+  "common.close":          "Close",
   "common.cancel":         "Cancel",
   "common.save":           "Save Changes",
   "common.add":            "Add",
