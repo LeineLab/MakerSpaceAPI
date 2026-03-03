@@ -4,7 +4,9 @@
 <div class="text-center py-16">
   <h1 class="text-3xl font-bold mb-4">{{ _('index.title') }}</h1>
   <p class="text-gray-600 mb-8">{{ _('index.subtitle') }}</p>
-  <div class="flex gap-4 justify-center">
+  <div class="flex flex-wrap gap-4 justify-center"
+       x-data="{ hasCard: false }"
+       {% if user %}x-init="fetch('/api/v1/users/me').then(r => { if (r.ok) hasCard = true; }).catch(() => {})"{% endif %}>
     <a href="/products" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700">
       {{ _('index.btn_products') }}
     </a>
@@ -12,10 +14,15 @@
     <a href="/auth/login" class="bg-gray-700 text-white px-6 py-2 rounded hover:bg-gray-800">
       {{ _('index.btn_login') }}
     </a>
-    {% elif is_admin(user) %}
-    <a href="/dashboard" class="bg-gray-700 text-white px-6 py-2 rounded hover:bg-gray-800">
-      {{ _('index.btn_dashboard') }}
-    </a>
+    {% else %}
+      {% if is_admin(user) %}
+      <a href="/dashboard" class="bg-gray-700 text-white px-6 py-2 rounded hover:bg-gray-800">
+        {{ _('index.btn_dashboard') }}
+      </a>
+      {% endif %}
+      <a x-show="hasCard" x-cloak href="/me" class="bg-gray-700 text-white px-6 py-2 rounded hover:bg-gray-800">
+        {{ _('index.btn_me') }}
+      </a>
     {% endif %}
   </div>
 </div>

@@ -35,6 +35,7 @@
   "index.btn_products":  "View Products",
   "index.btn_login":     "Login",
   "index.btn_dashboard": "Dashboard",
+  "index.btn_me":        "My Account",
 
   "login.title":    "Login",
   "login.subtitle": "Sign in with your organisation account via OIDC.",
