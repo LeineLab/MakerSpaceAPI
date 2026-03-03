@@ -3,7 +3,7 @@
 {% block content %}
 
 <div x-data="productManage()" x-cloak>
-  <div class="flex items-center justify-between mb-4">
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
     <h1 class="text-2xl font-bold">{{ _('manage.title') }}</h1>
     <button @click="openAddModal()"
             class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
@@ -73,7 +73,7 @@
 
     <!-- Product Categories -->
     <div class="bg-white rounded-lg shadow">
-      <div class="px-5 py-4 border-b flex items-center justify-between">
+      <div class="px-5 py-4 border-b flex flex-wrap items-center justify-between gap-2">
         <h2 class="font-semibold">{{ _('manage.categories_title') }}</h2>
         <span class="text-xs text-gray-400" x-text="categories.length"></span>
       </div>
@@ -102,7 +102,7 @@
 
     <!-- Product Aliases -->
     <div class="bg-white rounded-lg shadow">
-      <div class="px-5 py-4 border-b flex items-center justify-between">
+      <div class="px-5 py-4 border-b flex flex-wrap items-center justify-between gap-2">
         <h2 class="font-semibold">{{ _('manage.aliases_title') }}</h2>
         <span class="text-xs text-gray-400" x-text="aliases.length"></span>
       </div>

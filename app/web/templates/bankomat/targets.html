@@ -3,9 +3,9 @@
 {% block content %}
 
 <div x-data="targetList()" x-cloak>
-  <div class="flex items-center justify-between mb-4">
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
     <h1 class="text-2xl font-bold">{{ _('bankomat.title') }}</h1>
-    <div class="flex gap-2">
+    <div class="flex flex-wrap gap-2">
       <button @click="openStatementAllModal()"
               class="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700">
         {{ _('bankomat.btn_statement_all') }}
@@ -37,7 +37,7 @@
   </div>
 
   <!-- Treasurers Section -->
-  <div class="flex items-center justify-between mb-3">
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
     <h2 class="text-xl font-semibold">{{ _('bankomat.treasurers') }}</h2>
     <button @click="showAddModal = true"
             class="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700">
