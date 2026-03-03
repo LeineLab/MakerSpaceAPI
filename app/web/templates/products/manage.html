@@ -554,7 +554,8 @@ function productManage() {
     },
 
     async deleteCategory(name) {
-      if (!confirm(`Remove category "${name}"?`)) return;
+      const msg = {{ _('manage.confirm_remove_category') | tojson }}.replace('{name}', name);
+      if (!confirm(msg)) return;
       this.catError = null;
       try {
         const r = await apiFetch(`/api/v1/categories/${encodeURIComponent(name)}`, { method: 'DELETE' });
@@ -587,7 +588,8 @@ function productManage() {
     },
 
     async deleteAlias(a) {
-      if (!confirm(`Remove alias "${a.ean}"?`)) return;
+      const msg = {{ _('manage.confirm_remove_alias') | tojson }}.replace('{ean}', a.ean);
+      if (!confirm(msg)) return;
       this.aliasError = null;
       try {
         const r = await apiFetch(`/api/v1/products/${a.product_ean}/aliases/${a.ean}`, { method: 'DELETE' });

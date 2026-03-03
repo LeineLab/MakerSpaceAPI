@@ -35,6 +35,7 @@
   "index.btn_products":  "Produkte ansehen",
   "index.btn_login":     "Anmelden",
   "index.btn_dashboard": "Dashboard",
+  "index.btn_me":        "Mein Konto",
 
   "login.title":    "Anmelden",
   "login.subtitle": "Mit dem Organisationskonto über OIDC anmelden.",
@@ -102,7 +103,8 @@
   "manage.btn_set_stock":         "Bestand setzen",
   "manage.placeholder_stock_count": "z.B. 24",
 
-  "manage.confirm_remove_alias": "Alias {ean} entfernen?",
+  "manage.confirm_remove_alias":    "Alias \"{ean}\" entfernen?",
+  "manage.confirm_remove_category": "Kategorie \"{name}\" entfernen?",
 
   "machines.title":          "Maschinen & Geräte",
   "machines.btn_register":   "+ Maschine registrieren",
