@@ -126,6 +126,9 @@
   "machines.regen_title":        "New token for \"{name}\" — save it now!",
   "machines.btn_deactivate":     "Deactivate",
   "machines.btn_activate":       "Activate",
+  "machines.confirm_regen_token":  "Regenerate API token for \"{name}\"? The current token will stop working immediately.",
+  "machines.confirm_remove_auth":  "Remove machine access for \"{name}\"?",
+  "machines.confirm_remove_admin": "Remove admin \"{name}\"?",
 
   "machines.detail_title":          "Machine Detail",
   "machines.back":                  "Back to machines",
@@ -206,7 +209,8 @@
   "rentals.label_uid":        "User NFC ID",
   "rentals.placeholder_uid":  "e.g. 123456789",
   "rentals.btn_grant":        "Grant Permission",
-  "rentals.btn_revoke":       "revoke",
+  "rentals.btn_revoke":           "revoke",
+  "rentals.confirm_revoke_perm":  "Revoke rental permission for \"{name}\"?",
 
   "rentals.edit_title":        "Edit Rental Item",
   "rentals.modal_title":       "Add Rental Item",

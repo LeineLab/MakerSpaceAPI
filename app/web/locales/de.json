@@ -126,6 +126,9 @@
   "machines.regen_title":        "Neuer Token für \"{name}\" — jetzt speichern!",
   "machines.btn_deactivate":     "Deaktivieren",
   "machines.btn_activate":       "Aktivieren",
+  "machines.confirm_regen_token":  "API-Token für \"{name}\" neu generieren? Der aktuelle Token wird sofort ungültig.",
+  "machines.confirm_remove_auth":  "Maschinenzugang für \"{name}\" entfernen?",
+  "machines.confirm_remove_admin": "Admin \"{name}\" entfernen?",
 
   "machines.detail_title":           "Maschinendetails",
   "machines.back":                   "Zurück zu Maschinen",
@@ -206,7 +209,8 @@
   "rentals.label_uid":        "Benutzer NFC-ID",
   "rentals.placeholder_uid":  "z.B. 123456789",
   "rentals.btn_grant":        "Berechtigung erteilen",
-  "rentals.btn_revoke":       "Entfernen",
+  "rentals.btn_revoke":           "Entfernen",
+  "rentals.confirm_revoke_perm":  "Ausleihberechtigung für \"{name}\" widerrufen?",
 
   "rentals.edit_title":        "Verleihgegenstand bearbeiten",
   "rentals.modal_title":       "Verleihgegenstand hinzufügen",

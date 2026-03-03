@@ -390,6 +390,10 @@ function machineDetail(slug, isAdmin) {
     },
 
     async removeAuth(userId) {
+      const auth = this.authorizations.find(a => a.user_id === userId);
+      const name = auth?.user_name || userId;
+      const msg = {{ _('machines.confirm_remove_auth') | tojson }}.replace('{name}', name);
+      if (!confirm(msg)) return;
       this.authError = null;
       try {
         const r = await apiFetch(`/api/v1/machines/${this.slug}/authorizations/${userId}`, { method: 'DELETE' });
@@ -448,6 +452,8 @@ function machineDetail(slug, isAdmin) {
     },
 
     async removeAdmin(oidcSub) {
+      const msg = {{ _('machines.confirm_remove_admin') | tojson }}.replace('{name}', oidcSub);
+      if (!confirm(msg)) return;
       this.adminError = null;
       try {
         const r = await apiFetch(`/api/v1/machines/${this.slug}/admins/${encodeURIComponent(oidcSub)}`, { method: 'DELETE' });

@@ -367,6 +367,10 @@ function rentalPage() {
     },
 
     async revokePermission(userId) {
+      const perm = this.permissions.find(p => p.user_id === userId);
+      const name = perm?.user_name || userId;
+      const msg = {{ _('rentals.confirm_revoke_perm') | tojson }}.replace('{name}', name);
+      if (!confirm(msg)) return;
       const r = await apiFetch(`/api/v1/rentals/permissions/${userId}`, { method: 'DELETE' });
       if (!r.ok) {
         const data = await r.json();

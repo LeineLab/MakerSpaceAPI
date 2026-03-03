@@ -188,6 +188,8 @@ function machineList(isAdmin) {
     },
 
     async regenToken(m) {
+      const msg = {{ _('machines.confirm_regen_token') | tojson }}.replace('{name}', m.name);
+      if (!confirm(msg)) return;
       const r = await apiFetch(`/api/v1/machines/${m.slug}/token`, { method: 'POST' });
       const data = await r.json();
       if (!r.ok) {
