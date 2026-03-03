@@ -11,6 +11,7 @@ from app.models.user import User
 from app.schemas.common import MessageResponse
 from app.schemas.rental import (
     ActiveRentalResponse,
+    RentalCatalogItem,
     RentalItemCreate,
     RentalItemResponse,
     RentalItemStatusResponse,
@@ -31,6 +32,24 @@ def list_items(
     db: Session = Depends(get_db),
 ):
     return db.query(RentalItem).order_by(RentalItem.name).all()
+
+
+@router.get("/catalog", response_model=list[RentalCatalogItem])
+def rental_catalog(
+    device: Machine = Depends(get_current_device),
+    db: Session = Depends(get_db),
+):
+    """Return all active rental items with their current rental status (device token auth)."""
+    items = db.query(RentalItem).filter(RentalItem.active.is_(True)).order_by(RentalItem.name).all()
+    result = []
+    for item in items:
+        is_rented = (
+            db.query(Rental)
+            .filter(Rental.item_id == item.id, Rental.returned_at.is_(None))
+            .first()
+        ) is not None
+        result.append(RentalCatalogItem(uhf_tid=item.uhf_tid, name=item.name, is_rented=is_rented))
+    return result
 
 
 @router.post("/items", response_model=RentalItemResponse, status_code=201)

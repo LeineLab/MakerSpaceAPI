@@ -71,3 +71,9 @@ class RentalPermissionResponse(BaseModel):
     user_name: Optional[str]
     granted_by: Optional[str]
     granted_at: datetime
+
+
+class RentalCatalogItem(BaseModel):
+    uhf_tid: str
+    name: str
+    is_rented: bool
