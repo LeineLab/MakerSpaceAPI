@@ -1,10 +1,11 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.responses import JSONResponse as _JSONResponse
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 
 class JSONResponse(_JSONResponse):
@@ -15,7 +16,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.v1.router import api_router
 from app.config import settings
-from app.database import engine
+from app.database import get_db
 from app.web.router import router as web_router
 import pathlib
 
@@ -47,6 +48,7 @@ _LOGIN_REQUIRED_HTML = """\
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Login Required – MakerSpaceAPI</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="stylesheet" href="/static/css/tailwind.css">
 </head>
 <body class="bg-gray-50 text-gray-900 min-h-screen flex items-center justify-center">
@@ -78,12 +80,11 @@ app.add_middleware(
     same_site="lax",
 )
 
-@app.get("/api/health", tags=["health"], include_in_schema=True)
-def health():
+@app.get("/api/health", tags=["health"])
+def health(db: Session = Depends(get_db)):
     """Public health check. Returns 200 when the database is reachable."""
     try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
+        db.execute(text("SELECT 1"))
         return {"status": "ok", "database": "ok"}
     except Exception:
         return JSONResponse({"status": "error", "database": "unreachable"}, status_code=503)
