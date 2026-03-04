@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.responses import JSONResponse as _JSONResponse
+from sqlalchemy import text
 
 
 class JSONResponse(_JSONResponse):
@@ -14,6 +15,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.v1.router import api_router
 from app.config import settings
+from app.database import engine
 from app.web.router import router as web_router
 import pathlib
 
@@ -75,6 +77,17 @@ app.add_middleware(
     https_only=not settings.DEBUG,
     same_site="lax",
 )
+
+@app.get("/api/health", tags=["health"], include_in_schema=True)
+def health():
+    """Public health check. Returns 200 when the database is reachable."""
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return {"status": "ok", "database": "ok"}
+    except Exception:
+        return JSONResponse({"status": "error", "database": "unreachable"}, status_code=503)
+
 
 # Static files (JS/CSS served locally)
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
