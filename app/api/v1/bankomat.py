@@ -103,7 +103,7 @@ def _compile_month_pdf(target: BookingTarget, year: int, month: int, lang: str, 
     txs = (
         db.query(Transaction)
         .filter(*base_filter, Transaction.created_at >= ds, Transaction.created_at < de, Transaction.amount != 0)
-        .order_by(Transaction.created_at)
+        .order_by(Transaction.created_at.desc())
         .all()
     )
 
@@ -159,7 +159,7 @@ def _compile_month_pdf_all(year: int, month: int, lang: str, db: Session) -> byt
     txs = (
         db.query(Transaction)
         .filter(*base_filter, Transaction.created_at >= ds, Transaction.created_at < de, Transaction.amount != 0)
-        .order_by(Transaction.created_at)
+        .order_by(Transaction.created_at.desc())
         .all()
     )
 
