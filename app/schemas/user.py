@@ -9,6 +9,7 @@ class UserAuthResponse(BaseModel):
     """Returned when a device authenticates an NFC card."""
     id: int
     name: Optional[str]
+    oidc_sub: Optional[str]
     balance: Decimal = Field(ge=0, examples=[Decimal("12.50")])
     has_pin: bool
 

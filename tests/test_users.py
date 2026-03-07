@@ -22,6 +22,7 @@ def test_nfc_auth_success(client, machine_token, test_user):
     data = resp.json()
     assert data["id"] == test_user.id
     assert data["name"] == test_user.name
+    assert data["oidc_sub"] is None
     assert Decimal(str(data["balance"])) == test_user.balance
 
 
