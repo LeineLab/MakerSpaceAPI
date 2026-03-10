@@ -40,7 +40,7 @@
                 :class="parseFloat(u.balance) < 1 ? 'text-red-500' : parseFloat(u.balance) < 5 ? 'text-yellow-600' : ''"
                 x-text="parseFloat(u.balance).toFixed(2) + ' €'"></td>
             <td class="px-4 py-2 text-gray-500 text-xs"
-                x-text="u.created_at ? u.created_at.substring(0,10) : ''"></td>
+                x-text="fmtDate(u.created_at)"></td>
             <td class="px-4 py-2 text-right">
               <button @click="openEdit(u)"
                       class="text-xs text-blue-600 hover:underline">{{ _('users.btn_edit') }}</button>

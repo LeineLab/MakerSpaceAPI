@@ -115,7 +115,7 @@
               <template x-for="t in transactions" :key="t.id">
                 <tr class="border-t hover:bg-gray-50">
                   <td class="px-4 py-2 text-xs text-gray-500 whitespace-nowrap"
-                      x-text="t.created_at ? t.created_at.substring(0,16).replace('T',' ') : ''"></td>
+                      x-text="fmtDateTime(t.created_at)"></td>
                   <td class="px-4 py-2 text-xs" x-text="txLabel(t.type)"></td>
                   <td class="px-4 py-2 text-xs text-gray-500"
                       x-text="t.note || t.machine_name || '—'"></td>

@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # Currency symbol appended to all monetary amounts (API messages and PDF statements)
     CURRENCY: str = "€"
 
+    # IANA timezone for timestamp display in the web frontend (e.g. Europe/Berlin, UTC)
+    TIMEZONE: str = "Europe/Berlin"
+
     @property
     def checkout_box_slug_list(self) -> list[str]:
         return [s.strip() for s in self.CHECKOUT_BOX_SLUGS.split(",") if s.strip()]

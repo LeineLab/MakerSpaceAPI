@@ -75,7 +75,7 @@
               <span x-show="!m.active"
                     class="text-xs bg-red-100 text-red-600 rounded px-2 py-0.5">{{ _('common.inactive') }}</span>
             </td>
-            <td class="px-4 py-2 text-gray-500 text-xs" x-text="m.created_at ? m.created_at.substring(0,10) : ''"></td>
+            <td class="px-4 py-2 text-gray-500 text-xs" x-text="fmtDate(m.created_at)"></td>
             <td class="px-4 py-2 text-right whitespace-nowrap" x-show="isAdmin">
               <button @click="regenToken(m)"
                       class="text-xs text-blue-600 hover:underline mr-3">{{ _('machines.btn_regen_token') }}</button>

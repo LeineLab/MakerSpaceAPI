@@ -9,6 +9,19 @@
   <script defer src="/static/js/alpine.min.js"></script>
   <style>[x-cloak]{display:none!important}</style>
   <script>
+    const TZ = {{ TZ | tojson }};
+    // Format an ISO timestamp string (UTC, no Z suffix from DB) as a local date.
+    function fmtDate(iso) {
+      if (!iso) return '';
+      const s = iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z';
+      return new Date(s).toLocaleDateString(undefined, { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
+    }
+    // Format an ISO timestamp string as a local date + time (HH:MM).
+    function fmtDateTime(iso) {
+      if (!iso) return '';
+      const s = iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z';
+      return new Date(s).toLocaleString(undefined, { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
     function apiFetch(url, opts) {
       return fetch(url, opts).then(function(r) {
         if (r.status === 401) {

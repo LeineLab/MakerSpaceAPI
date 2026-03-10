@@ -31,7 +31,7 @@
           <dt class="text-gray-500">{{ _('common.type') }}</dt>
           <dd x-text="machine.machine_type"></dd>
           <dt class="text-gray-500">{{ _('common.created') }}</dt>
-          <dd x-text="machine.created_at ? machine.created_at.substring(0,10) : ''"></dd>
+          <dd x-text="fmtDate(machine.created_at)"></dd>
         </dl>
 
         <!-- Admin-only edit form -->
