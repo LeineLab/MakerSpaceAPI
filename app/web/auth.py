@@ -16,6 +16,7 @@ _templates_dir = pathlib.Path(__file__).parent / "templates"
 _templates = Jinja2Templates(directory=str(_templates_dir))
 _templates.env.globals["is_admin"] = lambda u: is_admin(u) if u else False
 _templates.env.globals["is_product_manager"] = lambda u: is_product_manager(u) if u else False
+_templates.env.globals["TZ"] = settings.TIMEZONE
 _templates.env.globals["_"] = get_translator("en")
 
 router = APIRouter(prefix="/auth", tags=["auth"])
