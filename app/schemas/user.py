@@ -74,3 +74,13 @@ class UserMeMachineResponse(BaseModel):
     price_per_login: Decimal = Field(ge=0, examples=[Decimal("0.00")])
     price_per_minute: Decimal = Field(ge=0, examples=[Decimal("0.05")])
     booking_interval: int
+
+
+class UserMeSessionResponse(BaseModel):
+    id: int
+    machine_name: str
+    machine_slug: str
+    start_time: datetime
+    end_time: Optional[datetime]
+    duration_seconds: Optional[int]
+    total_cost: Decimal = Field(ge=0, examples=[Decimal("1.50")])

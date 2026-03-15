@@ -1,7 +1,9 @@
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from passlib.context import CryptContext
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_device, require_admin_user, require_checkout_device, require_session_user
@@ -10,13 +12,15 @@ from app.config import settings
 from app.database import get_db
 from app.models.machine import Machine, MachineAuthorization
 from app.models.rental import Rental
+from app.models.session import MachineSession
 from app.models.transaction import Transaction
 from app.models.user import User
 from app.schemas.common import MessageResponse
 from app.schemas.transaction import MeTransactionResponse
 from app.schemas.user import (
     LinkTokenResponse, UserAuthResponse, UserCreate, UserLinkOidc,
-    UserMeMachineResponse, UserMeRentalResponse, UserResponse, UserUpdate,
+    UserMeMachineResponse, UserMeRentalResponse, UserMeSessionResponse,
+    UserResponse, UserUpdate,
 )
 
 router = APIRouter()
@@ -124,6 +128,51 @@ def get_me_machines(
         )
         for a in auths
     ]
+
+
+@router.get("/me/sessions", response_model=list[UserMeSessionResponse])
+def get_me_sessions(
+    limit: int = Query(default=10, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    user: dict = Depends(require_session_user),
+    db: Session = Depends(get_db),
+):
+    """Machine session history for the logged-in user, newest first."""
+    db_user = _me_user(user, db)
+    sessions = (
+        db.query(MachineSession)
+        .filter(MachineSession.user_id == db_user.id)
+        .order_by(MachineSession.start_time.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    costs: dict[int, Decimal] = {}
+    session_ids = [s.id for s in sessions]
+    if session_ids:
+        for sid, total in (
+            db.query(Transaction.session_id, func.sum(Transaction.amount))
+            .filter(Transaction.session_id.in_(session_ids))
+            .group_by(Transaction.session_id)
+            .all()
+        ):
+            costs[sid] = Decimal(str(total or 0))
+
+    result = []
+    for s in sessions:
+        duration = int((s.end_time - s.start_time).total_seconds()) if s.end_time else None
+        cost = max(-costs.get(s.id, Decimal("0.00")), Decimal("0.00"))
+        result.append(UserMeSessionResponse(
+            id=s.id,
+            machine_name=s.machine.name,
+            machine_slug=s.machine.slug,
+            start_time=s.start_time,
+            end_time=s.end_time,
+            duration_seconds=duration,
+            total_cost=cost,
+        ))
+    return result
 
 
 # ---------------------------------------------------------------------------

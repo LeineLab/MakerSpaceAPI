@@ -258,6 +258,9 @@
   "me.type_admin":         "Anpassung",
   "me.col_rented_since":   "Seit",
   "me.col_per_min":        "Tarif",
+  "me.sessions_title":     "Maschinensitzungen",
+  "me.sessions_empty":     "Noch keine Maschinensitzungen.",
+  "me.sessions_machine":   "Maschine",
 
   "connect.title_success":      "Karte verknüpft",
   "connect.title_failure":      "Verknüpfung fehlgeschlagen",
