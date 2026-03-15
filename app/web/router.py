@@ -1,23 +1,13 @@
-import pathlib
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 
 from app.auth.deps import get_session_user, require_admin_user, require_product_manager_user, require_session_user
 from app.auth.oidc import is_admin, is_product_manager
-from app.config import settings
-from app.web.i18n import detect_language, get_translator
 from app.web.auth import router as auth_router
-
-_templates_dir = pathlib.Path(__file__).parent / "templates"
-templates = Jinja2Templates(directory=str(_templates_dir))
-templates.env.globals["is_admin"] = lambda u: is_admin(u) if u else False
-templates.env.globals["is_product_manager"] = lambda u: is_product_manager(u) if u else False
-templates.env.globals["TZ"] = settings.TIMEZONE
-# Default translator (English) — overridden per-request via template context
-templates.env.globals["_"] = get_translator("en")
+from app.web.i18n import detect_language, get_translator
+from app.web.templating import templates
 
 router = APIRouter()
 router.include_router(auth_router)

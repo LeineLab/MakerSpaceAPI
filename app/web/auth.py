@@ -1,8 +1,5 @@
-import pathlib
-
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.auth.jwt import create_admin_jwt, verify_admin_jwt, verify_link_token
@@ -11,13 +8,7 @@ from app.config import settings
 from app.database import get_db
 from app.models.user import User
 from app.web.i18n import detect_language, get_translator
-
-_templates_dir = pathlib.Path(__file__).parent / "templates"
-_templates = Jinja2Templates(directory=str(_templates_dir))
-_templates.env.globals["is_admin"] = lambda u: is_admin(u) if u else False
-_templates.env.globals["is_product_manager"] = lambda u: is_product_manager(u) if u else False
-_templates.env.globals["TZ"] = settings.TIMEZONE
-_templates.env.globals["_"] = get_translator("en")
+from app.web.templating import templates as _templates
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
