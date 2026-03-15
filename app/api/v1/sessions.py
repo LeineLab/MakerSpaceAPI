@@ -20,6 +20,27 @@ from app.schemas.common import MessageResponse
 
 router = APIRouter()
 
+_STALE_GRACE = timedelta(minutes=5)
+
+
+def close_stale_sessions(db: Session) -> int:
+    """Close sessions whose paid_until has been exceeded by more than 5 minutes.
+
+    Sets end_time = paid_until for each such session. Returns the number closed.
+    Called from the health endpoint (periodic) and session creation (on demand).
+    """
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - _STALE_GRACE
+    stale = (
+        db.query(MachineSession)
+        .filter(MachineSession.end_time.is_(None), MachineSession.paid_until < cutoff)
+        .all()
+    )
+    for s in stale:
+        s.end_time = s.paid_until
+    if stale:
+        db.commit()
+    return len(stale)
+
 
 def _calc_max_seconds(
     balance: Decimal, price_per_minute: Decimal, remaining_seconds: float
@@ -43,6 +64,8 @@ def create_session(
     Deducts: price_per_login + price_per_minute * booking_interval
     Requires: balance >= that amount
     """
+    close_stale_sessions(db)
+
     # Lock user row for atomic balance check
     user = db.execute(
         select(User).where(User.id == body.nfc_id).with_for_update()

@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.v1.router import api_router
+from app.api.v1.sessions import close_stale_sessions
 from app.config import settings
 from app.database import get_db
 from app.web.router import router as web_router
@@ -85,6 +86,7 @@ def health(db: Session = Depends(get_db)):
     """Public health check. Returns 200 when the database is reachable."""
     try:
         db.execute(text("SELECT 1"))
+        close_stale_sessions(db)
         return {"status": "ok", "database": "ok"}
     except Exception:
         return JSONResponse({"status": "error", "database": "unreachable"}, status_code=503)
