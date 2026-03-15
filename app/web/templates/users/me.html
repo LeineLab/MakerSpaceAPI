@@ -49,7 +49,7 @@
                   <tr class="border-t hover:bg-gray-50">
                     <td class="px-4 py-2 font-medium" x-text="r.item_name"></td>
                     <td class="px-4 py-2 text-xs text-gray-400 text-right"
-                        x-text="r.rented_at ? r.rented_at.substring(0,16).replace('T',' ') : ''"></td>
+                        x-text="fmtDateTime(r.rented_at)"></td>
                   </tr>
                 </template>
               </tbody>
@@ -88,6 +88,53 @@
           </div>
         </div>
 
+      </div>
+
+      <!-- Machine Session History -->
+      <div class="bg-white rounded-lg shadow mb-6">
+        <div class="px-5 py-4 border-b">
+          <h2 class="font-semibold">{{ _('me.sessions_title') }}</h2>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
+              <tr>
+                <th class="px-4 py-2 text-left">{{ _('me.sessions_machine') }}</th>
+                <th class="px-4 py-2 text-left">{{ _('machines.col_start') }}</th>
+                <th class="px-4 py-2 text-left">{{ _('machines.col_duration') }}</th>
+                <th class="px-4 py-2 text-right">{{ _('machines.col_cost') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-if="loadingSessions">
+                <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400">Loading…</td></tr>
+              </template>
+              <template x-if="!loadingSessions && sessions.length === 0">
+                <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400">{{ _('me.sessions_empty') }}</td></tr>
+              </template>
+              <template x-for="s in sessions" :key="s.id">
+                <tr class="border-t hover:bg-gray-50">
+                  <td class="px-4 py-2 font-medium" x-text="s.machine_name"></td>
+                  <td class="px-4 py-2 text-xs text-gray-500 whitespace-nowrap" x-text="fmtDateTime(s.start_time)"></td>
+                  <td class="px-4 py-2 text-xs text-gray-500">
+                    <template x-if="s.end_time === null">
+                      <span class="bg-green-100 text-green-700 rounded px-1.5 py-0.5">{{ _('machines.history_active') }}</span>
+                    </template>
+                    <template x-if="s.end_time !== null">
+                      <span x-text="fmtDuration(s.duration_seconds)"></span>
+                    </template>
+                  </td>
+                  <td class="px-4 py-2 text-right tabular-nums text-xs"
+                      x-text="parseFloat(s.total_cost).toFixed(2) + ' €'"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <div class="mt-3 px-5 pb-3 text-center" x-show="sessionHasMore && !loadingSessions">
+          <button @click="loadSessions()"
+                  class="text-sm text-blue-600 hover:underline">{{ _('machines.history_load_more') }}</button>
+        </div>
       </div>
 
       <!-- Transaction history -->
@@ -160,14 +207,19 @@ function mePage() {
     rentals: [],
     machines: [],
     transactions: [],
+    sessions: [],
     loading: true,
     loadingRentals: true,
     loadingMachines: true,
     loadingTx: true,
     loadingMoreTx: false,
+    loadingSessions: true,
     txOffset: 0,
     txLimit: 50,
     hasMore: false,
+    sessionOffset: 0,
+    sessionPageSize: 10,
+    sessionHasMore: false,
 
     async init() {
       try {
@@ -180,7 +232,7 @@ function mePage() {
         return;
       }
       this.loading = false;
-      await Promise.all([this.loadRentals(), this.loadMachines(), this.loadTx()]);
+      await Promise.all([this.loadRentals(), this.loadMachines(), this.loadTx(), this.loadSessions()]);
     },
 
     async loadRentals() {
@@ -221,6 +273,31 @@ function mePage() {
       this.loadingMoreTx = true;
       await this.loadTx();
       this.loadingMoreTx = false;
+    },
+
+    async loadSessions() {
+      this.loadingSessions = true;
+      try {
+        const r = await apiFetch(`/api/v1/users/me/sessions?limit=${this.sessionPageSize}&offset=${this.sessionOffset}`);
+        if (r.ok) {
+          const data = await r.json();
+          this.sessions.push(...data);
+          this.sessionOffset += data.length;
+          this.sessionHasMore = data.length === this.sessionPageSize;
+        }
+      } finally {
+        this.loadingSessions = false;
+      }
+    },
+
+    fmtDuration(seconds) {
+      if (seconds === null || seconds === undefined) return '';
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = seconds % 60;
+      if (h > 0) return `${h}h ${m}m`;
+      if (m > 0) return `${m}m ${s}s`;
+      return `${s}s`;
     },
 
     txLabel(type) {
