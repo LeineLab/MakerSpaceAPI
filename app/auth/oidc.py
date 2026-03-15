@@ -12,6 +12,7 @@ oauth.register(
     client_kwargs={
         "scope": "openid email profile",
         "code_challenge_method": "S256",
+        "id_token_signed_response_alg": ["RS256", "ES256"],
     },
 )
 
