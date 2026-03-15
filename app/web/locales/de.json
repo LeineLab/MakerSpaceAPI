@@ -148,6 +148,13 @@
   "machines.btn_add_admin":          "+ Admin hinzufügen",
   "machines.no_users_available":     "Keine Benutzer mit Namen gefunden. Zuerst Benutzer anlegen.",
   "machines.no_oidc_users":          "Keine Benutzer mit verknüpftem OIDC-Konto gefunden.",
+  "machines.section_history":        "Sitzungsverlauf",
+  "machines.history_empty":          "Noch keine Sitzungen aufgezeichnet.",
+  "machines.history_active":         "aktiv",
+  "machines.col_start":              "Start",
+  "machines.col_duration":           "Dauer",
+  "machines.col_cost":               "Kosten",
+  "machines.history_load_more":      "Mehr laden",
 
   "users.title":            "Benutzer",
   "users.col_nfc":          "NFC-ID",

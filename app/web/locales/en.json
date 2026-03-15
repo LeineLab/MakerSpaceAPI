@@ -148,6 +148,13 @@
   "machines.btn_add_admin":         "+ Add Admin",
   "machines.no_users_available":    "No users with a name found. Add users first.",
   "machines.no_oidc_users":         "No users with OIDC linked found.",
+  "machines.section_history":       "Session History",
+  "machines.history_empty":         "No sessions recorded yet.",
+  "machines.history_active":        "active",
+  "machines.col_start":             "Start",
+  "machines.col_duration":          "Duration",
+  "machines.col_cost":              "Cost",
+  "machines.history_load_more":     "Load more",
 
   "users.title":            "Users",
   "users.col_nfc":          "NFC ID",

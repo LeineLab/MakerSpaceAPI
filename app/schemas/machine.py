@@ -82,6 +82,18 @@ class MachineUserSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class MachineSessionResponse(BaseModel):
+    id: int
+    user_id: int
+    user_name: Optional[str]
+    start_time: datetime
+    end_time: Optional[datetime]
+    duration_seconds: Optional[int]
+    total_cost: Decimal = Field(ge=0, examples=[Decimal("1.50")])
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class AuthorizeUserResponse(BaseModel):
     """Response from GET /machines/{slug}/authorize/{nfc_id}"""
     authorized: bool

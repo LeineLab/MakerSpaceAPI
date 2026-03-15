@@ -1,14 +1,18 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
+
+from sqlalchemy import func
 
 from app.auth.deps import get_current_device, require_admin_user, require_machine_manager, require_session_user
 from app.auth.oidc import is_admin
 from app.auth.tokens import generate_api_token
 from app.database import get_db
 from app.models.machine import Machine, MachineAdmin, MachineAuthorization
+from app.models.session import MachineSession
+from app.models.transaction import Transaction
 from app.models.user import User
 from app.schemas.machine import (
     AuthorizationCreate,
@@ -20,6 +24,7 @@ from app.schemas.machine import (
     MachineCreate,
     MachineCreateResponse,
     MachineResponse,
+    MachineSessionResponse,
     MachineUpdate,
     MachineUserSummary,
 )
@@ -212,6 +217,58 @@ def remove_machine_admin(
     db.delete(entry)
     db.commit()
     return {"detail": "Admin removed"}
+
+
+# --- Session history ---
+
+@router.get("/{slug}/sessions", response_model=list[MachineSessionResponse])
+def list_sessions(
+    slug: str,
+    request: Request,
+    limit: int = Query(default=10, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """Recent sessions for a machine, newest first (machine managers only)."""
+    _, machine = require_machine_manager(slug, request, db)
+
+    sessions = (
+        db.query(MachineSession)
+        .filter(MachineSession.machine_id == machine.id)
+        .order_by(MachineSession.start_time.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    # Batch-fetch costs: sum all transaction amounts per session (deductions are negative)
+    costs: dict[int, Decimal] = {}
+    session_ids = [s.id for s in sessions]
+    if session_ids:
+        for sid, total in (
+            db.query(Transaction.session_id, func.sum(Transaction.amount))
+            .filter(Transaction.session_id.in_(session_ids))
+            .group_by(Transaction.session_id)
+            .all()
+        ):
+            costs[sid] = Decimal(str(total or 0))
+
+    result = []
+    for s in sessions:
+        duration = (
+            int((s.end_time - s.start_time).total_seconds()) if s.end_time else None
+        )
+        cost = max(-costs.get(s.id, Decimal("0.00")), Decimal("0.00"))
+        result.append(MachineSessionResponse(
+            id=s.id,
+            user_id=s.user_id,
+            user_name=s.user.name if s.user else None,
+            start_time=s.start_time,
+            end_time=s.end_time,
+            duration_seconds=duration,
+            total_cost=cost,
+        ))
+    return result
 
 
 # --- Users (for authorization dropdown) ---

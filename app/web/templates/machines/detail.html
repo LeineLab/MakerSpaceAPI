@@ -261,6 +261,51 @@
         </div>
       </template>
 
+      <!-- ── Session History ───────────────────────────────────────── -->
+      <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold mb-4">{{ _('machines.section_history') }}</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
+              <tr>
+                <th class="px-4 py-2 text-left">{{ _('common.name') }}</th>
+                <th class="px-4 py-2 text-left">{{ _('machines.col_start') }}</th>
+                <th class="px-4 py-2 text-right">{{ _('machines.col_duration') }}</th>
+                <th class="px-4 py-2 text-right">{{ _('machines.col_cost') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-if="sessions.length === 0 && !loadingSessions">
+                <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400">{{ _('machines.history_empty') }}</td></tr>
+              </template>
+              <template x-for="s in sessions" :key="s.id">
+                <tr class="border-t">
+                  <td class="px-4 py-2 font-medium" x-text="s.user_name || s.user_id"></td>
+                  <td class="px-4 py-2 text-gray-500 text-xs whitespace-nowrap" x-text="fmtDateTime(s.start_time)"></td>
+                  <td class="px-4 py-2 text-right text-xs tabular-nums">
+                    <template x-if="s.end_time === null">
+                      <span class="bg-green-100 text-green-700 rounded px-1.5 py-0.5">{{ _('machines.history_active') }}</span>
+                    </template>
+                    <template x-if="s.end_time !== null">
+                      <span x-text="fmtDuration(s.duration_seconds)"></span>
+                    </template>
+                  </td>
+                  <td class="px-4 py-2 text-right tabular-nums text-xs"
+                      x-text="'€' + Number(s.total_cost).toFixed(2)"></td>
+                </tr>
+              </template>
+              <template x-if="loadingSessions">
+                <tr><td colspan="4" class="px-4 py-3 text-center text-gray-400 text-xs">…</td></tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <div class="mt-3 text-center" x-show="sessionHasMore && !loadingSessions">
+          <button @click="loadSessions()"
+                  class="text-sm text-blue-600 hover:underline">{{ _('machines.history_load_more') }}</button>
+        </div>
+      </div>
+
     </div>
   </template>
 </div>
@@ -277,6 +322,13 @@ function machineDetail(slug, isAdmin) {
     allUsers: [],    // all users for admin dropdown (from /users, admin-only)
     loading: true,
     error: null,
+
+    // Session history
+    sessions: [],
+    loadingSessions: false,
+    sessionOffset: 0,
+    sessionPageSize: 10,
+    sessionHasMore: true,
 
     // Machine edit
     showEditMachine: false,
@@ -334,6 +386,34 @@ function machineDetail(slug, isAdmin) {
       } finally {
         this.loading = false;
       }
+      await this.loadSessions();
+    },
+
+    async loadSessions() {
+      this.loadingSessions = true;
+      try {
+        const r = await apiFetch(`/api/v1/machines/${this.slug}/sessions?limit=${this.sessionPageSize}&offset=${this.sessionOffset}`);
+        if (r.ok) {
+          const data = await r.json();
+          this.sessions.push(...data);
+          this.sessionOffset += data.length;
+          this.sessionHasMore = data.length === this.sessionPageSize;
+        }
+      } catch (e) {
+        if (e !== 'unauthenticated') console.error(e);
+      } finally {
+        this.loadingSessions = false;
+      }
+    },
+
+    fmtDuration(seconds) {
+      if (seconds === null) return '';
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = seconds % 60;
+      if (h > 0) return h + 'h ' + String(m).padStart(2, '0') + 'min';
+      if (m > 0) return m + 'min ' + String(s).padStart(2, '0') + 's';
+      return s + 's';
     },
 
     // ── Machine edit ──────────────────────────────────────────────────
