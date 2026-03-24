@@ -26,6 +26,7 @@ class MachineResponse(BaseModel):
     active: bool
     created_at: datetime
     created_by: Optional[str]
+    last_active_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 

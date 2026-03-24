@@ -49,15 +49,16 @@
           <th class="px-4 py-3 text-left">{{ _('machines.col_type') }}</th>
           <th class="px-4 py-3 text-center">{{ _('common.status') }}</th>
           <th class="px-4 py-3 text-left">{{ _('common.created') }}</th>
+          <th class="px-4 py-3 text-left">{{ _('machines.col_last_active') }}</th>
           <th class="px-4 py-3 text-right">{{ _('machines.col_actions') }}</th>
         </tr>
       </thead>
       <tbody>
         <template x-if="loading">
-          <tr><td colspan="6" class="px-4 py-8 text-center text-gray-400">Loading…</td></tr>
+          <tr><td colspan="7" class="px-4 py-8 text-center text-gray-400">Loading…</td></tr>
         </template>
         <template x-if="!loading && machines.length === 0">
-          <tr><td colspan="6" class="px-4 py-8 text-center text-gray-400">
+          <tr><td colspan="7" class="px-4 py-8 text-center text-gray-400">
             <span x-show="isAdmin">{{ _('machines.empty') }}</span>
             <span x-show="!isAdmin">{{ _('machines.empty_managed') }}</span>
           </td></tr>
@@ -76,6 +77,8 @@
                     class="text-xs bg-red-100 text-red-600 rounded px-2 py-0.5">{{ _('common.inactive') }}</span>
             </td>
             <td class="px-4 py-2 text-gray-500 text-xs" x-text="fmtDate(m.created_at)"></td>
+            <td class="px-4 py-2 text-gray-500 text-xs"
+                x-text="m.last_active_at ? fmtDateTime(m.last_active_at) : '—'"></td>
             <td class="px-4 py-2 text-right whitespace-nowrap" x-show="isAdmin">
               <button @click="regenToken(m)"
                       class="text-xs text-blue-600 hover:underline mr-3">{{ _('machines.btn_regen_token') }}</button>

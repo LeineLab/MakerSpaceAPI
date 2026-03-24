@@ -32,6 +32,8 @@
           <dd x-text="machine.machine_type"></dd>
           <dt class="text-gray-500">{{ _('common.created') }}</dt>
           <dd x-text="fmtDate(machine.created_at)"></dd>
+          <dt class="text-gray-500">{{ _('machines.col_last_active') }}</dt>
+          <dd x-text="machine.last_active_at ? fmtDateTime(machine.last_active_at) : '—'"></dd>
         </dl>
 
         <!-- Admin-only edit form -->

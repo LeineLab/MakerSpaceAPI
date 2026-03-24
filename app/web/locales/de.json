@@ -123,6 +123,7 @@
   "machines.btn_register_token": "Registrieren & Token erhalten",
   "machines.placeholder_name":   "z.B. Lasercutter",
   "machines.placeholder_slug":   "z.B. lasercutter",
+  "machines.col_last_active":    "Letzte Aktivität",
   "machines.col_actions":        "Aktionen",
   "machines.btn_regen_token":    "Token erneuern",
   "machines.regen_title":        "Neuer Token für \"{name}\" — jetzt speichern!",

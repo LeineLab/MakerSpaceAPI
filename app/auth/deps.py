@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
@@ -66,6 +68,9 @@ def get_current_device(
     )
     for m in machine:
         if verify_api_token(token, m.api_token_hash):
+            m.last_active_at = datetime.now(UTC).replace(tzinfo=None)
+            db.commit()
+            db.refresh(m)
             return m
     raise HTTPException(status_code=401, detail="Invalid or revoked API token")
 
@@ -100,6 +105,9 @@ def require_device_or_admin(
         # Try as machine API token first (verify_admin_jwt returns None on non-JWT input)
         for m in db.query(Machine).filter(Machine.active.is_(True)).all():
             if verify_api_token(token, m.api_token_hash):
+                m.last_active_at = datetime.now(UTC).replace(tzinfo=None)
+                db.commit()
+                db.refresh(m)
                 return m
     # Try admin session (cookie or Bearer JWT)
     user = get_session_user(request)

@@ -123,6 +123,7 @@
   "machines.btn_register_token": "Register & Get Token",
   "machines.placeholder_name":   "e.g. Laser Cutter",
   "machines.placeholder_slug":   "e.g. laser-cutter",
+  "machines.col_last_active":    "Last Active",
   "machines.col_actions":        "Actions",
   "machines.btn_regen_token":    "Regen Token",
   "machines.regen_title":        "New token for \"{name}\" — save it now!",
