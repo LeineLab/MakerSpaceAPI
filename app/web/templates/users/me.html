@@ -19,6 +19,10 @@
         <div>
           <h1 class="text-2xl font-bold mb-1" x-text="profile.name || '—'"></h1>
           <p class="text-xs text-gray-400 font-mono">{{ _('me.card_id') }}: <span x-text="profile.id"></span></p>
+          <button @click="unlinkCard()"
+                  class="mt-2 text-xs text-red-500 hover:underline">
+            {{ _('me.btn_unlink_card') }}
+          </button>
         </div>
         <div class="text-right">
           <div class="text-3xl font-bold tabular-nums"
@@ -302,6 +306,14 @@ function mePage() {
 
     txLabel(type) {
       return _TX_LABELS[type] || type;
+    },
+
+    async unlinkCard() {
+      if (!confirm({{ _('me.unlink_confirm') | tojson }})) return;
+      const r = await apiFetch('/api/v1/users/me/oidc', { method: 'DELETE' });
+      if (r.ok) {
+        this.profile = null;
+      }
     },
   }
 }

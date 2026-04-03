@@ -49,6 +49,18 @@ def get_me(
     return _me_user(user, db)
 
 
+@router.delete("/me/oidc", response_model=MessageResponse)
+def unlink_me_oidc(
+    user: dict = Depends(require_session_user),
+    db: Session = Depends(get_db),
+):
+    """Unlink the current OIDC account from its NFC card. The card record is kept."""
+    db_user = _me_user(user, db)
+    db_user.oidc_sub = None
+    db.commit()
+    return {"message": "Card unlinked successfully"}
+
+
 @router.get("/me/transactions", response_model=list[MeTransactionResponse])
 def get_me_transactions(
     limit: int = Query(default=50, ge=1, le=200),

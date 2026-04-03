@@ -262,6 +262,8 @@
   "me.sessions_title":     "Maschinensitzungen",
   "me.sessions_empty":     "Noch keine Maschinensitzungen.",
   "me.sessions_machine":   "Maschine",
+  "me.btn_unlink_card":    "Karte trennen",
+  "me.unlink_confirm":     "NFC-Karte von diesem Konto trennen? Du musst danach eine neue Karte verknüpfen, um wieder auf dein Guthaben zuzugreifen.",
 
   "connect.title_success":      "Karte verknüpft",
   "connect.title_failure":      "Verknüpfung fehlgeschlagen",

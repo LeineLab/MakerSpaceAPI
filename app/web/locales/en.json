@@ -262,6 +262,8 @@
   "me.sessions_title":     "Machine Sessions",
   "me.sessions_empty":     "No machine sessions yet.",
   "me.sessions_machine":   "Machine",
+  "me.btn_unlink_card":    "Unlink card",
+  "me.unlink_confirm":     "Unlink your NFC card from this account? You will need to re-link a card to access your balance again.",
 
   "connect.title_success":      "Card Linked",
   "connect.title_failure":      "Link Failed",
