@@ -1,0 +1,47 @@
+# Version control
+.git/
+.github/
+
+# Local config / secrets
+.env
+.env.*
+!.env.example
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# Node (Tailwind CSS is pre-built and committed)
+node_modules/
+
+# Tests
+tests/
+*.db
+
+# Dev / docs
+.claude/
+README.md
+CLAUDE.md
+Logo.af
+
+# Legacy hardware connectors and migration scripts (not needed in production image)
+projects/
+scripts/
+
+# Docker / compose files (no need to copy into the image)
+docker-compose*.yml
+Dockerfile
+
+# Tailwind source (output is already committed)
+package.json
+package-lock.json
+tailwind.config.js
+
+# Local runtime mounts (logo, fonts, data)
+logo.svg
+fonts/
+data/
