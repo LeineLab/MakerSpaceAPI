@@ -17,7 +17,8 @@ services:
       start_period: 30s
 
   app:
-    build: .
+    #build: . # For dev environment
+    image: ghcr.io/leinelab/makerspaceapi:latest
     restart: unless-stopped
     ports:
       - "8000:8000"
