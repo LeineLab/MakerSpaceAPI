@@ -28,7 +28,7 @@ from app.schemas.machine import (
     MachineUpdate,
     MachineUserSummary,
 )
-from app.schemas.common import MessageResponse
+from app.schemas.common import HTTP_403, HTTP_404, HTTP_409, MessageResponse
 
 router = APIRouter()
 
@@ -41,7 +41,7 @@ def list_machines(
     return db.query(Machine).order_by(Machine.name).all()
 
 
-@router.post("", response_model=MachineCreateResponse, status_code=201)
+@router.post("", response_model=MachineCreateResponse, status_code=201, responses={**HTTP_409})
 def register_machine(
     body: MachineCreate,
     admin: dict = Depends(require_admin_user),
@@ -84,7 +84,7 @@ def list_my_machines(
     )
 
 
-@router.get("/{slug}", response_model=MachineResponse)
+@router.get("/{slug}", response_model=MachineResponse, responses={**HTTP_404})
 def get_machine(
     slug: str,
     request: Request,
@@ -94,7 +94,7 @@ def get_machine(
     return machine
 
 
-@router.put("/{slug}", response_model=MachineResponse)
+@router.put("/{slug}", response_model=MachineResponse, responses={**HTTP_404, **HTTP_409})
 def update_machine(
     slug: str,
     body: MachineUpdate,
@@ -119,7 +119,7 @@ def update_machine(
     return machine
 
 
-@router.delete("/{slug}", response_model=MessageResponse)
+@router.delete("/{slug}", response_model=MessageResponse, responses={**HTTP_404})
 def deactivate_machine(
     slug: str,
     admin: dict = Depends(require_admin_user),
@@ -133,7 +133,7 @@ def deactivate_machine(
     return {"detail": "Machine deactivated"}
 
 
-@router.post("/{slug}/token", response_model=MachineCreateResponse)
+@router.post("/{slug}/token", response_model=MachineCreateResponse, responses={**HTTP_404})
 def regenerate_token(
     slug: str,
     admin: dict = Depends(require_admin_user),
@@ -152,7 +152,7 @@ def regenerate_token(
 
 # --- Machine admins (by OIDC sub) ---
 
-@router.get("/{slug}/admins", response_model=list[MachineAdminResponse])
+@router.get("/{slug}/admins", response_model=list[MachineAdminResponse], responses={**HTTP_404})
 def list_machine_admins(
     slug: str,
     request: Request,
@@ -171,7 +171,7 @@ def list_machine_admins(
     return result
 
 
-@router.post("/{slug}/admins", response_model=MachineAdminResponse, status_code=201)
+@router.post("/{slug}/admins", response_model=MachineAdminResponse, status_code=201, responses={**HTTP_404, **HTTP_409})
 def add_machine_admin(
     slug: str,
     body: MachineAdminCreate,
@@ -197,7 +197,7 @@ def add_machine_admin(
     return {"machine_id": entry.machine_id, "oidc_sub": entry.oidc_sub, "user_name": linked_user.name if linked_user else None}
 
 
-@router.delete("/{slug}/admins/{oidc_sub}", response_model=MessageResponse)
+@router.delete("/{slug}/admins/{oidc_sub}", response_model=MessageResponse, responses={**HTTP_404})
 def remove_machine_admin(
     slug: str,
     oidc_sub: str,
@@ -221,7 +221,7 @@ def remove_machine_admin(
 
 # --- Session history ---
 
-@router.get("/{slug}/sessions", response_model=list[MachineSessionResponse])
+@router.get("/{slug}/sessions", response_model=list[MachineSessionResponse], responses={**HTTP_404})
 def list_sessions(
     slug: str,
     request: Request,
@@ -273,7 +273,7 @@ def list_sessions(
 
 # --- Users (for authorization dropdown) ---
 
-@router.get("/{slug}/users", response_model=list[MachineUserSummary])
+@router.get("/{slug}/users", response_model=list[MachineUserSummary], responses={**HTTP_404})
 def list_machine_users(
     slug: str,
     request: Request,
@@ -286,7 +286,7 @@ def list_machine_users(
 
 # --- Authorizations ---
 
-@router.get("/{slug}/authorizations", response_model=list[AuthorizationResponse])
+@router.get("/{slug}/authorizations", response_model=list[AuthorizationResponse], responses={**HTTP_404})
 def list_authorizations(
     slug: str,
     request: Request,
@@ -299,7 +299,7 @@ def list_authorizations(
     ]
 
 
-@router.post("/{slug}/authorizations", response_model=AuthorizationResponse, status_code=201)
+@router.post("/{slug}/authorizations", response_model=AuthorizationResponse, status_code=201, responses={**HTTP_404, **HTTP_409})
 def grant_authorization(
     slug: str,
     body: AuthorizationCreate,
@@ -335,7 +335,7 @@ def grant_authorization(
     return auth
 
 
-@router.put("/{slug}/authorizations/{nfc_id}", response_model=AuthorizationResponse)
+@router.put("/{slug}/authorizations/{nfc_id}", response_model=AuthorizationResponse, responses={**HTTP_404})
 def update_authorization(
     slug: str,
     nfc_id: int,
@@ -365,7 +365,7 @@ def update_authorization(
     return auth
 
 
-@router.delete("/{slug}/authorizations/{nfc_id}", response_model=MessageResponse)
+@router.delete("/{slug}/authorizations/{nfc_id}", response_model=MessageResponse, responses={**HTTP_404})
 def revoke_authorization(
     slug: str,
     nfc_id: int,
@@ -388,7 +388,7 @@ def revoke_authorization(
     return {"detail": "Authorization revoked"}
 
 
-@router.get("/{slug}/authorize/{nfc_id}", response_model=AuthorizeUserResponse)
+@router.get("/{slug}/authorize/{nfc_id}", response_model=AuthorizeUserResponse, responses={**HTTP_403, **HTTP_404})
 def check_authorization(
     slug: str,
     nfc_id: int,

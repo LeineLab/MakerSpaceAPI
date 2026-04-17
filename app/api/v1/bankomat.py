@@ -28,7 +28,7 @@ from app.schemas.booking_target import (
     TopupRequest,
     TransferRequest,
 )
-from app.schemas.common import MessageResponse, TopupResponse
+from app.schemas.common import HTTP_400, HTTP_402, HTTP_403, HTTP_404, HTTP_409, MessageResponse, TopupResponse
 from app.schemas.transaction import TransactionResponse
 from app.schemas.user import UserPinVerify
 
@@ -229,7 +229,7 @@ def list_targets(
     return db.query(BookingTarget).order_by(BookingTarget.name).all()
 
 
-@router.post("/targets", response_model=BookingTargetResponse, status_code=201)
+@router.post("/targets", response_model=BookingTargetResponse, status_code=201, responses={**HTTP_409})
 def create_target(
     body: BookingTargetCreate,
     admin: dict = Depends(require_admin_user),
@@ -246,7 +246,7 @@ def create_target(
 
 # --- ATM operations ---
 
-@router.post("/topup", response_model=TopupResponse)
+@router.post("/topup", response_model=TopupResponse, responses={**HTTP_400, **HTTP_404})
 def topup_user(
     body: TopupRequest,
     device: Machine = Depends(get_current_device),
@@ -283,7 +283,7 @@ def topup_user(
     return {"detail": f"Topped up {body.amount} {settings.CURRENCY}. New balance: {user.balance} {settings.CURRENCY}", "balance": user.balance}
 
 
-@router.post("/target-topup", response_model=MessageResponse)
+@router.post("/target-topup", response_model=MessageResponse, responses={**HTTP_404})
 def topup_target_only(
     body: TargetTopupRequest,
     device: Machine = Depends(get_current_device),
@@ -326,7 +326,7 @@ def user_transactions(
     )
 
 
-@router.post("/transfer", response_model=MessageResponse)
+@router.post("/transfer", response_model=MessageResponse, responses={**HTTP_400, **HTTP_402, **HTTP_404})
 def transfer(
     body: TransferRequest,
     device: Machine = Depends(get_current_device),
@@ -383,7 +383,7 @@ def transfer(
     return {"detail": f"Transferred {body.amount} {settings.CURRENCY} from {body.from_nfc_id} to {body.to_nfc_id}"}
 
 
-@router.post("/verify-pin", response_model=MessageResponse)
+@router.post("/verify-pin", response_model=MessageResponse, responses={**HTTP_403, **HTTP_404})
 def verify_pin(
     body: UserPinVerify,
     device: Machine = Depends(get_current_device),
@@ -400,7 +400,7 @@ def verify_pin(
     return {"detail": "PIN valid"}
 
 
-@router.post("/payout", response_model=MessageResponse)
+@router.post("/payout", response_model=MessageResponse, responses={**HTTP_400, **HTTP_402, **HTTP_403, **HTTP_404})
 def payout(
     body: PayoutRequest,
     device: Machine = Depends(get_current_device),
@@ -442,7 +442,7 @@ def payout(
 
 # --- PIN management ---
 
-@router.post("/pin", response_model=MessageResponse)
+@router.post("/pin", response_model=MessageResponse, responses={**HTTP_404})
 def set_pin(
     body: SetPinRequest,
     admin: dict = Depends(require_admin_user),
@@ -457,7 +457,7 @@ def set_pin(
     return {"detail": "PIN updated"}
 
 
-@router.get("/statement/{target_slug}", response_class=Response)
+@router.get("/statement/{target_slug}", response_class=Response, responses={**HTTP_400, **HTTP_404})
 def get_statement(
     target_slug: str,
     from_year: int = Query(...),
@@ -522,7 +522,7 @@ def get_statement(
         raise HTTPException(500, f"PDF generation failed: {e}") from e
 
 
-@router.get("/statement-all", response_class=Response)
+@router.get("/statement-all", response_class=Response, responses={**HTTP_400})
 def get_statement_all(
     from_year: int = Query(...),
     from_month: int = Query(...),

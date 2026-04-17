@@ -18,7 +18,7 @@ from app.models.machine import Machine
 from app.models.product import Product, ProductAlias, ProductAudit, ProductAuditType, ProductCategory
 from app.models.transaction import Transaction, TransactionType
 from app.models.user import User
-from app.schemas.common import MessageResponse
+from app.schemas.common import HTTP_400, HTTP_402, HTTP_404, HTTP_409, MessageResponse
 from app.schemas.product import (
     CategoryCreate,
     ProductAliasCreate,
@@ -80,7 +80,7 @@ def list_categories(db: Session = Depends(get_db)):
     return sorted(from_table | from_products)
 
 
-@router.post("/categories", response_model=str, status_code=201)
+@router.post("/categories", response_model=str, status_code=201, responses={**HTTP_400, **HTTP_409})
 def create_category(
     body: CategoryCreate,
     user: dict = Depends(require_product_manager_user),
@@ -97,7 +97,7 @@ def create_category(
     return name
 
 
-@router.delete("/categories/{name}", response_model=MessageResponse)
+@router.delete("/categories/{name}", response_model=MessageResponse, responses={**HTTP_404, **HTTP_409})
 def delete_category(
     name: str,
     user: dict = Depends(require_product_manager_user),
@@ -114,13 +114,13 @@ def delete_category(
     return {"detail": f"Category '{name}' deleted"}
 
 
-@router.get("/products/{ean}", response_model=ProductDetailResponse)
+@router.get("/products/{ean}", response_model=ProductDetailResponse, responses={**HTTP_404})
 def get_product(ean: str, db: Session = Depends(get_db)):
     product = _resolve_product(ean, db)
     return product
 
 
-@router.post("/products", response_model=ProductResponse, status_code=201)
+@router.post("/products", response_model=ProductResponse, status_code=201, responses={**HTTP_409})
 def create_product(
     body: ProductCreate,
     user: dict = Depends(require_product_manager_user),
@@ -148,7 +148,7 @@ def create_product(
     return product
 
 
-@router.put("/products/{ean}", response_model=ProductResponse)
+@router.put("/products/{ean}", response_model=ProductResponse, responses={**HTTP_404})
 def update_product(
     ean: str,
     body: ProductUpdate,
@@ -192,7 +192,7 @@ def update_product(
     return product
 
 
-@router.post("/products/{ean}/stock", response_model=ProductResponse)
+@router.post("/products/{ean}/stock", response_model=ProductResponse, responses={**HTTP_400, **HTTP_404})
 def adjust_stock(
     ean: str,
     body: ProductStockAdjust,
@@ -218,7 +218,7 @@ def adjust_stock(
     return product
 
 
-@router.post("/products/{ean}/stocktaking", response_model=ProductResponse)
+@router.post("/products/{ean}/stocktaking", response_model=ProductResponse, responses={**HTTP_400, **HTTP_404})
 def stocktaking(
     ean: str,
     body: ProductStocktaking,
@@ -243,7 +243,7 @@ def stocktaking(
     return product
 
 
-@router.get("/products/{ean}/audit", response_model=list[ProductAuditResponse])
+@router.get("/products/{ean}/audit", response_model=list[ProductAuditResponse], responses={**HTTP_404})
 def get_product_audit(
     ean: str,
     user: dict = Depends(require_product_manager_user),
@@ -258,7 +258,7 @@ def get_product_audit(
     )
 
 
-@router.get("/products/{ean}/popularity", response_model=ProductPopularityResponse)
+@router.get("/products/{ean}/popularity", response_model=ProductPopularityResponse, responses={**HTTP_404})
 def product_popularity(
     ean: str,
     days: int = Query(default=7, ge=1, le=365),
@@ -287,13 +287,13 @@ def product_popularity(
 
 # --- Aliases ---
 
-@router.get("/products/{ean}/aliases", response_model=list[ProductAliasResponse])
+@router.get("/products/{ean}/aliases", response_model=list[ProductAliasResponse], responses={**HTTP_404})
 def list_aliases(ean: str, db: Session = Depends(get_db)):
     product = _resolve_product(ean, db)
     return product.aliases
 
 
-@router.post("/products/{ean}/aliases", response_model=ProductAliasResponse, status_code=201)
+@router.post("/products/{ean}/aliases", response_model=ProductAliasResponse, status_code=201, responses={**HTTP_404, **HTTP_409})
 def add_alias(
     ean: str,
     body: ProductAliasCreate,
@@ -312,7 +312,7 @@ def add_alias(
     return alias
 
 
-@router.delete("/products/{ean}/aliases/{alias_ean}", response_model=MessageResponse)
+@router.delete("/products/{ean}/aliases/{alias_ean}", response_model=MessageResponse, responses={**HTTP_404})
 def delete_alias(
     ean: str,
     alias_ean: str,
@@ -334,7 +334,7 @@ def delete_alias(
 
 # --- Purchase (checkout device) ---
 
-@router.post("/products/{ean}/purchase", response_model=PurchaseResponse)
+@router.post("/products/{ean}/purchase", response_model=PurchaseResponse, responses={**HTTP_400, **HTTP_402, **HTTP_404})
 def purchase_product(
     ean: str,
     body: PurchaseBody,

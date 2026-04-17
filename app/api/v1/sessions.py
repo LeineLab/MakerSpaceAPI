@@ -16,7 +16,7 @@ from app.schemas.session import (
     SessionCreateResponse,
     SessionExtendResponse,
 )
-from app.schemas.common import MessageResponse
+from app.schemas.common import HTTP_402, HTTP_403, HTTP_404, HTTP_409, MessageResponse
 
 router = APIRouter()
 
@@ -52,7 +52,7 @@ def _calc_max_seconds(
     return remaining_seconds + additional_minutes * 60
 
 
-@router.post("", response_model=SessionCreateResponse, status_code=201)
+@router.post("", response_model=SessionCreateResponse, status_code=201, responses={**HTTP_402, **HTTP_403, **HTTP_404})
 def create_session(
     body: SessionCreate,
     device: Machine = Depends(get_current_device),
@@ -140,7 +140,7 @@ def create_session(
     )
 
 
-@router.put("/{session_id}", response_model=SessionExtendResponse)
+@router.put("/{session_id}", response_model=SessionExtendResponse, responses={**HTTP_402, **HTTP_404, **HTTP_409})
 def extend_session(
     session_id: int,
     device: Machine = Depends(get_current_device),
@@ -233,7 +233,7 @@ def extend_session(
     )
 
 
-@router.delete("/{session_id}", response_model=MessageResponse)
+@router.delete("/{session_id}", response_model=MessageResponse, responses={**HTTP_404})
 def terminate_session(
     session_id: int,
     device: Machine = Depends(get_current_device),

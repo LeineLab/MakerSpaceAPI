@@ -15,7 +15,7 @@ from app.models.rental import Rental
 from app.models.session import MachineSession
 from app.models.transaction import Transaction
 from app.models.user import User
-from app.schemas.common import MessageResponse
+from app.schemas.common import HTTP_404, HTTP_409, MessageResponse
 from app.schemas.transaction import MeTransactionResponse
 from app.schemas.user import (
     LinkTokenResponse, UserAuthResponse, UserCreate, UserLinkOidc,
@@ -40,7 +40,7 @@ def _me_user(user: dict, db: Session) -> User:
     return db_user
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me", response_model=UserResponse, responses={**HTTP_404})
 def get_me(
     user: dict = Depends(require_session_user),
     db: Session = Depends(get_db),
@@ -49,7 +49,7 @@ def get_me(
     return _me_user(user, db)
 
 
-@router.delete("/me/oidc", response_model=MessageResponse)
+@router.delete("/me/oidc", response_model=MessageResponse, responses={**HTTP_404})
 def unlink_me_oidc(
     user: dict = Depends(require_session_user),
     db: Session = Depends(get_db),
@@ -61,7 +61,7 @@ def unlink_me_oidc(
     return {"message": "Card unlinked successfully"}
 
 
-@router.get("/me/transactions", response_model=list[MeTransactionResponse])
+@router.get("/me/transactions", response_model=list[MeTransactionResponse], responses={**HTTP_404})
 def get_me_transactions(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -91,7 +91,7 @@ def get_me_transactions(
     ]
 
 
-@router.get("/me/rentals", response_model=list[UserMeRentalResponse])
+@router.get("/me/rentals", response_model=list[UserMeRentalResponse], responses={**HTTP_404})
 def get_me_rentals(
     user: dict = Depends(require_session_user),
     db: Session = Depends(get_db),
@@ -115,7 +115,7 @@ def get_me_rentals(
     ]
 
 
-@router.get("/me/machines", response_model=list[UserMeMachineResponse])
+@router.get("/me/machines", response_model=list[UserMeMachineResponse], responses={**HTTP_404})
 def get_me_machines(
     user: dict = Depends(require_session_user),
     db: Session = Depends(get_db),
@@ -142,7 +142,7 @@ def get_me_machines(
     ]
 
 
-@router.get("/me/sessions", response_model=list[UserMeSessionResponse])
+@router.get("/me/sessions", response_model=list[UserMeSessionResponse], responses={**HTTP_404})
 def get_me_sessions(
     limit: int = Query(default=10, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -191,7 +191,7 @@ def get_me_sessions(
 # Device endpoints
 # ---------------------------------------------------------------------------
 
-@router.post("/{nfc_id}/connect-link", response_model=LinkTokenResponse)
+@router.post("/{nfc_id}/connect-link", response_model=LinkTokenResponse, responses={**HTTP_404, **HTTP_409})
 def generate_connect_link(
     nfc_id: int,
     device: Machine = Depends(get_current_device),
@@ -207,7 +207,7 @@ def generate_connect_link(
     return {"url": f"{settings.BASE_URL}/auth/connect/{token}"}
 
 
-@router.get("/nfc/{nfc_id}", response_model=UserAuthResponse)
+@router.get("/nfc/{nfc_id}", response_model=UserAuthResponse, responses={**HTTP_404})
 def authenticate_nfc(
     nfc_id: int,
     device: Machine = Depends(get_current_device),
@@ -220,7 +220,7 @@ def authenticate_nfc(
     return user
 
 
-@router.post("", response_model=UserResponse, status_code=201)
+@router.post("", response_model=UserResponse, status_code=201, responses={**HTTP_409})
 def create_user(
     body: UserCreate,
     device: Machine = Depends(require_checkout_device),
@@ -246,7 +246,7 @@ def list_users(
     return db.query(User).order_by(User.created_at).all()
 
 
-@router.get("/{nfc_id}", response_model=UserResponse)
+@router.get("/{nfc_id}", response_model=UserResponse, responses={**HTTP_404})
 def get_user(
     nfc_id: int,
     admin: dict = Depends(require_admin_user),
@@ -258,7 +258,7 @@ def get_user(
     return user
 
 
-@router.put("/{nfc_id}", response_model=UserResponse)
+@router.put("/{nfc_id}", response_model=UserResponse, responses={**HTTP_404, **HTTP_409})
 def update_user(
     nfc_id: int,
     body: UserUpdate,
@@ -283,7 +283,7 @@ def update_user(
     return user
 
 
-@router.put("/{nfc_id}/oidc", response_model=UserResponse)
+@router.put("/{nfc_id}/oidc", response_model=UserResponse, responses={**HTTP_404, **HTTP_409})
 def link_oidc(
     nfc_id: int,
     body: UserLinkOidc,

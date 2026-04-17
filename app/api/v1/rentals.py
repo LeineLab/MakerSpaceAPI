@@ -8,7 +8,7 @@ from app.database import get_db
 from app.models.machine import Machine
 from app.models.rental import Rental, RentalItem, RentalPermission
 from app.models.user import User
-from app.schemas.common import MessageResponse
+from app.schemas.common import HTTP_400, HTTP_403, HTTP_404, HTTP_409, MessageResponse
 from app.schemas.rental import (
     ActiveRentalResponse,
     RentalAuthorizeResponse,
@@ -53,7 +53,7 @@ def rental_catalog(
     return result
 
 
-@router.post("/items", response_model=RentalItemResponse, status_code=201)
+@router.post("/items", response_model=RentalItemResponse, status_code=201, responses={**HTTP_409})
 def create_item(
     body: RentalItemCreate,
     admin: dict = Depends(require_admin_user),
@@ -73,7 +73,7 @@ def create_item(
     return item
 
 
-@router.put("/items/{item_id}", response_model=RentalItemResponse)
+@router.put("/items/{item_id}", response_model=RentalItemResponse, responses={**HTTP_404})
 def update_item(
     item_id: int,
     body: RentalItemUpdate,
@@ -94,7 +94,7 @@ def update_item(
     return item
 
 
-@router.get("/items/{uhf_tid}/status", response_model=RentalItemStatusResponse)
+@router.get("/items/{uhf_tid}/status", response_model=RentalItemStatusResponse, responses={**HTTP_404})
 def item_status(
     uhf_tid: str,
     device: Machine = Depends(get_current_device),
@@ -134,7 +134,7 @@ def item_status(
 
 # --- Rental operations ---
 
-@router.get("/authorize/{nfc_id}", response_model=RentalAuthorizeResponse)
+@router.get("/authorize/{nfc_id}", response_model=RentalAuthorizeResponse, responses={**HTTP_404})
 def authorize_renter(
     nfc_id: int,
     device: Machine = Depends(get_current_device),
@@ -152,7 +152,7 @@ def authorize_renter(
     }
 
 
-@router.post("", response_model=RentalResponse, status_code=201)
+@router.post("", response_model=RentalResponse, status_code=201, responses={**HTTP_400, **HTTP_403, **HTTP_404, **HTTP_409})
 def rent_item(
     body: RentRequest,
     device: Machine = Depends(get_current_device),
@@ -188,7 +188,7 @@ def rent_item(
     return rental
 
 
-@router.delete("/{rental_id}", response_model=MessageResponse)
+@router.delete("/{rental_id}", response_model=MessageResponse, responses={**HTTP_404})
 def return_item(
     rental_id: int,
     device: Machine = Depends(get_current_device),
@@ -250,7 +250,7 @@ def list_permissions(
     return results
 
 
-@router.post("/permissions/{nfc_id}", response_model=RentalPermissionResponse, status_code=201)
+@router.post("/permissions/{nfc_id}", response_model=RentalPermissionResponse, status_code=201, responses={**HTTP_404, **HTTP_409})
 def grant_permission(
     nfc_id: int,
     admin: dict = Depends(require_admin_user),
@@ -277,7 +277,7 @@ def grant_permission(
     )
 
 
-@router.delete("/permissions/{nfc_id}", response_model=MessageResponse)
+@router.delete("/permissions/{nfc_id}", response_model=MessageResponse, responses={**HTTP_404})
 def revoke_permission(
     nfc_id: int,
     admin: dict = Depends(require_admin_user),
