@@ -77,3 +77,9 @@ class RentalCatalogItem(BaseModel):
     uhf_tid: str
     name: str
     is_rented: bool
+
+
+class RentalAuthorizeResponse(BaseModel):
+    authorized: bool
+    user_id: int
+    user_name: Optional[str]

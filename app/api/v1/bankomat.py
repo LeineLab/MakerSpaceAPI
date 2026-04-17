@@ -457,7 +457,7 @@ def set_pin(
     return {"detail": "PIN updated"}
 
 
-@router.get("/statement/{target_slug}")
+@router.get("/statement/{target_slug}", response_class=Response)
 def get_statement(
     target_slug: str,
     from_year: int = Query(...),
@@ -522,7 +522,7 @@ def get_statement(
         raise HTTPException(500, f"PDF generation failed: {e}") from e
 
 
-@router.get("/statement-all")
+@router.get("/statement-all", response_class=Response)
 def get_statement_all(
     from_year: int = Query(...),
     from_month: int = Query(...),
