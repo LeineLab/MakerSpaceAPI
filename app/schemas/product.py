@@ -80,9 +80,10 @@ class PurchaseBody(BaseModel):
     nfc_id: int
 
 
-class ProductPurchase(BaseModel):
-    nfc_id: int
-    ean: str
+class PurchaseResponse(BaseModel):
+    detail: str
+    product: str
+    new_balance: Decimal = Field(ge=0, examples=[Decimal("4.20")])
 
 
 class ProductPopularityResponse(BaseModel):

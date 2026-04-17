@@ -11,6 +11,7 @@ from app.models.user import User
 from app.schemas.common import MessageResponse
 from app.schemas.rental import (
     ActiveRentalResponse,
+    RentalAuthorizeResponse,
     RentalCatalogItem,
     RentalItemCreate,
     RentalItemResponse,
@@ -133,7 +134,7 @@ def item_status(
 
 # --- Rental operations ---
 
-@router.get("/authorize/{nfc_id}")
+@router.get("/authorize/{nfc_id}", response_model=RentalAuthorizeResponse)
 def authorize_renter(
     nfc_id: int,
     device: Machine = Depends(get_current_device),

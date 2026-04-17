@@ -32,6 +32,7 @@ from app.schemas.product import (
     ProductStocktaking,
     ProductUpdate,
     PurchaseBody,
+    PurchaseResponse,
 )
 
 router = APIRouter()
@@ -333,7 +334,7 @@ def delete_alias(
 
 # --- Purchase (checkout device) ---
 
-@router.post("/products/{ean}/purchase")
+@router.post("/products/{ean}/purchase", response_model=PurchaseResponse)
 def purchase_product(
     ean: str,
     body: PurchaseBody,
@@ -373,4 +374,4 @@ def purchase_product(
     ))
     db.commit()
 
-    return {"detail": "Purchase successful", "product": product.name, "new_balance": float(user.balance)}
+    return PurchaseResponse(detail="Purchase successful", product=product.name, new_balance=user.balance)
