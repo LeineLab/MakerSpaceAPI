@@ -11,6 +11,7 @@ from app.auth.deps import (
     require_checkout_device,
     require_product_manager_user,
 )
+from app.config import settings
 from app.auth.oidc import is_product_manager
 from app.database import get_db
 from app.models.machine import Machine
@@ -345,7 +346,7 @@ def purchase_product(
     product = _resolve_product(ean, db)
     if not product.active:
         raise HTTPException(status_code=400, detail="Product is not active")
-    if product.stock <= 0:
+    if product.stock <= 0 and not settings.ALLOW_NEGATIVE_STOCK:
         raise HTTPException(status_code=400, detail="Product out of stock")
 
     user = db.execute(

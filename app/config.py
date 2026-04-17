@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # Devices
     CHECKOUT_BOX_SLUGS: str = ""
 
+    # Allow purchases when stock is 0 (stock goes negative)
+    ALLOW_NEGATIVE_STOCK: bool = False
+
     # PDF statement generation (typst)
     # Directory containing extra fonts (e.g. albertsans.ttf). Leave empty to use system fonts only.
     TYPST_FONT_DIR: str = ""
