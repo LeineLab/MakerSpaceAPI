@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -28,6 +28,7 @@ from app.schemas.product import (
     ProductDetailResponse,
     ProductPopularityResponse,
     ProductResponse,
+    ProductSalesSummaryItem,
     ProductStockAdjust,
     ProductStocktaking,
     ProductUpdate,
@@ -65,6 +66,45 @@ def list_products(
         q = q.filter(Product.category == category)
     return q.order_by(Product.category, Product.name).all()
 
+
+
+@router.get("/products/sales-summary", response_model=list[ProductSalesSummaryItem], responses={**HTTP_400})
+def products_sales_summary(
+    from_date: date = Query(...),
+    to_date: date = Query(...),
+    user: dict = Depends(require_product_manager_user),
+    db: Session = Depends(get_db),
+):
+    """Purchase count per product in a date range (inclusive). Product manager only."""
+    if from_date > to_date:
+        raise HTTPException(status_code=400, detail="from_date must not be after to_date")
+
+    from_dt = datetime(from_date.year, from_date.month, from_date.day)
+    to_dt = datetime(to_date.year, to_date.month, to_date.day) + timedelta(days=1)
+
+    rows = (
+        db.query(Transaction.product_id, func.count(Transaction.id).label("count"))
+        .filter(
+            Transaction.type == TransactionType.purchase,
+            Transaction.product_id.is_not(None),
+            Transaction.created_at >= from_dt,
+            Transaction.created_at < to_dt,
+        )
+        .group_by(Transaction.product_id)
+        .all()
+    )
+
+    if not rows:
+        return []
+
+    product_ids = [r.product_id for r in rows]
+    id_to_ean = {p.id: p.ean for p in db.query(Product).filter(Product.id.in_(product_ids)).all()}
+
+    return [
+        ProductSalesSummaryItem(ean=id_to_ean[r.product_id], count=r.count)
+        for r in rows
+        if r.product_id in id_to_ean
+    ]
 
 
 @router.get("/categories", response_model=list[str])

@@ -92,3 +92,8 @@ class ProductPopularityResponse(BaseModel):
     name: str
     purchase_count: int
     days: int
+
+
+class ProductSalesSummaryItem(BaseModel):
+    ean: str
+    count: int

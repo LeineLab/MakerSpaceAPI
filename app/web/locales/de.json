@@ -66,6 +66,11 @@
   "manage.btn_add":      "+ Produkt hinzufügen",
   "manage.empty":        "Noch keine Produkte.",
 
+  "manage.sales_col":   "Verkäufe",
+  "manage.sales_from":  "Von",
+  "manage.sales_to":    "Bis",
+  "manage.sales_apply": "Anwenden",
+
   "manage.categories_title":       "Produktkategorien",
   "manage.no_categories":          "Noch keine Kategorien.",
   "manage.categories_placeholder": "Neuer Kategoriename",
