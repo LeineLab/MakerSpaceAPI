@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from passlib.context import CryptContext
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_device, require_admin_user, require_checkout_device, require_session_user
@@ -15,12 +15,12 @@ from app.models.rental import Rental
 from app.models.session import MachineSession
 from app.models.transaction import Transaction
 from app.models.user import User
-from app.schemas.common import HTTP_404, HTTP_409, MessageResponse
+from app.schemas.common import HTTP_400, HTTP_404, HTTP_409, MessageResponse
 from app.schemas.transaction import MeTransactionResponse
 from app.schemas.user import (
     LinkTokenResponse, UserAuthResponse, UserCreate, UserLinkOidc,
     UserMeMachineResponse, UserMeRentalResponse, UserMeSessionResponse,
-    UserResponse, UserUpdate,
+    UserResponse, UserTransferRequest, UserUpdate,
 )
 
 router = APIRouter()
@@ -235,6 +235,55 @@ def create_user(
     db.commit()
     db.refresh(user)
     return user
+
+
+def _do_transfer(old_id: int, new_id: int, db: Session) -> "User":
+    """Move all data from old_id to new_id using ON UPDATE CASCADE.
+
+    If new_id already exists as an empty user (zero balance, no transactions,
+    no machine authorizations) it is deleted first to make room.
+    Raises HTTPException on any conflict.
+    """
+    if old_id == new_id:
+        raise HTTPException(status_code=400, detail="Source and target card ID are the same")
+
+    old_user = db.query(User).filter(User.id == old_id).first()
+    if not old_user:
+        raise HTTPException(status_code=404, detail="Source user not found")
+
+    new_user = db.query(User).filter(User.id == new_id).first()
+    if new_user:
+        has_data = (
+            new_user.balance > Decimal("0.00")
+            or db.query(Transaction.id).filter(Transaction.user_id == new_id).first() is not None
+            or db.query(MachineAuthorization.machine_id).filter(MachineAuthorization.user_id == new_id).first() is not None
+        )
+        if has_data:
+            raise HTTPException(
+                status_code=409,
+                detail="Target card ID already has a user with data; transfer not possible",
+            )
+        db.delete(new_user)
+        db.flush()
+
+    # ON UPDATE CASCADE propagates the ID change to all FK references
+    db.execute(text("UPDATE users SET id = :new_id WHERE id = :old_id"), {"new_id": new_id, "old_id": old_id})
+    db.commit()
+    db.expire_all()
+
+    updated = db.query(User).filter(User.id == new_id).first()
+    return updated
+
+
+@router.post("/{old_nfc_id}/transfer", response_model=UserResponse, responses={**HTTP_400, **HTTP_404, **HTTP_409})
+def transfer_card(
+    old_nfc_id: int,
+    body: UserTransferRequest,
+    admin: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Transfer all balance, authorizations and history from one NFC card to another (admin only)."""
+    return _do_transfer(old_nfc_id, body.new_id, db)
 
 
 @router.get("", response_model=list[UserResponse])

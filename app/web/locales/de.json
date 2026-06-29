@@ -173,6 +173,13 @@
   "users.placeholder_name": "Anzeigename",
   "users.placeholder_oidc": "z.B. auth|123456",
 
+  "users.btn_transfer":          "Übertragen",
+  "users.transfer_title":        "Karte übertragen",
+  "users.transfer_hint":         "Alle Guthaben, Freigaben und den Verlauf auf eine neue NFC-Ausweis-ID übertragen. Dies kann nicht rückgängig gemacht werden.",
+  "users.label_new_nfc_id":      "Neue NFC-Ausweis-ID",
+  "users.placeholder_new_nfc_id": "z.B. 1234567890",
+  "users.transfer_success":      "Karte erfolgreich übertragen.",
+
   "bankomat.title":            "Buchungsziele",
   "bankomat.btn_new":          "+ Neues Buchungsziel",
   "bankomat.empty":            "Noch keine Buchungsziele.",
@@ -272,6 +279,14 @@
 
   "connect.title_success":      "Karte verknüpft",
   "connect.title_failure":      "Verknüpfung fehlgeschlagen",
+  "connect.transfer_title":     "Kartenübertragung",
+  "connect.transfer_heading":   "Auf neue Karte übertragen?",
+  "connect.transfer_body":      "Dein OIDC-Konto ist bereits mit einer anderen NFC-Karte verknüpft. Du kannst Guthaben, Freigaben und Verlauf auf die neue Karte übertragen.",
+  "connect.transfer_old_card":  "Alte Karte",
+  "connect.transfer_new_card":  "Neue Karte",
+  "connect.transfer_warning":   "Alle Daten werden auf die neue Karte verschoben. Die alte Karte funktioniert danach nicht mehr.",
+  "connect.transfer_btn":       "Übertragen und neue Karte verknüpfen",
+  "connect.transfer_cancel":    "Abbrechen",
   "connect.heading_success":    "Karte verknüpft!",
   "connect.body_success_name":  "Willkommen, {name}. Deine NFC-Karte ist jetzt mit deinem Konto verknüpft.",
   "connect.body_success":       "Deine NFC-Karte ist jetzt mit deinem Konto verknüpft.",

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -90,7 +90,23 @@ async def connect_callback(request: Request, db: Session = Depends(get_db)):
 
     existing = db.query(User).filter(User.oidc_sub == sub).first()
     if existing:
-        return _error(_("connect.err_oidc_taken"))
+        # Offer to transfer old card's data to the new card instead of failing
+        request.session["_transfer"] = {
+            "old_id": existing.id,
+            "new_id": nfc_id,
+            "sub": sub,
+        }
+        return _templates.TemplateResponse(
+            request, "connect_transfer.html",
+            {
+                "user": None, "flash": None,
+                "_": get_translator(locale), "lang": locale,
+                "old_id": existing.id,
+                "new_id": nfc_id,
+                "old_name": existing.name,
+                "old_balance": existing.balance,
+            },
+        )
 
     user.oidc_sub = sub
     if settings.OIDC_LINK_UPDATE_NAME:
@@ -124,6 +140,45 @@ async def connect_start(token: str, request: Request):
     return await oauth.oidc.authorize_redirect(
         request, f"{settings.BASE_URL}/auth/connect/callback"
     )
+
+
+@router.post("/connect/transfer")
+async def connect_transfer(request: Request, db: Session = Depends(get_db)):
+    """Execute the pending NFC card transfer after the user confirmed."""
+    locale = detect_language(request.headers.get("accept-language", ""))
+    _ = get_translator(locale)
+
+    def _error(msg: str):
+        return _templates.TemplateResponse(
+            request, "connect_result.html",
+            {"user": None, "flash": None,
+             "_": _, "lang": locale,
+             "success": False, "error": msg},
+        )
+
+    transfer_data = request.session.pop("_transfer", None)
+    if not transfer_data:
+        return _error(_("connect.err_session"))
+
+    from app.api.v1.users import _do_transfer  # local import to avoid circular dependency
+    try:
+        user = _do_transfer(transfer_data["old_id"], transfer_data["new_id"], db)
+    except HTTPException as e:
+        return _error(e.detail)
+
+    return _templates.TemplateResponse(
+        request, "connect_result.html",
+        {"user": None, "flash": None,
+         "_": _, "lang": locale,
+         "success": True, "display_name": user.name if user else None},
+    )
+
+
+@router.get("/connect/transfer/cancel")
+async def connect_transfer_cancel(request: Request):
+    """Cancel a pending card transfer and return to the home page."""
+    request.session.pop("_transfer", None)
+    return RedirectResponse(url="/")
 
 
 @router.get("/me")

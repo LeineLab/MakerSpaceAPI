@@ -60,6 +60,11 @@ class LinkTokenResponse(BaseModel):
     url: str
 
 
+class UserTransferRequest(BaseModel):
+    """Transfer all data to a new NFC card ID."""
+    new_id: int
+
+
 class UserMeRentalResponse(BaseModel):
     rental_id: int
     item_name: str

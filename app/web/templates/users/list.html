@@ -6,6 +6,7 @@
   <h1 class="text-2xl font-bold mb-4">{{ _('users.title') }}</h1>
 
   <div x-show="error" class="mb-4 bg-red-100 text-red-700 p-3 rounded text-sm" x-text="error"></div>
+  <div x-show="success" class="mb-4 bg-green-100 text-green-700 p-3 rounded text-sm" x-text="success"></div>
 
   <div class="bg-white rounded-lg shadow overflow-hidden">
     <div class="overflow-x-auto">
@@ -41,14 +42,43 @@
                 x-text="parseFloat(u.balance).toFixed(2) + ' €'"></td>
             <td class="px-4 py-2 text-gray-500 text-xs"
                 x-text="fmtDate(u.created_at)"></td>
-            <td class="px-4 py-2 text-right">
+            <td class="px-4 py-2 text-right space-x-2 whitespace-nowrap">
               <button @click="openEdit(u)"
                       class="text-xs text-blue-600 hover:underline">{{ _('users.btn_edit') }}</button>
+              <button @click="openTransfer(u)"
+                      class="text-xs text-gray-500 hover:underline">{{ _('users.btn_transfer') }}</button>
             </td>
           </tr>
         </template>
       </tbody>
     </table>
+    </div>
+  </div>
+
+  <!-- Transfer Card Modal -->
+  <div x-show="showTransferModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showTransferModal = false">
+      <h2 class="text-lg font-bold mb-1">{{ _('users.transfer_title') }}</h2>
+      <p class="text-xs text-gray-400 font-mono mb-2" x-text="'ID: ' + (transferForm.old_id || '')"></p>
+      <p class="text-sm text-gray-600 mb-4">{{ _('users.transfer_hint') }}</p>
+      <div x-show="transferError" class="mb-3 bg-red-100 text-red-700 p-2 rounded text-sm" x-text="transferError"></div>
+      <form @submit.prevent="doTransfer()" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('users.label_new_nfc_id') }}</label>
+          <input type="number" x-model="transferForm.new_id" required
+                 placeholder="{{ _('users.placeholder_new_nfc_id') }}"
+                 class="w-full border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" @click="showTransferModal = false"
+                  class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">{{ _('common.cancel') }}</button>
+          <button type="submit" :disabled="transferSubmitting"
+                  class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
+            <span x-show="!transferSubmitting">{{ _('users.btn_transfer') }}</span>
+            <span x-show="transferSubmitting">…</span>
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -89,10 +119,19 @@ function userList() {
     users: [],
     loading: true,
     error: null,
+    success: null,
+
+    // Edit modal
     showEditModal: false,
     editSubmitting: false,
     editError: null,
     editForm: { id: null, name: '', oidc_sub: '' },
+
+    // Transfer modal
+    showTransferModal: false,
+    transferSubmitting: false,
+    transferError: null,
+    transferForm: { old_id: null, new_id: '' },
 
     async init() {
       try {
@@ -112,6 +151,12 @@ function userList() {
       this.showEditModal = true;
     },
 
+    openTransfer(u) {
+      this.transferForm = { old_id: u.id, new_id: '' };
+      this.transferError = null;
+      this.showTransferModal = true;
+    },
+
     async saveEdit() {
       this.editSubmitting = true;
       this.editError = null;
@@ -127,13 +172,39 @@ function userList() {
           return;
         }
         this.showEditModal = false;
-        // Update the row in-place
         const idx = this.users.findIndex(u => u.id === data.id);
         if (idx !== -1) this.users[idx] = data;
       } catch (e) {
         if (e !== 'unauthenticated') this.editError = e.message;
       } finally {
         this.editSubmitting = false;
+      }
+    },
+
+    async doTransfer() {
+      this.transferSubmitting = true;
+      this.transferError = null;
+      try {
+        const r = await apiFetch(`/api/v1/users/${this.transferForm.old_id}/transfer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ new_id: parseInt(this.transferForm.new_id) }),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          this.transferError = data.detail || 'Error during transfer';
+          return;
+        }
+        this.showTransferModal = false;
+        this.success = {{ _('users.transfer_success') | tojson }};
+        setTimeout(() => this.success = null, 5000);
+        // Reload user list: old ID is gone, new ID appears
+        const resp = await apiFetch('/api/v1/users');
+        if (resp.ok) this.users = await resp.json();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.transferError = e.message;
+      } finally {
+        this.transferSubmitting = false;
       }
     }
   }

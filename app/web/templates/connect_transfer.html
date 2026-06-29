@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ _('connect.transfer_title') }} – MakerSpace{% endblock %}
+{% block content %}
+<div class="max-w-md mx-auto mt-12 space-y-6">
+
+  <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-yellow-100 mx-auto">
+    <svg class="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+    </svg>
+  </div>
+
+  <h1 class="text-2xl font-bold text-gray-900 text-center">{{ _('connect.transfer_heading') }}</h1>
+
+  <div class="bg-white rounded-lg shadow p-5 space-y-3 text-sm text-gray-700">
+    <p>{{ _('connect.transfer_body') }}</p>
+    <dl class="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">
+      {% if old_name %}
+      <dt class="text-gray-500">{{ _('common.name') }}</dt>
+      <dd class="font-medium">{{ old_name }}</dd>
+      {% endif %}
+      <dt class="text-gray-500">{{ _('users.col_balance') }}</dt>
+      <dd class="font-medium">{{ "%.2f"|format(old_balance|float) }} €</dd>
+      <dt class="text-gray-500">{{ _('connect.transfer_old_card') }}</dt>
+      <dd class="font-mono">{{ old_id }}</dd>
+      <dt class="text-gray-500">{{ _('connect.transfer_new_card') }}</dt>
+      <dd class="font-mono">{{ new_id }}</dd>
+    </dl>
+    <p class="text-xs text-gray-400 pt-1">{{ _('connect.transfer_warning') }}</p>
+  </div>
+
+  <div class="flex flex-col gap-3">
+    <form method="post" action="/auth/connect/transfer">
+      <button type="submit"
+              class="w-full px-4 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700">
+        {{ _('connect.transfer_btn') }}
+      </button>
+    </form>
+    <a href="/auth/connect/transfer/cancel"
+       class="block text-center px-4 py-3 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50">
+      {{ _('connect.transfer_cancel') }}
+    </a>
+  </div>
+
+</div>
+{% endblock %}
