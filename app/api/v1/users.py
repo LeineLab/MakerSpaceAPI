@@ -238,11 +238,17 @@ def create_user(
 
 
 def _do_transfer(old_id: int, new_id: int, db: Session) -> "User":
-    """Move all data from old_id to new_id using ON UPDATE CASCADE.
+    """Move all data from old_id to new_id.
 
-    If new_id already exists as an empty user (zero balance, no transactions,
-    no machine authorizations) it is deleted first to make room.
-    Raises HTTPException on any conflict.
+    If new_id already has a user record, the two are merged:
+    - Balances are summed on old_id.
+    - All transactions, sessions and rentals from new_id are re-attributed to old_id.
+    - Machine authorizations from new_id that don't conflict are moved to old_id;
+      duplicates (same machine) are dropped (old_id's settings take priority).
+    - Rental permission is kept from old_id if it exists, otherwise taken from new_id.
+    - new_id's user record is then deleted.
+    Finally old_id is renamed to new_id; ON UPDATE CASCADE propagates the change to
+    all remaining FK references.
     """
     if old_id == new_id:
         raise HTTPException(status_code=400, detail="Source and target card ID are the same")
@@ -253,26 +259,91 @@ def _do_transfer(old_id: int, new_id: int, db: Session) -> "User":
 
     new_user = db.query(User).filter(User.id == new_id).first()
     if new_user:
-        has_data = (
-            new_user.balance > Decimal("0.00")
-            or db.query(Transaction.id).filter(Transaction.user_id == new_id).first() is not None
-            or db.query(MachineAuthorization.machine_id).filter(MachineAuthorization.user_id == new_id).first() is not None
+        # Expunge both from the ORM identity map so subsequent raw SQL
+        # operations don't leave stale objects that could cause flush conflicts.
+        db.expunge(old_user)
+        db.expunge(new_user)
+
+        # 1. Merge balance into old_id
+        db.execute(
+            text("UPDATE users SET balance = balance + :b WHERE id = :old"),
+            {"b": new_user.balance, "old": old_id},
         )
-        if has_data:
-            raise HTTPException(
-                status_code=409,
-                detail="Target card ID already has a user with data; transfer not possible",
+
+        # 2. Re-attribute transactions (both as owner and as peer)
+        db.execute(
+            text("UPDATE transactions SET user_id = :old WHERE user_id = :new"),
+            {"old": old_id, "new": new_id},
+        )
+        db.execute(
+            text("UPDATE transactions SET peer_user_id = :old WHERE peer_user_id = :new"),
+            {"old": old_id, "new": new_id},
+        )
+
+        # 3. Re-attribute machine sessions
+        db.execute(
+            text("UPDATE machine_sessions SET user_id = :old WHERE user_id = :new"),
+            {"old": old_id, "new": new_id},
+        )
+
+        # 4. Merge machine authorizations — move non-conflicting ones, drop duplicates
+        old_machine_ids = {
+            row[0]
+            for row in db.execute(
+                text("SELECT machine_id FROM machine_authorizations WHERE user_id = :old"),
+                {"old": old_id},
+            ).fetchall()
+        }
+        for (mid,) in db.execute(
+            text("SELECT machine_id FROM machine_authorizations WHERE user_id = :new"),
+            {"new": new_id},
+        ).fetchall():
+            if mid not in old_machine_ids:
+                db.execute(
+                    text(
+                        "UPDATE machine_authorizations SET user_id = :old"
+                        " WHERE machine_id = :mid AND user_id = :new"
+                    ),
+                    {"old": old_id, "mid": mid, "new": new_id},
+                )
+        db.execute(
+            text("DELETE FROM machine_authorizations WHERE user_id = :new"),
+            {"new": new_id},
+        )
+
+        # 5. Re-attribute rentals
+        db.execute(
+            text("UPDATE rentals SET user_id = :old WHERE user_id = :new"),
+            {"old": old_id, "new": new_id},
+        )
+
+        # 6. Rental permission: keep old_id's if present, otherwise migrate new_id's
+        has_old_perm = db.execute(
+            text("SELECT 1 FROM rental_permissions WHERE user_id = :old"), {"old": old_id}
+        ).first()
+        if not has_old_perm:
+            db.execute(
+                text("UPDATE rental_permissions SET user_id = :old WHERE user_id = :new"),
+                {"old": old_id, "new": new_id},
             )
-        db.delete(new_user)
+        else:
+            db.execute(
+                text("DELETE FROM rental_permissions WHERE user_id = :new"), {"new": new_id}
+            )
+
+        # 7. Remove the now-empty new_id user record
+        db.execute(text("DELETE FROM users WHERE id = :new"), {"new": new_id})
         db.flush()
 
-    # ON UPDATE CASCADE propagates the ID change to all FK references
-    db.execute(text("UPDATE users SET id = :new_id WHERE id = :old_id"), {"new_id": new_id, "old_id": old_id})
+    # Rename old_id → new_id; ON UPDATE CASCADE propagates to all remaining FKs
+    db.execute(
+        text("UPDATE users SET id = :new_id WHERE id = :old_id"),
+        {"new_id": new_id, "old_id": old_id},
+    )
     db.commit()
     db.expire_all()
 
-    updated = db.query(User).filter(User.id == new_id).first()
-    return updated
+    return db.query(User).filter(User.id == new_id).first()
 
 
 @router.post("/{old_nfc_id}/transfer", response_model=UserResponse, responses={**HTTP_400, **HTTP_404, **HTTP_409})

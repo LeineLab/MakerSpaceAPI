@@ -175,7 +175,7 @@
 
   "users.btn_transfer":          "Übertragen",
   "users.transfer_title":        "Karte übertragen",
-  "users.transfer_hint":         "Alle Guthaben, Freigaben und den Verlauf auf eine neue NFC-Ausweis-ID übertragen. Dies kann nicht rückgängig gemacht werden.",
+  "users.transfer_hint":         "Alle Guthaben, Freigaben und den Verlauf auf eine neue NFC-Ausweis-ID übertragen. Falls die neue Karte bereits Daten hat, werden die Guthaben addiert und nicht-konfliktende Freigaben zusammengeführt. Dies kann nicht rückgängig gemacht werden.",
   "users.label_new_nfc_id":      "Neue NFC-Ausweis-ID",
   "users.placeholder_new_nfc_id": "z.B. 1234567890",
   "users.transfer_success":      "Karte erfolgreich übertragen.",
@@ -281,7 +281,7 @@
   "connect.title_failure":      "Verknüpfung fehlgeschlagen",
   "connect.transfer_title":     "Kartenübertragung",
   "connect.transfer_heading":   "Auf neue Karte übertragen?",
-  "connect.transfer_body":      "Dein OIDC-Konto ist bereits mit einer anderen NFC-Karte verknüpft. Du kannst Guthaben, Freigaben und Verlauf auf die neue Karte übertragen.",
+  "connect.transfer_body":      "Dein OIDC-Konto ist bereits mit einer anderen NFC-Karte verknüpft. Du kannst beide Karten zusammenführen: Die Guthaben werden addiert, alle Freigaben und der Verlauf auf die neue Karte übertragen.",
   "connect.transfer_old_card":  "Alte Karte",
   "connect.transfer_new_card":  "Neue Karte",
   "connect.transfer_warning":   "Alle Daten werden auf die neue Karte verschoben. Die alte Karte funktioniert danach nicht mehr.",

@@ -272,7 +272,7 @@
 
   "users.btn_transfer":          "Transfer",
   "users.transfer_title":        "Transfer Card",
-  "users.transfer_hint":         "Move all balance, authorizations and history to a new NFC card ID. This cannot be undone.",
+  "users.transfer_hint":         "Move all balance, authorizations and history to a new NFC card ID. If the new card already has data, balances are summed and non-conflicting authorizations are merged. This cannot be undone.",
   "users.label_new_nfc_id":      "New NFC Card ID",
   "users.placeholder_new_nfc_id": "e.g. 1234567890",
   "users.transfer_success":      "Card transferred successfully.",
@@ -281,7 +281,7 @@
   "connect.title_failure":      "Link Failed",
   "connect.transfer_title":     "Card Transfer",
   "connect.transfer_heading":   "Transfer to New Card?",
-  "connect.transfer_body":      "Your OIDC account is already linked to another NFC card. You can transfer all balance, authorizations and history to the new card instead.",
+  "connect.transfer_body":      "Your OIDC account is already linked to another NFC card. You can merge both cards: the balances will be combined, and all authorizations and history will be moved to the new card.",
   "connect.transfer_old_card":  "Old card",
   "connect.transfer_new_card":  "New card",
   "connect.transfer_warning":   "All data will be moved to the new card. The old card will no longer work.",
