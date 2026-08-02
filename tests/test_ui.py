@@ -341,7 +341,9 @@ def test_edit_user_modal_opens(admin_page, live_server, _engine):
         timeout=5000,
     )
     admin_page.locator("button:has-text('Edit')").first.click()
-    modal = admin_page.locator(".fixed.inset-0").first
+    # /users has two modals (transfer + edit); ":visible" picks the open one
+    # regardless of DOM order.
+    modal = admin_page.locator(".fixed.inset-0:visible").first
     modal.wait_for(state="visible", timeout=3000)
     assert modal.is_visible()
 
