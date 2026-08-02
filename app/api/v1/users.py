@@ -265,9 +265,10 @@ def _do_transfer(old_id: int, new_id: int, db: Session) -> "User":
         db.expunge(new_user)
 
         # 1. Merge balance into old_id
+        # Bind as str: some DB drivers (e.g. sqlite3) can't bind decimal.Decimal directly.
         db.execute(
             text("UPDATE users SET balance = balance + :b WHERE id = :old"),
-            {"b": new_user.balance, "old": old_id},
+            {"b": str(new_user.balance), "old": old_id},
         )
 
         # 2. Re-attribute transactions (both as owner and as peer)
