@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
@@ -11,6 +13,8 @@ from app.web.i18n import detect_language, get_translator
 from app.web.templating import templates as _templates
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+logger = logging.getLogger(__name__)
 
 
 @router.get("/login")
@@ -164,7 +168,15 @@ async def connect_transfer(request: Request, db: Session = Depends(get_db)):
     try:
         user = _do_transfer(transfer_data["old_id"], transfer_data["new_id"], db)
     except HTTPException as e:
+        db.rollback()
         return _error(e.detail)
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Card transfer failed (old_id=%s, new_id=%s)",
+            transfer_data["old_id"], transfer_data["new_id"],
+        )
+        return _error(_("connect.err_transfer_failed"))
 
     return _templates.TemplateResponse(
         request, "connect_result.html",

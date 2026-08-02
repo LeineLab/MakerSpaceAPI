@@ -296,5 +296,6 @@
   "connect.err_no_sub":         "No sub claim in OIDC response.",
   "connect.err_user_not_found": "NFC user not found.",
   "connect.err_card_taken":     "This card is already linked to an account.",
-  "connect.err_oidc_taken":     "This OIDC account is already linked to another card."
+  "connect.err_oidc_taken":     "This OIDC account is already linked to another card.",
+  "connect.err_transfer_failed": "Card transfer failed. Nothing was changed — please try again or contact an admin."
 }

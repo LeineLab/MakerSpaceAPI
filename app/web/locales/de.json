@@ -296,5 +296,6 @@
   "connect.err_no_sub":         "Kein Sub-Claim in der OIDC-Antwort.",
   "connect.err_user_not_found": "NFC-Benutzer nicht gefunden.",
   "connect.err_card_taken":     "Diese Karte ist bereits mit einem Konto verknüpft.",
-  "connect.err_oidc_taken":     "Dieses OIDC-Konto ist bereits mit einer anderen Karte verknüpft."
+  "connect.err_oidc_taken":     "Dieses OIDC-Konto ist bereits mit einer anderen Karte verknüpft.",
+  "connect.err_transfer_failed": "Die Kartenübertragung ist fehlgeschlagen. Es wurde nichts geändert, bitte versuche es erneut oder wende dich an einen Admin."
 }
