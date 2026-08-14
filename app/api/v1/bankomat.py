@@ -22,6 +22,7 @@ from app.models.user import User
 from app.schemas.booking_target import (
     BookingTargetCreate,
     BookingTargetResponse,
+    DenominationReport,
     PayoutRequest,
     SetPinRequest,
     TargetTopupRequest,
@@ -242,6 +243,78 @@ def create_target(
     db.commit()
     db.refresh(target)
     return target
+
+
+_DEPOSIT_TYPES = [TransactionType.topup, TransactionType.booking_target_topup]
+
+
+@router.get("/denominations", response_model=DenominationReport)
+def denomination_report(
+    admin: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Deposit denominations per booking target since its last payout (Abschöpfung).
+
+    A payout empties an account to 0, so all deposits (topup + booking_target_topup)
+    recorded after a target's most recent ``booking_target_payout`` add up to the cash
+    currently in that target's box, grouped here by note value (e.g. 13x 50 €, 7x 2 €).
+    ``combined`` aggregates every target, each counted since its own last payout.
+    """
+    targets = db.query(BookingTarget).order_by(BookingTarget.name).all()
+
+    combined_counts: dict[Decimal, int] = {}
+    target_reports = []
+
+    for target in targets:
+        last_payout = (
+            db.query(func.max(Transaction.created_at))
+            .filter(
+                Transaction.target_id == target.id,
+                Transaction.type == TransactionType.booking_target_payout,
+            )
+            .scalar()
+        )
+
+        q = (
+            db.query(Transaction.amount, func.count().label("count"))
+            .filter(
+                Transaction.target_id == target.id,
+                Transaction.type.in_(_DEPOSIT_TYPES),
+            )
+        )
+        if last_payout is not None:
+            q = q.filter(Transaction.created_at > last_payout)
+        rows = q.group_by(Transaction.amount).all()
+
+        denominations = []
+        total = Decimal("0.00")
+        for amount, count in sorted(rows, key=lambda r: r[0], reverse=True):
+            line_sum = amount * count
+            denominations.append({"amount": amount, "count": count, "sum": line_sum})
+            total += line_sum
+            combined_counts[amount] = combined_counts.get(amount, 0) + count
+
+        target_reports.append({
+            "id": target.id,
+            "name": target.name,
+            "slug": target.slug,
+            "last_payout": last_payout,
+            "denominations": denominations,
+            "total": total,
+        })
+
+    combined_denominations = []
+    combined_total = Decimal("0.00")
+    for amount in sorted(combined_counts, reverse=True):
+        count = combined_counts[amount]
+        line_sum = amount * count
+        combined_denominations.append({"amount": amount, "count": count, "sum": line_sum})
+        combined_total += line_sum
+
+    return {
+        "combined": {"denominations": combined_denominations, "total": combined_total},
+        "targets": target_reports,
+    }
 
 
 # --- ATM operations ---

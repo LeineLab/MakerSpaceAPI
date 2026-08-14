@@ -358,6 +358,46 @@ def test_add_product_modal_opens(admin_page, live_server):
     assert modal.is_visible()
 
 
+def test_denominations_modal_shows_report(admin_page, live_server, _engine):
+    from sqlalchemy.orm import sessionmaker
+
+    from app.models.booking_target import BookingTarget
+    from app.models.transaction import Transaction, TransactionType
+    from app.models.user import User
+
+    Session = sessionmaker(bind=_engine)
+    db = Session()
+    if not db.query(BookingTarget).filter(BookingTarget.slug == "denom-ui").first():
+        t = BookingTarget(
+            name="Denom UI Fund", slug="denom-ui", balance=Decimal("100.00"),
+            created_at=datetime.now(UTC).replace(tzinfo=None),
+        )
+        db.add(t)
+        if not db.query(User).filter(User.id == 888777050).first():
+            db.add(User(id=888777050, name="Denom UI User", balance=Decimal("0.00"),
+                        created_at=datetime.now(UTC).replace(tzinfo=None)))
+        db.flush()
+        for amount in ("50.00", "50.00", "2.00"):
+            db.add(Transaction(user_id=888777050, amount=Decimal(amount),
+                               type=TransactionType.topup, target_id=t.id,
+                               created_at=datetime(2026, 6, 20, 10, 0, 0)))
+        db.commit()
+    db.close()
+
+    admin_page.goto(BASE + "/bankomat")
+    admin_page.wait_for_load_state("networkidle")
+    admin_page.locator("button:has-text('Denominations')").first.click()
+    modal = admin_page.locator(".fixed.inset-0:visible").first
+    modal.wait_for(state="visible", timeout=3000)
+    # Combined section renders a table with the 50.00 denomination counted twice
+    admin_page.wait_for_function(
+        "document.querySelector('.fixed.inset-0 tbody') "
+        "&& document.querySelector('.fixed.inset-0 tbody').textContent.includes('2×')",
+        timeout=3000,
+    )
+    assert modal.is_visible()
+
+
 # ── Alpine.js data loading ────────────────────────────────────────────────────
 
 

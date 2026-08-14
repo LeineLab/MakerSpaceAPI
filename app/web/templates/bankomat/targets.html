@@ -6,6 +6,10 @@
   <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
     <h1 class="text-2xl font-bold">{{ _('bankomat.title') }}</h1>
     <div class="flex flex-wrap gap-2">
+      <button @click="openDenominationsModal()"
+              class="bg-amber-600 text-white px-4 py-2 rounded text-sm hover:bg-amber-700">
+        {{ _('bankomat.btn_denominations') }}
+      </button>
       <button @click="openStatementAllModal()"
               class="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700">
         {{ _('bankomat.btn_statement_all') }}
@@ -168,6 +172,60 @@
     </div>
   </div>
 
+  <!-- Denominations Modal -->
+  <div x-show="showDenomModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col" @click.outside="showDenomModal = false">
+      <div class="p-6 pb-3 border-b">
+        <h2 class="text-lg font-bold">{{ _('bankomat.denom_title') }}</h2>
+        <p class="text-sm text-gray-500 mt-1">{{ _('bankomat.denom_hint') }}</p>
+      </div>
+      <div class="p-6 pt-4 overflow-y-auto">
+        <div x-show="denomError" class="mb-3 bg-red-100 text-red-700 p-2 rounded text-sm" x-text="denomError"></div>
+        <template x-if="denomLoading">
+          <div class="text-gray-400 text-sm">Loading…</div>
+        </template>
+
+        <template x-if="!denomLoading && denomReport">
+          <div>
+            <!-- Combined -->
+            <div class="mb-6">
+              <h3 class="font-semibold mb-2">{{ _('bankomat.denom_combined') }}</h3>
+              <template x-if="denomReport.combined.denominations.length === 0">
+                <p class="text-gray-400 text-sm">{{ _('bankomat.denom_empty') }}</p>
+              </template>
+              <template x-if="denomReport.combined.denominations.length > 0">
+                <div x-html="denomTable(denomReport.combined.denominations, denomReport.combined.total)"></div>
+              </template>
+            </div>
+
+            <!-- Per target -->
+            <template x-if="denomReport.targets.length === 0">
+              <p class="text-gray-400 text-sm">{{ _('bankomat.denom_none') }}</p>
+            </template>
+            <template x-for="t in denomReport.targets" :key="t.id">
+              <div class="mb-6">
+                <div class="flex flex-wrap items-baseline justify-between gap-1">
+                  <h3 class="font-semibold" x-text="t.name"></h3>
+                  <span class="text-xs text-gray-400" x-text="sinceLabel(t.last_payout)"></span>
+                </div>
+                <template x-if="t.denominations.length === 0">
+                  <p class="text-gray-400 text-sm mt-1">{{ _('bankomat.denom_empty') }}</p>
+                </template>
+                <template x-if="t.denominations.length > 0">
+                  <div class="mt-1" x-html="denomTable(t.denominations, t.total)"></div>
+                </template>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
+      <div class="p-4 border-t flex justify-end">
+        <button type="button" @click="showDenomModal = false"
+                class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">{{ _('common.close') }}</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Add Treasurer Modal -->
   <div x-show="showAddModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
     <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showAddModal = false">
@@ -208,6 +266,15 @@
 </div>
 
 <script>
+const DENOM_L = {
+  amount: {{ _('bankomat.denom_col_amount') | tojson }},
+  count:  {{ _('bankomat.denom_col_count') | tojson }},
+  sum:    {{ _('bankomat.denom_col_sum') | tojson }},
+  total:  {{ _('bankomat.denom_total') | tojson }},
+  since:  {{ _('bankomat.denom_since') | tojson }},
+  sinceNever: {{ _('bankomat.denom_since_never') | tojson }},
+};
+
 function targetList() {
   return {
     targets: [],
@@ -233,6 +300,12 @@ function targetList() {
     statementForm: { from: '', to: '' },
     statementError: null,
     statementLoading: false,
+
+    // Denominations report
+    showDenomModal: false,
+    denomReport: null,
+    denomLoading: false,
+    denomError: null,
 
     async init() {
       await Promise.all([this.loadTargets(), this.loadUsers()]);
@@ -324,6 +397,57 @@ function targetList() {
       } finally {
         this.statementLoading = false;
       }
+    },
+
+    async openDenominationsModal() {
+      this.showDenomModal = true;
+      this.denomError = null;
+      this.denomReport = null;
+      this.denomLoading = true;
+      try {
+        const r = await apiFetch('/api/v1/bankomat/denominations');
+        if (!r.ok) {
+          const data = await r.json().catch(() => ({}));
+          throw new Error(data.detail || 'Error loading denominations');
+        }
+        this.denomReport = await r.json();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.denomError = e.message || String(e);
+      } finally {
+        this.denomLoading = false;
+      }
+    },
+
+    fmt(v) {
+      return parseFloat(v).toFixed(2) + ' €';
+    },
+
+    sinceLabel(lastPayout) {
+      if (!lastPayout) return DENOM_L.sinceNever;
+      const d = new Date(lastPayout);
+      return DENOM_L.since.replace('{date}', d.toLocaleDateString());
+    },
+
+    denomTable(denoms, total) {
+      const rows = denoms.map(d =>
+        `<tr class="border-t border-gray-100">`
+        + `<td class="px-3 py-1.5 text-right font-mono">${this.fmt(d.amount)}</td>`
+        + `<td class="px-3 py-1.5 text-right">${d.count}&times;</td>`
+        + `<td class="px-3 py-1.5 text-right font-mono">${this.fmt(d.sum)}</td>`
+        + `</tr>`
+      ).join('');
+      return `<table class="min-w-full text-sm border border-gray-100 rounded">`
+        + `<thead class="bg-gray-50 text-gray-500 uppercase text-xs">`
+        + `<tr>`
+        + `<th class="px-3 py-1.5 text-right font-medium">${DENOM_L.amount}</th>`
+        + `<th class="px-3 py-1.5 text-right font-medium">${DENOM_L.count}</th>`
+        + `<th class="px-3 py-1.5 text-right font-medium">${DENOM_L.sum}</th>`
+        + `</tr></thead>`
+        + `<tbody>${rows}</tbody>`
+        + `<tfoot><tr class="border-t-2 border-gray-200 font-semibold">`
+        + `<td class="px-3 py-1.5 text-right" colspan="2">${DENOM_L.total}</td>`
+        + `<td class="px-3 py-1.5 text-right font-mono">${this.fmt(total)}</td>`
+        + `</tr></tfoot></table>`;
     },
 
     get treasurers() {

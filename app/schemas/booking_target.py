@@ -51,3 +51,31 @@ class PayoutRequest(BaseModel):
 class SetPinRequest(BaseModel):
     nfc_id: int
     pin: str  # plaintext, will be hashed
+
+
+class DenominationEntry(BaseModel):
+    """One denomination bucket: `count` deposits of the same `amount`."""
+    amount: Decimal = Field(examples=[Decimal("50.00")])
+    count: int = Field(examples=[13])
+    sum: Decimal = Field(examples=[Decimal("650.00")])
+
+
+class TargetDenominations(BaseModel):
+    """Denomination breakdown for a single booking target since its last payout."""
+    id: int
+    name: str
+    slug: str
+    last_payout: Optional[datetime] = None  # None = target was never skimmed
+    denominations: list[DenominationEntry]
+    total: Decimal = Field(examples=[Decimal("664.00")])
+
+
+class CombinedDenominations(BaseModel):
+    """Aggregate across all targets, each counted since its own last payout."""
+    denominations: list[DenominationEntry]
+    total: Decimal = Field(examples=[Decimal("664.00")])
+
+
+class DenominationReport(BaseModel):
+    combined: CombinedDenominations
+    targets: list[TargetDenominations]

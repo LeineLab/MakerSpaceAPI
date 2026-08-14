@@ -542,3 +542,81 @@ def test_set_pin_replaces_existing(admin_client, test_user, db):
     db.refresh(test_user)
     assert _pwd.verify("new-pin", test_user.pin_hash)
     assert not _pwd.verify("old-pin", test_user.pin_hash)
+
+
+# ---------------------------------------------------------------------------
+# GET /bankomat/denominations — admin only
+# ---------------------------------------------------------------------------
+
+def _tx(db, *, target_id, amount, type_, user_id, when):
+    db.add(Transaction(
+        user_id=user_id,
+        amount=Decimal(amount),
+        type=type_,
+        target_id=target_id,
+        created_at=when,
+    ))
+
+
+def test_denominations_requires_admin(client):
+    assert client.get("/api/v1/bankomat/denominations").status_code == 401
+
+
+def test_denominations_counts_only_since_last_payout(admin_client, db, test_user):
+    from datetime import timedelta
+
+    a = BookingTarget(name="Fund A", slug="fund-a", balance=Decimal("0.00"),
+                      created_at=datetime.now(UTC).replace(tzinfo=None))
+    b = BookingTarget(name="Fund B", slug="fund-b", balance=Decimal("0.00"),
+                      created_at=datetime.now(UTC).replace(tzinfo=None))
+    db.add(a); db.add(b); db.commit()
+
+    base = datetime(2026, 6, 1, 12, 0, 0)
+    # Fund A: deposits before the payout must be ignored
+    _tx(db, target_id=a.id, amount="20.00", type_=TransactionType.topup, user_id=test_user.id, when=base)
+    _tx(db, target_id=a.id, amount="50.00", type_=TransactionType.topup, user_id=test_user.id, when=base + timedelta(hours=1))
+    # Payout (Abschöpfung) zeroes Fund A
+    _tx(db, target_id=a.id, amount="-70.00", type_=TransactionType.booking_target_payout, user_id=test_user.id, when=base + timedelta(hours=2))
+    # Deposits after payout: 2x 50, 1x 2 (topup + donation combined)
+    _tx(db, target_id=a.id, amount="50.00", type_=TransactionType.topup, user_id=test_user.id, when=base + timedelta(hours=3))
+    _tx(db, target_id=a.id, amount="50.00", type_=TransactionType.topup, user_id=test_user.id, when=base + timedelta(hours=4))
+    _tx(db, target_id=a.id, amount="2.00", type_=TransactionType.booking_target_topup, user_id=None, when=base + timedelta(hours=5))
+    # Fund B: never paid out -> everything counts
+    _tx(db, target_id=b.id, amount="50.00", type_=TransactionType.topup, user_id=test_user.id, when=base + timedelta(hours=1))
+    _tx(db, target_id=b.id, amount="10.00", type_=TransactionType.topup, user_id=test_user.id, when=base + timedelta(hours=2))
+    db.commit()
+
+    resp = admin_client.get("/api/v1/bankomat/denominations")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    targets = {t["slug"]: t for t in data["targets"]}
+
+    # Fund A: only post-payout deposits, sorted by amount desc
+    fa = targets["fund-a"]
+    assert fa["last_payout"] is not None
+    assert fa["denominations"] == [
+        {"amount": "50.00", "count": 2, "sum": "100.00"},
+        {"amount": "2.00", "count": 1, "sum": "2.00"},
+    ]
+    assert Decimal(fa["total"]) == Decimal("102.00")
+
+    # Fund B: no payout -> all deposits, last_payout null
+    fb = targets["fund-b"]
+    assert fb["last_payout"] is None
+    assert Decimal(fb["total"]) == Decimal("60.00")
+
+    # Combined = aggregate across targets (50 appears 2x in A + 1x in B = 3x)
+    combined = {d["amount"]: d for d in data["combined"]["denominations"]}
+    assert combined["50.00"]["count"] == 3
+    assert combined["10.00"]["count"] == 1
+    assert combined["2.00"]["count"] == 1
+    assert Decimal(data["combined"]["total"]) == Decimal("162.00")
+
+
+def test_denominations_empty(admin_client):
+    resp = admin_client.get("/api/v1/bankomat/denominations")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["combined"]["denominations"] == []
+    assert data["targets"] == []
