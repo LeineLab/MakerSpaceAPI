@@ -1,6 +1,9 @@
 .env
 .venv/
 node_modules/
+
+# Tailwind output — built fresh in Docker image / CI, not committed
+app/web/static/css/tailwind.css
 __pycache__/
 *.py[cod]
 *.egg-info/

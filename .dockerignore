@@ -15,7 +15,7 @@ __pycache__/
 .venv/
 venv/
 
-# Node (Tailwind CSS is pre-built and committed)
+# Node deps — installed fresh via `npm ci` in the CSS build stage
 node_modules/
 
 # Tests
@@ -36,10 +36,8 @@ scripts/
 docker-compose*.yml
 Dockerfile
 
-# Tailwind source (output is already committed)
-package.json
-package-lock.json
-tailwind.config.js
+# Note: package.json, package-lock.json and tailwind.config.js are intentionally
+# NOT ignored — the CSS build stage needs them to compile Tailwind at image build.
 
 # Local runtime mounts (logo, fonts, data)
 logo.svg

@@ -20,7 +20,7 @@ Unified REST API and web frontend for makerspace NFC devices — machines, check
 - Python 3.12+
 - MariaDB / MySQL 10.x+
 - An OIDC provider (e.g. Authentik, Keycloak) for admin login
-- Node.js (optional, only needed to rebuild Tailwind CSS after template changes)
+- Node.js (needed to build Tailwind CSS for local non-Docker runs; the Docker image and CI build it themselves)
 
 ## Quick start (Docker)
 
@@ -210,15 +210,23 @@ The frontend is served at `/` and uses Tailwind CSS with Alpine.js. Jinja2 rende
 | `/rentals` | Admin | Rental items and permissions |
 | `/products/manage` | Admin / Product manager | Product, category and alias management |
 
-### Rebuilding Tailwind CSS
+### Building Tailwind CSS
 
-The compiled CSS lives at `app/web/static/css/tailwind.css` and is committed to the repository, so a Node.js install is not needed to run the app. To regenerate it after changing templates:
+The compiled CSS at `app/web/static/css/tailwind.css` is **not** committed — it is
+generated from the templates. The Docker image builds it fresh in a dedicated `node`
+stage (see `Dockerfile`), and the CI workflows build it too, so **production and CI
+never depend on a checked-in file**.
+
+For local development **without** Docker, build it once (and again after changing
+templates):
 
 ```bash
 npm install
 npm run build:css   # one-shot build
 npm run watch:css   # rebuild on template changes
 ```
+
+Until you run this, `/static/css/tailwind.css` will 404 and the UI will be unstyled.
 
 ## Migrating from legacy systems
 
