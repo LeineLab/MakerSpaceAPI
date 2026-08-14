@@ -348,6 +348,39 @@ def test_edit_user_modal_opens(admin_page, live_server, _engine):
     assert modal.is_visible()
 
 
+def test_adjust_modal_computes_difference(admin_page, live_server, _engine):
+    from sqlalchemy.orm import sessionmaker
+
+    from app.models.booking_target import BookingTarget
+
+    Session = sessionmaker(bind=_engine)
+    db = Session()
+    if not db.query(BookingTarget).filter(BookingTarget.slug == "adjust-ui").first():
+        db.add(BookingTarget(
+            name="Adjust UI Fund", slug="adjust-ui", balance=Decimal("100.00"),
+            created_at=datetime.now(UTC).replace(tzinfo=None),
+        ))
+        db.commit()
+    db.close()
+
+    admin_page.goto(BASE + "/bankomat")
+    admin_page.wait_for_load_state("networkidle")
+    admin_page.wait_for_function(
+        "document.body.textContent.includes('Adjust UI Fund')", timeout=5000,
+    )
+    # Open the write-off modal for this card (cards carry the border-l-4 class)
+    card = admin_page.locator(".border-l-4", has_text="adjust-ui").first
+    card.locator("button:has-text('Write off discrepancy')").click()
+    modal = admin_page.locator(".fixed.inset-0:visible").first
+    modal.wait_for(state="visible", timeout=3000)
+    # Counting 80 against a book balance of 100 shows a -20.00 difference
+    modal.locator("input[type=number]").fill("80")
+    admin_page.wait_for_function(
+        "document.body.textContent.includes('-20.00')", timeout=3000,
+    )
+    assert modal.is_visible()
+
+
 def test_add_product_modal_opens(admin_page, live_server):
     admin_page.goto(BASE + "/products/manage")
     admin_page.wait_for_load_state("networkidle")

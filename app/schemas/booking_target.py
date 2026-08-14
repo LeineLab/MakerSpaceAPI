@@ -53,6 +53,22 @@ class SetPinRequest(BaseModel):
     pin: str  # plaintext, will be hashed
 
 
+class AdjustmentRequest(BaseModel):
+    """Reconcile a booking target's book balance to the physically counted amount.
+
+    The signed difference (``actual_balance - current balance``) is written off as a
+    ``booking_target_adjustment`` transaction, so the books match reality.
+    """
+    actual_balance: Decimal = Field(ge=0, examples=[Decimal("480.00")])
+    note: Optional[str] = None
+
+
+class AdjustmentResponse(BaseModel):
+    detail: str
+    balance: Decimal = Field(examples=[Decimal("480.00")])
+    adjustment: Decimal = Field(examples=[Decimal("-20.00")])
+
+
 class DenominationEntry(BaseModel):
     """One denomination bucket: `count` deposits of the same `amount`."""
     amount: Decimal = Field(examples=[Decimal("50.00")])

@@ -20,6 +20,8 @@ from app.models.machine import Machine
 from app.models.transaction import Transaction, TransactionType
 from app.models.user import User
 from app.schemas.booking_target import (
+    AdjustmentRequest,
+    AdjustmentResponse,
     BookingTargetCreate,
     BookingTargetResponse,
     DenominationReport,
@@ -39,6 +41,7 @@ _STATEMENT_TYPES = [
     TransactionType.topup,
     TransactionType.booking_target_topup,
     TransactionType.booking_target_payout,
+    TransactionType.booking_target_adjustment,
 ]
 
 
@@ -243,6 +246,49 @@ def create_target(
     db.commit()
     db.refresh(target)
     return target
+
+
+@router.post(
+    "/targets/{slug}/adjust",
+    response_model=AdjustmentResponse,
+    responses={**HTTP_400, **HTTP_404},
+)
+def adjust_target(
+    slug: str,
+    body: AdjustmentRequest,
+    admin: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Write off a cash discrepancy by reconciling the book balance to the counted amount.
+
+    Records the signed difference (``actual_balance - balance``) as a
+    ``booking_target_adjustment`` transaction and sets the target balance to
+    ``actual_balance``. Admin only.
+    """
+    target = db.execute(
+        select(BookingTarget).where(BookingTarget.slug == slug).with_for_update()
+    ).scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail=f"Booking target '{slug}' not found")
+
+    difference = body.actual_balance - target.balance
+    if difference == 0:
+        raise HTTPException(status_code=400, detail="No discrepancy: counted amount equals book balance")
+
+    target.balance = body.actual_balance
+    db.add(Transaction(
+        user_id=None,
+        amount=difference,
+        type=TransactionType.booking_target_adjustment,
+        target_id=target.id,
+        note=body.note or f"Cash discrepancy write-off ({admin.get('sub', 'admin')})",
+    ))
+    db.commit()
+    return {
+        "detail": f"Adjusted '{target.name}' by {difference} {settings.CURRENCY}. New balance: {body.actual_balance} {settings.CURRENCY}",
+        "balance": body.actual_balance,
+        "adjustment": difference,
+    }
 
 
 _DEPOSIT_TYPES = [TransactionType.topup, TransactionType.booking_target_topup]

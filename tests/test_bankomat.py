@@ -620,3 +620,64 @@ def test_denominations_empty(admin_client):
     data = resp.json()
     assert data["combined"]["denominations"] == []
     assert data["targets"] == []
+
+
+# ---------------------------------------------------------------------------
+# POST /bankomat/targets/{slug}/adjust — admin only (cash discrepancy write-off)
+# ---------------------------------------------------------------------------
+
+def test_adjust_requires_admin(client, target):
+    assert client.post(f"/api/v1/bankomat/targets/{target.slug}/adjust",
+                       json={"actual_balance": "90.00"}).status_code == 401
+
+
+def test_adjust_writes_off_shortfall(admin_client, db, target):
+    # book balance is 100.00; counted 80.00 -> -20.00 write-off
+    resp = admin_client.post(
+        f"/api/v1/bankomat/targets/{target.slug}/adjust",
+        json={"actual_balance": "80.00", "note": "Zählfehler"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert Decimal(data["balance"]) == Decimal("80.00")
+    assert Decimal(data["adjustment"]) == Decimal("-20.00")
+
+    db.refresh(target)
+    assert target.balance == Decimal("80.00")
+
+    tx = (
+        db.query(Transaction)
+        .filter(Transaction.type == TransactionType.booking_target_adjustment)
+        .one()
+    )
+    assert tx.target_id == target.id
+    assert tx.amount == Decimal("-20.00")
+    assert tx.user_id is None
+    assert tx.note == "Zählfehler"
+
+
+def test_adjust_writes_off_overage(admin_client, db, target):
+    resp = admin_client.post(
+        f"/api/v1/bankomat/targets/{target.slug}/adjust",
+        json={"actual_balance": "105.50"},
+    )
+    assert resp.status_code == 200
+    assert Decimal(resp.json()["adjustment"]) == Decimal("5.50")
+    db.refresh(target)
+    assert target.balance == Decimal("105.50")
+
+
+def test_adjust_zero_difference_rejected(admin_client, target):
+    resp = admin_client.post(
+        f"/api/v1/bankomat/targets/{target.slug}/adjust",
+        json={"actual_balance": "100.00"},
+    )
+    assert resp.status_code == 400
+
+
+def test_adjust_unknown_target_404(admin_client):
+    resp = admin_client.post(
+        "/api/v1/bankomat/targets/does-not-exist/adjust",
+        json={"actual_balance": "10.00"},
+    )
+    assert resp.status_code == 404

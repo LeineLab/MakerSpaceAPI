@@ -203,7 +203,7 @@
 
   "bankomat.btn_denominations":     "Denominations",
   "bankomat.denom_title":           "Denominations Since Last Payout",
-  "bankomat.denom_hint":            "Deposits (top-ups + target deposits) per booking target since its last payout. Since accounts are reset to 0 on payout, this equals the cash currently on hand.",
+  "bankomat.denom_hint":            "Deposits (top-ups + target deposits) per booking target since its last payout. For a full payout (account to 0) this equals the cash currently on hand.",
   "bankomat.denom_combined":        "Combined (all accounts)",
   "bankomat.denom_col_amount":      "Amount",
   "bankomat.denom_col_count":       "Count",
@@ -213,6 +213,17 @@
   "bankomat.denom_since_never":     "since inception (no payout yet)",
   "bankomat.denom_empty":           "No deposits since the last payout.",
   "bankomat.denom_none":            "No booking targets exist.",
+
+  "bankomat.btn_adjust":            "Write off discrepancy",
+  "bankomat.adjust_title":          "Write Off Cash Discrepancy",
+  "bankomat.adjust_body":           "Enter the counted cash amount. The difference from the book balance is recorded as an adjustment so the books match reality.",
+  "bankomat.adjust_book_balance":   "Book balance",
+  "bankomat.adjust_counted":        "Counted amount",
+  "bankomat.adjust_difference":     "Difference",
+  "bankomat.adjust_note":           "Reason / note",
+  "bankomat.adjust_note_ph":        "e.g. counting error, shrinkage",
+  "bankomat.adjust_submit":         "Write off",
+  "bankomat.adjust_success":        "Discrepancy written off.",
 
   "rentals.title":         "Rental System",
   "rentals.btn_add":       "+ Add Item",

@@ -25,6 +25,7 @@ class TransactionType(str, enum.Enum):
     machine_usage = "machine_usage"
     booking_target_topup = "booking_target_topup"
     booking_target_payout = "booking_target_payout"
+    booking_target_adjustment = "booking_target_adjustment"
     admin_adjustment = "admin_adjustment"
 
 

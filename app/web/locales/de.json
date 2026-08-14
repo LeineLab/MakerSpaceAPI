@@ -210,7 +210,7 @@
 
   "bankomat.btn_denominations":     "Stückelungen",
   "bankomat.denom_title":           "Stückelungen seit letzter Abschöpfung",
-  "bankomat.denom_hint":            "Einzahlungen (Aufladungen + Ziel-Einzahlungen) je Buchungsziel seit dessen letzter Abschöpfung. Da Konten bei einer Abschöpfung auf 0 gesetzt werden, entspricht dies dem aktuellen Bargeldbestand.",
+  "bankomat.denom_hint":            "Einzahlungen (Aufladungen + Ziel-Einzahlungen) je Buchungsziel seit dessen letzter Abschöpfung. Bei einer vollständigen Abschöpfung (Konto auf 0) entspricht dies dem aktuellen Bargeldbestand.",
   "bankomat.denom_combined":        "Gesamt (alle Konten)",
   "bankomat.denom_col_amount":      "Betrag",
   "bankomat.denom_col_count":       "Anzahl",
@@ -220,6 +220,17 @@
   "bankomat.denom_since_never":     "seit Beginn (keine Abschöpfung)",
   "bankomat.denom_empty":           "Keine Einzahlungen seit der letzten Abschöpfung.",
   "bankomat.denom_none":            "Keine Buchungsziele vorhanden.",
+
+  "bankomat.btn_adjust":            "Differenz ausbuchen",
+  "bankomat.adjust_title":          "Kassendifferenz ausbuchen",
+  "bankomat.adjust_body":           "Gezählten Bargeldbestand eingeben. Die Differenz zum Buchbestand wird als Korrekturbuchung erfasst, sodass der Buchbestand der Realität entspricht.",
+  "bankomat.adjust_book_balance":   "Buchbestand",
+  "bankomat.adjust_counted":        "Gezählter Bestand",
+  "bankomat.adjust_difference":     "Differenz",
+  "bankomat.adjust_note":           "Grund / Notiz",
+  "bankomat.adjust_note_ph":        "z.B. Zählfehler, Schwund",
+  "bankomat.adjust_submit":         "Ausbuchen",
+  "bankomat.adjust_success":        "Differenz ausgebucht.",
 
   "rentals.title":         "Verleihsystem",
   "rentals.btn_add":       "+ Gegenstand hinzufügen",
