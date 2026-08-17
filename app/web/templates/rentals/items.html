@@ -13,84 +13,80 @@
 
   <div x-show="error" class="mb-4 bg-red-100 text-red-700 p-3 rounded text-sm" x-text="error"></div>
 
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-    <!-- Rental Items -->
-    <div class="bg-white rounded-lg shadow">
-      <div class="px-5 py-4 border-b flex flex-wrap items-center justify-between gap-2">
-        <h2 class="font-semibold">{{ _('rentals.items_title') }}</h2>
-        <span class="text-xs text-gray-400" x-text="items.length + ' {{ _('rentals.items_word') }}'"></span>
-      </div>
-      <div class="overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
-          <tr>
-            <th class="px-4 py-2 text-left">{{ _('common.name') }}</th>
-            <th class="px-4 py-2 text-left">{{ _('rentals.col_tid') }}</th>
-            <th class="px-4 py-2 text-center">{{ _('rentals.col_active') }}</th>
-            <th class="px-4 py-2"></th>
-          </tr>
-        </thead>
-        <tbody>
-          <template x-if="loading">
-            <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400">Loading…</td></tr>
-          </template>
-          <template x-if="!loading && items.length === 0">
-            <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400">{{ _('rentals.items_empty') }}</td></tr>
-          </template>
-          <template x-for="item in items" :key="item.id">
-            <tr class="border-t hover:bg-gray-50">
-              <td class="px-4 py-2">
-                <span x-text="item.name"></span>
-                <span x-show="item.description" class="block text-xs text-gray-400" x-text="item.description"></span>
-              </td>
-              <td class="px-4 py-2 font-mono text-xs text-gray-500" x-text="item.uhf_tid"></td>
-              <td class="px-4 py-2 text-center" x-text="item.active ? '✓' : '—'"></td>
-              <td class="px-4 py-2 text-right">
-                <button @click="openEdit(item)"
-                        class="text-xs text-blue-600 hover:underline">{{ _('common.edit') }}</button>
-              </td>
-            </tr>
-          </template>
-        </tbody>
-      </table>
-      </div>
+  <!-- Currently Rented -->
+  <div class="bg-white rounded-lg shadow mb-6">
+    <div class="px-5 py-4 border-b">
+      <h2 class="font-semibold">{{ _('rentals.rented_title') }}</h2>
     </div>
-
-    <!-- Currently Rented -->
-    <div class="bg-white rounded-lg shadow">
-      <div class="px-5 py-4 border-b">
-        <h2 class="font-semibold">{{ _('rentals.rented_title') }}</h2>
-      </div>
-      <div class="overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
-          <tr>
-            <th class="px-4 py-2 text-left">{{ _('rentals.col_item') }}</th>
-            <th class="px-4 py-2 text-left">{{ _('rentals.col_user') }}</th>
-            <th class="px-4 py-2 text-left">{{ _('rentals.col_since') }}</th>
+    <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
+        <tr>
+          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="rentedSort.toggle('item_name')">{{ _('rentals.col_item') }} <span class="text-gray-400" x-text="rentedSort.indicator('item_name')"></span></th>
+          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="rentedSort.toggle('user_name')">{{ _('rentals.col_user') }} <span class="text-gray-400" x-text="rentedSort.indicator('user_name')"></span></th>
+          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="rentedSort.toggle('rented_at')">{{ _('rentals.col_since') }} <span class="text-gray-400" x-text="rentedSort.indicator('rented_at')"></span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-if="loading">
+          <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400">Loading…</td></tr>
+        </template>
+        <template x-if="!loading && activeRentals.length === 0">
+          <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400">{{ _('rentals.rented_empty') }}</td></tr>
+        </template>
+        <template x-for="r in sortedActiveRentals" :key="r.rental_id">
+          <tr class="border-t hover:bg-gray-50">
+            <td class="px-4 py-2" x-text="r.item_name"></td>
+            <td class="px-4 py-2" x-text="r.user_name || r.user_id"></td>
+            <td class="px-4 py-2 text-xs text-gray-500"
+                x-text="r.rented_at ? r.rented_at.substring(0,16).replace('T',' ') : ''"></td>
           </tr>
-        </thead>
-        <tbody>
-          <template x-if="loading">
-            <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400">Loading…</td></tr>
-          </template>
-          <template x-if="!loading && activeRentals.length === 0">
-            <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400">{{ _('rentals.rented_empty') }}</td></tr>
-          </template>
-          <template x-for="r in activeRentals" :key="r.rental_id">
-            <tr class="border-t hover:bg-gray-50">
-              <td class="px-4 py-2" x-text="r.item_name"></td>
-              <td class="px-4 py-2" x-text="r.user_name || r.user_id"></td>
-              <td class="px-4 py-2 text-xs text-gray-500"
-                  x-text="r.rented_at ? r.rented_at.substring(0,16).replace('T',' ') : ''"></td>
-            </tr>
-          </template>
-        </tbody>
-      </table>
-      </div>
+        </template>
+      </tbody>
+    </table>
     </div>
+  </div>
 
+  <!-- Rental Items -->
+  <div class="bg-white rounded-lg shadow mb-6">
+    <div class="px-5 py-4 border-b flex flex-wrap items-center justify-between gap-2">
+      <h2 class="font-semibold">{{ _('rentals.items_title') }}</h2>
+      <span class="text-xs text-gray-400" x-text="items.length + ' {{ _('rentals.items_word') }}'"></span>
+    </div>
+    <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
+        <tr>
+          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="itemSort.toggle('name')">{{ _('common.name') }} <span class="text-gray-400" x-text="itemSort.indicator('name')"></span></th>
+          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="itemSort.toggle('uhf_tid')">{{ _('rentals.col_tid') }} <span class="text-gray-400" x-text="itemSort.indicator('uhf_tid')"></span></th>
+          <th class="px-4 py-2 text-center cursor-pointer select-none hover:text-gray-800" @click="itemSort.toggle('active')">{{ _('rentals.col_active') }} <span class="text-gray-400" x-text="itemSort.indicator('active')"></span></th>
+          <th class="px-4 py-2"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-if="loading">
+          <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400">Loading…</td></tr>
+        </template>
+        <template x-if="!loading && items.length === 0">
+          <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400">{{ _('rentals.items_empty') }}</td></tr>
+        </template>
+        <template x-for="item in sortedItems" :key="item.id">
+          <tr class="border-t hover:bg-gray-50">
+            <td class="px-4 py-2">
+              <span x-text="item.name"></span>
+              <span x-show="item.description" class="block text-xs text-gray-400" x-text="item.description"></span>
+            </td>
+            <td class="px-4 py-2 font-mono text-xs text-gray-500" x-text="item.uhf_tid"></td>
+            <td class="px-4 py-2 text-center" x-text="item.active ? '✓' : '—'"></td>
+            <td class="px-4 py-2 text-right">
+              <button @click="openEdit(item)"
+                      class="text-xs text-blue-600 hover:underline">{{ _('common.edit') }}</button>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    </div>
   </div>
 
   <!-- Permissions -->
@@ -104,9 +100,9 @@
     <table class="w-full text-sm">
       <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
         <tr>
-          <th class="px-4 py-2 text-left">{{ _('rentals.col_uid') }}</th>
-          <th class="px-4 py-2 text-left">{{ _('common.name') }}</th>
-          <th class="px-4 py-2 text-left">{{ _('rentals.col_granted') }}</th>
+          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="permSort.toggle('user_id')">{{ _('rentals.col_uid') }} <span class="text-gray-400" x-text="permSort.indicator('user_id')"></span></th>
+          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="permSort.toggle('user_name')">{{ _('common.name') }} <span class="text-gray-400" x-text="permSort.indicator('user_name')"></span></th>
+          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="permSort.toggle('granted_at')">{{ _('rentals.col_granted') }} <span class="text-gray-400" x-text="permSort.indicator('granted_at')"></span></th>
           <th class="px-4 py-2"></th>
         </tr>
       </thead>
@@ -117,7 +113,7 @@
         <template x-if="!loading && permissions.length === 0">
           <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400">{{ _('rentals.perms_empty') }}</td></tr>
         </template>
-        <template x-for="perm in permissions" :key="perm.user_id">
+        <template x-for="perm in sortedPermissions" :key="perm.user_id">
           <tr class="border-t hover:bg-gray-50">
             <td class="px-4 py-2 font-mono text-xs" x-text="perm.user_id"></td>
             <td class="px-4 py-2" x-text="perm.user_name || '—'"></td>
@@ -257,6 +253,20 @@ function rentalPage() {
     permSubmitting: false,
     permError: null,
     permForm: { nfc_id: '' },
+
+    itemSort: makeSort(),
+    rentedSort: makeSort(),
+    permSort: makeSort(),
+
+    get sortedItems() {
+      return this.itemSort.apply(this.items);
+    },
+    get sortedActiveRentals() {
+      return this.rentedSort.apply(this.activeRentals, (r, key) => key === 'user_name' ? (r.user_name || r.user_id) : r[key]);
+    },
+    get sortedPermissions() {
+      return this.permSort.apply(this.permissions, (p, key) => key === 'user_name' ? (p.user_name || '') : p[key]);
+    },
 
     get permCandidates() {
       const granted = new Set(this.permissions.map(p => p.user_id));

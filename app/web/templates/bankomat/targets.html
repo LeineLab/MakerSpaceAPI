@@ -66,14 +66,14 @@
       <table class="min-w-full text-sm">
         <thead class="bg-gray-50 text-gray-500 uppercase text-xs">
           <tr>
-            <th class="px-4 py-3 text-left">{{ _('users.col_nfc') }}</th>
-            <th class="px-4 py-3 text-left">{{ _('common.name') }}</th>
+            <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('id')">{{ _('users.col_nfc') }} <span class="text-gray-400" x-text="sortIndicator('id')"></span></th>
+            <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('name')">{{ _('common.name') }} <span class="text-gray-400" x-text="sortIndicator('name')"></span></th>
             <th class="px-4 py-3 text-left">{{ _('bankomat.btn_change_pin') }}</th>
             <th class="px-4 py-3 text-left">{{ _('bankomat.btn_clear_pin') }}</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-100">
-          <template x-for="t in treasurers" :key="t.id">
+          <template x-for="t in sorted(treasurers)" :key="t.id">
             <tr class="hover:bg-gray-50">
               <td class="px-4 py-3 font-mono text-xs text-gray-500" x-text="t.id"></td>
               <td class="px-4 py-3 font-medium" x-text="t.name || '—'"></td>
@@ -323,6 +323,7 @@ const DENOM_L = {
 
 function targetList() {
   return {
+    ...sortableTable(),
     targets: [],
     loading: true,
     error: null,

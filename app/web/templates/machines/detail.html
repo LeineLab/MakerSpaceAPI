@@ -90,11 +90,11 @@
           <table class="w-full text-sm">
             <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
               <tr>
-                <th class="px-4 py-2 text-left">{{ _('common.name') }}</th>
-                <th class="px-4 py-2 text-right">{{ _('machines.auth_login_fee') }}</th>
-                <th class="px-4 py-2 text-right">{{ _('machines.auth_per_minute') }}</th>
-                <th class="px-4 py-2 text-right">{{ _('machines.auth_interval') }}</th>
-                <th class="px-4 py-2 text-left">{{ _('machines.auth_granted_by') }}</th>
+                <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleAuthSort('user_name')">{{ _('common.name') }} <span class="text-gray-400" x-text="authSortIndicator('user_name')"></span></th>
+                <th class="px-4 py-2 text-right cursor-pointer select-none hover:text-gray-900" @click="toggleAuthSort('price_per_login')">{{ _('machines.auth_login_fee') }} <span class="text-gray-400" x-text="authSortIndicator('price_per_login')"></span></th>
+                <th class="px-4 py-2 text-right cursor-pointer select-none hover:text-gray-900" @click="toggleAuthSort('price_per_minute')">{{ _('machines.auth_per_minute') }} <span class="text-gray-400" x-text="authSortIndicator('price_per_minute')"></span></th>
+                <th class="px-4 py-2 text-right cursor-pointer select-none hover:text-gray-900" @click="toggleAuthSort('booking_interval')">{{ _('machines.auth_interval') }} <span class="text-gray-400" x-text="authSortIndicator('booking_interval')"></span></th>
+                <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleAuthSort('granted_by')">{{ _('machines.auth_granted_by') }} <span class="text-gray-400" x-text="authSortIndicator('granted_by')"></span></th>
                 <th class="px-4 py-2 text-right">{{ _('machines.col_actions') }}</th>
               </tr>
             </thead>
@@ -102,7 +102,7 @@
               <template x-if="authorizations.length === 0">
                 <tr><td colspan="6" class="px-4 py-6 text-center text-gray-400">{{ _('machines.no_auths') }}</td></tr>
               </template>
-              <template x-for="a in authorizations" :key="a.user_id">
+              <template x-for="a in sortedAuthorizations" :key="a.user_id">
                 <tr class="border-t">
                   <td class="px-4 py-2 font-medium" x-text="a.user_name || a.user_id"></td>
                   <td class="px-4 py-2 text-right font-mono text-xs">
@@ -212,8 +212,8 @@
             <table class="w-full text-sm">
               <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
                 <tr>
-                  <th class="px-4 py-2 text-left">{{ _('common.name') }}</th>
-                  <th class="px-4 py-2 text-left">{{ _('machines.admin_oidc_sub') }}</th>
+                  <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleAdminSort('user_name')">{{ _('common.name') }} <span class="text-gray-400" x-text="adminSortIndicator('user_name')"></span></th>
+                  <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleAdminSort('oidc_sub')">{{ _('machines.admin_oidc_sub') }} <span class="text-gray-400" x-text="adminSortIndicator('oidc_sub')"></span></th>
                   <th class="px-4 py-2 text-right">{{ _('machines.col_actions') }}</th>
                 </tr>
               </thead>
@@ -221,7 +221,7 @@
                 <template x-if="machineAdmins.length === 0">
                   <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400">{{ _('machines.no_admins') }}</td></tr>
                 </template>
-                <template x-for="a in machineAdmins" :key="a.oidc_sub">
+                <template x-for="a in sortedMachineAdmins" :key="a.oidc_sub">
                   <tr class="border-t">
                     <td class="px-4 py-2 font-medium" x-text="a.user_name || '—'"></td>
                     <td class="px-4 py-2 font-mono text-xs text-gray-500" x-text="a.oidc_sub"></td>
@@ -351,6 +351,66 @@ function machineDetail(slug, isAdmin) {
     addAdminForm: { oidc_sub: '' },
     addAdminError: null,
     addingAdmin: false,
+
+    // Authorizations table sort
+    authSortKey: null,
+    authSortDir: 'asc',
+    toggleAuthSort(key) {
+      if (this.authSortKey === key) {
+        this.authSortDir = this.authSortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        this.authSortKey = key;
+        this.authSortDir = 'asc';
+      }
+    },
+    authSortIndicator(key) {
+      if (this.authSortKey !== key) return '';
+      return this.authSortDir === 'asc' ? '▲' : '▼';
+    },
+    get sortedAuthorizations() {
+      if (!this.authSortKey) return this.authorizations;
+      const key = this.authSortKey;
+      const dir = this.authSortDir === 'asc' ? 1 : -1;
+      return [...this.authorizations].sort((a, b) => {
+        let va = a[key], vb = b[key];
+        if (key === 'price_per_login' || key === 'price_per_minute' || key === 'booking_interval') {
+          va = parseFloat(va); vb = parseFloat(vb);
+        }
+        if (va === null || va === undefined) va = '';
+        if (vb === null || vb === undefined) vb = '';
+        if (typeof va === 'string' && typeof vb === 'string') {
+          return dir * va.localeCompare(vb, undefined, { numeric: true, sensitivity: 'base' });
+        }
+        if (va < vb) return -dir;
+        if (va > vb) return dir;
+        return 0;
+      });
+    },
+
+    // Machine admins table sort
+    adminSortKey: null,
+    adminSortDir: 'asc',
+    toggleAdminSort(key) {
+      if (this.adminSortKey === key) {
+        this.adminSortDir = this.adminSortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        this.adminSortKey = key;
+        this.adminSortDir = 'asc';
+      }
+    },
+    adminSortIndicator(key) {
+      if (this.adminSortKey !== key) return '';
+      return this.adminSortDir === 'asc' ? '▲' : '▼';
+    },
+    get sortedMachineAdmins() {
+      if (!this.adminSortKey) return this.machineAdmins;
+      const key = this.adminSortKey;
+      const dir = this.adminSortDir === 'asc' ? 1 : -1;
+      return [...this.machineAdmins].sort((a, b) => {
+        let va = a[key] || '', vb = b[key] || '';
+        return dir * String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: 'base' });
+      });
+    },
 
     get usersWithOidc() {
       return this.allUsers.filter(u => u.oidc_sub);

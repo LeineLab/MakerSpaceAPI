@@ -13,11 +13,11 @@
     <table class="w-full text-sm">
       <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
         <tr>
-          <th class="px-4 py-3 text-left">{{ _('users.col_nfc') }}</th>
-          <th class="px-4 py-3 text-left">{{ _('common.name') }}</th>
-          <th class="px-4 py-3 text-left">{{ _('users.col_oidc') }}</th>
-          <th class="px-4 py-3 text-right">{{ _('users.col_balance') }}</th>
-          <th class="px-4 py-3 text-left">{{ _('common.created') }}</th>
+          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('id')">{{ _('users.col_nfc') }} <span class="text-gray-400" x-text="sortIndicator('id')"></span></th>
+          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('name')">{{ _('common.name') }} <span class="text-gray-400" x-text="sortIndicator('name')"></span></th>
+          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('oidc_sub')">{{ _('users.col_oidc') }} <span class="text-gray-400" x-text="sortIndicator('oidc_sub')"></span></th>
+          <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-900" @click="toggleSort('balance')">{{ _('users.col_balance') }} <span class="text-gray-400" x-text="sortIndicator('balance')"></span></th>
+          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('created_at')">{{ _('common.created') }} <span class="text-gray-400" x-text="sortIndicator('created_at')"></span></th>
           <th class="px-4 py-3"></th>
         </tr>
       </thead>
@@ -28,7 +28,7 @@
         <template x-if="!loading && users.length === 0">
           <tr><td colspan="6" class="px-4 py-8 text-center text-gray-400">{{ _('users.empty') }}</td></tr>
         </template>
-        <template x-for="u in users" :key="u.id">
+        <template x-for="u in sortedUsers" :key="u.id">
           <tr class="border-t hover:bg-gray-50">
             <td class="px-4 py-2 font-mono text-xs" x-text="u.id"></td>
             <td class="px-4 py-2" x-text="u.name || '—'"></td>
@@ -116,10 +116,19 @@
 <script>
 function userList() {
   return {
+    ...sortableTable(),
     users: [],
     loading: true,
     error: null,
     success: null,
+
+    get sortedUsers() {
+      return this.sorted(this.users, (u, key) => {
+        if (key === 'balance') return parseFloat(u.balance);
+        if (key === 'oidc_sub') return !!u.oidc_sub;
+        return u[key];
+      });
+    },
 
     // Edit modal
     showEditModal: false,

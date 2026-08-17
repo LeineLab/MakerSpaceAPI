@@ -44,12 +44,12 @@
     <table class="w-full text-sm">
       <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
         <tr>
-          <th class="px-4 py-3 text-left">{{ _('common.name') }}</th>
-          <th class="px-4 py-3 text-left">{{ _('machines.col_slug') }}</th>
-          <th class="px-4 py-3 text-left">{{ _('machines.col_type') }}</th>
-          <th class="px-4 py-3 text-center">{{ _('common.status') }}</th>
-          <th class="px-4 py-3 text-left">{{ _('common.created') }}</th>
-          <th class="px-4 py-3 text-left">{{ _('machines.col_last_active') }}</th>
+          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('name')">{{ _('common.name') }} <span class="text-gray-400" x-text="sortIndicator('name')"></span></th>
+          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('slug')">{{ _('machines.col_slug') }} <span class="text-gray-400" x-text="sortIndicator('slug')"></span></th>
+          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('machine_type')">{{ _('machines.col_type') }} <span class="text-gray-400" x-text="sortIndicator('machine_type')"></span></th>
+          <th class="px-4 py-3 text-center cursor-pointer select-none hover:text-gray-900" @click="toggleSort('active')">{{ _('common.status') }} <span class="text-gray-400" x-text="sortIndicator('active')"></span></th>
+          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('created_at')">{{ _('common.created') }} <span class="text-gray-400" x-text="sortIndicator('created_at')"></span></th>
+          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('last_active_at')">{{ _('machines.col_last_active') }} <span class="text-gray-400" x-text="sortIndicator('last_active_at')"></span></th>
           <th class="px-4 py-3 text-right">{{ _('machines.col_actions') }}</th>
         </tr>
       </thead>
@@ -63,7 +63,7 @@
             <span x-show="!isAdmin">{{ _('machines.empty_managed') }}</span>
           </td></tr>
         </template>
-        <template x-for="m in machines" :key="m.id">
+        <template x-for="m in sorted(machines)" :key="m.id">
           <tr class="border-t hover:bg-gray-50">
             <td class="px-4 py-2 font-medium">
               <a :href="'/machines/' + m.slug" class="text-blue-600 hover:underline" x-text="m.name"></a>
@@ -137,6 +137,7 @@
 <script>
 function machineList(isAdmin) {
   return {
+    ...sortableTable(),
     isAdmin: isAdmin,
     machines: [],
     loading: true,

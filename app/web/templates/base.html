@@ -31,6 +31,87 @@
         return r;
       });
     }
+    // Mixin for click-to-sort table headers. Spread into an Alpine component's
+    // data object, then call `sorted(list, getter)` to get the sorted array
+    // (getter is optional; defaults to `row[sortKey]`).
+    function sortableTable(defaultKey = null, defaultDir = 'asc') {
+      return {
+        sortKey: defaultKey,
+        sortDir: defaultDir,
+        toggleSort(key) {
+          if (this.sortKey === key) {
+            this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc';
+          } else {
+            this.sortKey = key;
+            this.sortDir = 'asc';
+          }
+        },
+        sortIndicator(key) {
+          if (this.sortKey !== key) return '';
+          return this.sortDir === 'asc' ? '▲' : '▼';
+        },
+        sorted(rows, getter) {
+          if (!this.sortKey) return rows;
+          const key = this.sortKey;
+          const dir = this.sortDir === 'asc' ? 1 : -1;
+          return [...rows].sort((a, b) => {
+            let va = getter ? getter(a, key) : a[key];
+            let vb = getter ? getter(b, key) : b[key];
+            if (typeof va === 'boolean') va = va ? 1 : 0;
+            if (typeof vb === 'boolean') vb = vb ? 1 : 0;
+            if (va === null || va === undefined) va = '';
+            if (vb === null || vb === undefined) vb = '';
+            if (typeof va === 'string' && typeof vb === 'string') {
+              return dir * va.localeCompare(vb, undefined, { numeric: true, sensitivity: 'base' });
+            }
+            if (va < vb) return -dir;
+            if (va > vb) return dir;
+            return 0;
+          });
+        },
+      };
+    }
+    // Factory for a standalone sort-state object, for pages with more than one
+    // sortable table (each table gets its own `makeSort()` instance).
+    // Usage: itemSort: makeSort(), then @click="itemSort.toggle('name')",
+    // x-text="itemSort.indicator('name')", and itemSort.apply(rows, getter).
+    function makeSort(defaultKey = null, defaultDir = 'asc') {
+      return {
+        key: defaultKey,
+        dir: defaultDir,
+        toggle(key) {
+          if (this.key === key) {
+            this.dir = this.dir === 'asc' ? 'desc' : 'asc';
+          } else {
+            this.key = key;
+            this.dir = 'asc';
+          }
+        },
+        indicator(key) {
+          if (this.key !== key) return '';
+          return this.dir === 'asc' ? '▲' : '▼';
+        },
+        apply(rows, getter) {
+          if (!this.key) return rows;
+          const key = this.key;
+          const dir = this.dir === 'asc' ? 1 : -1;
+          return [...rows].sort((a, b) => {
+            let va = getter ? getter(a, key) : a[key];
+            let vb = getter ? getter(b, key) : b[key];
+            if (typeof va === 'boolean') va = va ? 1 : 0;
+            if (typeof vb === 'boolean') vb = vb ? 1 : 0;
+            if (va === null || va === undefined) va = '';
+            if (vb === null || vb === undefined) vb = '';
+            if (typeof va === 'string' && typeof vb === 'string') {
+              return dir * va.localeCompare(vb, undefined, { numeric: true, sensitivity: 'base' });
+            }
+            if (va < vb) return -dir;
+            if (va > vb) return dir;
+            return 0;
+          });
+        },
+      };
+    }
   </script>
 </head>
 <body class="bg-gray-50 text-gray-900 min-h-screen">
