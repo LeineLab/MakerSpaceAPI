@@ -45,7 +45,7 @@
           <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('ean')">{{ _('manage.label_ean') }} <span class="text-gray-400" x-text="sortIndicator('ean')"></span></th>
           <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-900" @click="toggleSort('price')">{{ _('manage.label_price') }} <span class="text-gray-400" x-text="sortIndicator('price')"></span></th>
           <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-900" @click="toggleSort('stock')">{{ _('products.col_stock') }} <span class="text-gray-400" x-text="sortIndicator('stock')"></span></th>
-          <th class="px-4 py-3 text-right">{{ _('manage.sales_col') }}</th>
+          <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-900" @click="toggleSort('sales')">{{ _('manage.sales_col') }} <span class="text-gray-400" x-text="sortIndicator('sales')"></span></th>
           <th class="px-4 py-3 text-center cursor-pointer select-none hover:text-gray-900" @click="toggleSort('active')">{{ _('common.status') }} <span class="text-gray-400" x-text="sortIndicator('active')"></span></th>
           <th class="px-4 py-3"></th>
         </tr>
@@ -372,6 +372,7 @@ function productManage() {
     get sortedProducts() {
       return this.sorted(this.products, (p, key) => {
         if (key === 'price') return parseFloat(p.price);
+        if (key === 'sales') return this.salesByEan[p.ean] !== undefined ? this.salesByEan[p.ean] : -1;
         return p[key];
       });
     },
