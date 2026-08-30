@@ -6,7 +6,7 @@ from app.models.product import Product, ProductAlias, ProductAudit, ProductAudit
 from app.models.rental import Rental, RentalItem, RentalPermission
 from app.models.session import MachineSession
 from app.models.transaction import Transaction, TransactionType
-from app.models.user import User
+from app.models.user import User, UserCardAlias
 
 __all__ = [
     "Base",
@@ -27,4 +27,5 @@ __all__ = [
     "Transaction",
     "TransactionType",
     "User",
+    "UserCardAlias",
 ]

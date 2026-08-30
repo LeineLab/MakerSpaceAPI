@@ -23,6 +23,15 @@
                   class="mt-2 text-xs text-red-500 hover:underline">
             {{ _('me.btn_unlink_card') }}
           </button>
+          <template x-if="aliases.length">
+            <div class="mt-2">
+              <p class="text-xs text-gray-400" x-text="aliasesCountText()"></p>
+              <button @click="unlinkAliases()"
+                      class="text-xs text-red-500 hover:underline">
+                {{ _('me.btn_unlink_aliases') }}
+              </button>
+            </div>
+          </template>
         </div>
         <div class="text-right">
           <div class="text-3xl font-bold tabular-nums"
@@ -212,6 +221,7 @@ function mePage() {
     machines: [],
     transactions: [],
     sessions: [],
+    aliases: [],
     loading: true,
     loadingRentals: true,
     loadingMachines: true,
@@ -236,7 +246,22 @@ function mePage() {
         return;
       }
       this.loading = false;
-      await Promise.all([this.loadRentals(), this.loadMachines(), this.loadTx(), this.loadSessions()]);
+      await Promise.all([
+        this.loadRentals(), this.loadMachines(), this.loadTx(), this.loadSessions(), this.loadAliases(),
+      ]);
+    },
+
+    async loadAliases() {
+      try {
+        const r = await apiFetch('/api/v1/users/me/aliases');
+        this.aliases = r.ok ? await r.json() : [];
+      } catch {
+        this.aliases = [];
+      }
+    },
+
+    aliasesCountText() {
+      return {{ _('me.aliases_count') | tojson }}.replace('{count}', this.aliases.length);
     },
 
     async loadRentals() {
@@ -313,6 +338,14 @@ function mePage() {
       const r = await apiFetch('/api/v1/users/me/oidc', { method: 'DELETE' });
       if (r.ok) {
         this.profile = null;
+      }
+    },
+
+    async unlinkAliases() {
+      if (!confirm({{ _('me.unlink_aliases_confirm') | tojson }})) return;
+      const r = await apiFetch('/api/v1/users/me/aliases', { method: 'DELETE' });
+      if (r.ok) {
+        this.aliases = [];
       }
     },
   }

@@ -7,7 +7,7 @@ from app.auth.deps import get_current_device, require_admin_user
 from app.database import get_db
 from app.models.machine import Machine
 from app.models.rental import Rental, RentalItem, RentalPermission
-from app.models.user import User
+from app.models.user import User, resolve_nfc_id
 from app.schemas.common import HTTP_400, HTTP_403, HTTP_404, HTTP_409, MessageResponse
 from app.schemas.rental import (
     ActiveRentalResponse,
@@ -141,6 +141,7 @@ def authorize_renter(
     db: Session = Depends(get_db),
 ):
     """Check if a user has rental permission."""
+    nfc_id = resolve_nfc_id(db, nfc_id)
     user = db.query(User).filter(User.id == nfc_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -159,11 +160,12 @@ def rent_item(
     db: Session = Depends(get_db),
 ):
     """Rent an item."""
-    user = db.query(User).filter(User.id == body.nfc_id).first()
+    nfc_id = resolve_nfc_id(db, body.nfc_id)
+    user = db.query(User).filter(User.id == nfc_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    permission = db.query(RentalPermission).filter(RentalPermission.user_id == body.nfc_id).first()
+    permission = db.query(RentalPermission).filter(RentalPermission.user_id == nfc_id).first()
     if not permission:
         raise HTTPException(status_code=403, detail="User not authorized to rent")
 
@@ -181,7 +183,7 @@ def rent_item(
     if active_rental:
         raise HTTPException(status_code=409, detail="Item is already rented")
 
-    rental = Rental(item_id=item.id, user_id=body.nfc_id, rented_at=datetime.now(UTC).replace(tzinfo=None))
+    rental = Rental(item_id=item.id, user_id=nfc_id, rented_at=datetime.now(UTC).replace(tzinfo=None))
     db.add(rental)
     db.commit()
     db.refresh(rental)
@@ -256,6 +258,7 @@ def grant_permission(
     admin: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ):
+    nfc_id = resolve_nfc_id(db, nfc_id)
     user = db.query(User).filter(User.id == nfc_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -283,6 +286,7 @@ def revoke_permission(
     admin: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ):
+    nfc_id = resolve_nfc_id(db, nfc_id)
     perm = db.query(RentalPermission).filter(RentalPermission.user_id == nfc_id).first()
     if not perm:
         raise HTTPException(status_code=404, detail="Permission not found")

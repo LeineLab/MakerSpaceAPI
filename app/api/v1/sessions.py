@@ -10,7 +10,7 @@ from app.database import get_db
 from app.models.machine import Machine, MachineAuthorization
 from app.models.session import MachineSession
 from app.models.transaction import Transaction, TransactionType
-from app.models.user import User
+from app.models.user import User, resolve_nfc_id
 from app.schemas.session import (
     SessionCreate,
     SessionCreateResponse,
@@ -65,10 +65,11 @@ def create_session(
     Requires: balance >= that amount
     """
     close_stale_sessions(db)
+    nfc_id = resolve_nfc_id(db, body.nfc_id)
 
     # Lock user row for atomic balance check
     user = db.execute(
-        select(User).where(User.id == body.nfc_id).with_for_update()
+        select(User).where(User.id == nfc_id).with_for_update()
     ).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -77,7 +78,7 @@ def create_session(
         db.query(MachineAuthorization)
         .filter(
             MachineAuthorization.machine_id == device.id,
-            MachineAuthorization.user_id == body.nfc_id,
+            MachineAuthorization.user_id == nfc_id,
         )
         .first()
     )
@@ -98,7 +99,7 @@ def create_session(
 
     session = MachineSession(
         machine_id=device.id,
-        user_id=body.nfc_id,
+        user_id=nfc_id,
         start_time=now,
         paid_until=paid_until,
     )
@@ -108,7 +109,7 @@ def create_session(
     # Record transactions
     if auth.price_per_login > 0:
         db.add(Transaction(
-            user_id=body.nfc_id,
+            user_id=nfc_id,
             amount=-auth.price_per_login,
             type=TransactionType.machine_login,
             machine_id=device.id,
@@ -117,7 +118,7 @@ def create_session(
         ))
     if auth.price_per_minute > 0:
         db.add(Transaction(
-            user_id=body.nfc_id,
+            user_id=nfc_id,
             amount=-(auth.price_per_minute * auth.booking_interval),
             type=TransactionType.machine_usage,
             machine_id=device.id,

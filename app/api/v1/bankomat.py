@@ -18,7 +18,7 @@ from app.database import get_db
 from app.models.booking_target import BookingTarget
 from app.models.machine import Machine
 from app.models.transaction import Transaction, TransactionType
-from app.models.user import User
+from app.models.user import User, resolve_nfc_id
 from app.schemas.booking_target import (
     AdjustmentRequest,
     AdjustmentResponse,
@@ -375,8 +375,9 @@ def topup_user(
     if body.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
 
+    nfc_id = resolve_nfc_id(db, body.nfc_id)
     user = db.execute(
-        select(User).where(User.id == body.nfc_id).with_for_update()
+        select(User).where(User.id == nfc_id).with_for_update()
     ).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -391,7 +392,7 @@ def topup_user(
     target.balance += body.amount
 
     db.add(Transaction(
-        user_id=body.nfc_id,
+        user_id=nfc_id,
         amount=body.amount,
         type=TransactionType.topup,
         machine_id=device.id,
@@ -436,6 +437,7 @@ def user_transactions(
     db: Session = Depends(get_db),
 ):
     """Device endpoint: recent transaction history for a user."""
+    nfc_id = resolve_nfc_id(db, nfc_id)
     return (
         db.query(Transaction)
         .filter(Transaction.user_id == nfc_id)
@@ -452,13 +454,15 @@ def transfer(
     db: Session = Depends(get_db),
 ):
     """Transfer balance between two users."""
-    if body.from_nfc_id == body.to_nfc_id:
+    from_nfc_id = resolve_nfc_id(db, body.from_nfc_id)
+    to_nfc_id = resolve_nfc_id(db, body.to_nfc_id)
+    if from_nfc_id == to_nfc_id:
         raise HTTPException(status_code=400, detail="Cannot transfer to the same user")
     if body.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
 
     # Lock both rows in a consistent order to avoid deadlocks
-    ids = sorted([body.from_nfc_id, body.to_nfc_id])
+    ids = sorted([from_nfc_id, to_nfc_id])
     users = {
         u.id: u
         for u in db.execute(
@@ -466,8 +470,8 @@ def transfer(
         ).scalars().all()
     }
 
-    sender = users.get(body.from_nfc_id)
-    recipient = users.get(body.to_nfc_id)
+    sender = users.get(from_nfc_id)
+    recipient = users.get(to_nfc_id)
 
     if not sender:
         raise HTTPException(status_code=404, detail="Sender not found")
@@ -481,25 +485,25 @@ def transfer(
 
     now = datetime.now(UTC).replace(tzinfo=None)
     db.add(Transaction(
-        user_id=body.from_nfc_id,
+        user_id=from_nfc_id,
         amount=-body.amount,
         type=TransactionType.transfer_out,
-        peer_user_id=body.to_nfc_id,
+        peer_user_id=to_nfc_id,
         note=body.note,
         machine_id=device.id,
         created_at=now,
     ))
     db.add(Transaction(
-        user_id=body.to_nfc_id,
+        user_id=to_nfc_id,
         amount=body.amount,
         type=TransactionType.transfer_in,
-        peer_user_id=body.from_nfc_id,
+        peer_user_id=from_nfc_id,
         note=body.note,
         machine_id=device.id,
         created_at=now,
     ))
     db.commit()
-    return {"detail": f"Transferred {body.amount} {settings.CURRENCY} from {body.from_nfc_id} to {body.to_nfc_id}"}
+    return {"detail": f"Transferred {body.amount} {settings.CURRENCY} from {from_nfc_id} to {to_nfc_id}"}
 
 
 @router.post("/verify-pin", response_model=MessageResponse, responses={**HTTP_403, **HTTP_404})
@@ -509,7 +513,8 @@ def verify_pin(
     db: Session = Depends(get_db),
 ):
     """Verify a user's PIN without performing any payout. Returns 200 if valid, 403 if not."""
-    user = db.query(User).filter(User.id == body.nfc_id).first()
+    nfc_id = resolve_nfc_id(db, body.nfc_id)
+    user = db.query(User).filter(User.id == nfc_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if not user.pin_hash:
@@ -529,7 +534,8 @@ def payout(
     if body.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
 
-    user = db.query(User).filter(User.id == body.nfc_id).first()
+    nfc_id = resolve_nfc_id(db, body.nfc_id)
+    user = db.query(User).filter(User.id == nfc_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if not user.pin_hash:
@@ -548,7 +554,7 @@ def payout(
     target.balance -= body.amount
 
     db.add(Transaction(
-        user_id=body.nfc_id,
+        user_id=nfc_id,
         amount=-body.amount,
         type=TransactionType.booking_target_payout,
         target_id=target.id,
@@ -568,7 +574,8 @@ def set_pin(
     db: Session = Depends(get_db),
 ):
     """Set or update the PIN for a user's NFC card (admin only)."""
-    user = db.query(User).filter(User.id == body.nfc_id).first()
+    nfc_id = resolve_nfc_id(db, body.nfc_id)
+    user = db.query(User).filter(User.id == nfc_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     user.pin_hash = _pwd.hash(body.pin)
@@ -707,6 +714,7 @@ def clear_pin(
     db: Session = Depends(get_db),
 ):
     """Clear (remove) the PIN for a user's NFC card (admin only)."""
+    nfc_id = resolve_nfc_id(db, nfc_id)
     user = db.query(User).filter(User.id == nfc_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

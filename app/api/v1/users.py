@@ -14,7 +14,7 @@ from app.models.machine import Machine, MachineAuthorization
 from app.models.rental import Rental
 from app.models.session import MachineSession
 from app.models.transaction import Transaction
-from app.models.user import User
+from app.models.user import User, UserCardAlias, resolve_nfc_id
 from app.schemas.common import HTTP_400, HTTP_404, HTTP_409, MessageResponse
 from app.schemas.transaction import MeTransactionResponse
 from app.schemas.user import (
@@ -54,11 +54,40 @@ def unlink_me_oidc(
     user: dict = Depends(require_session_user),
     db: Session = Depends(get_db),
 ):
-    """Unlink the current OIDC account from its NFC card. The card record is kept."""
+    """Unlink the current OIDC account from its NFC card. The card record is kept.
+
+    Also frees all alias tags, so they can be registered as new cards.
+    """
     db_user = _me_user(user, db)
     db_user.oidc_sub = None
+    db.query(UserCardAlias).filter(UserCardAlias.user_id == db_user.id).delete()
     db.commit()
-    return {"message": "Card unlinked successfully"}
+    return {"detail": "Card unlinked successfully"}
+
+
+@router.get("/me/aliases", response_model=list[int], responses={**HTTP_404})
+def get_me_aliases(
+    user: dict = Depends(require_session_user),
+    db: Session = Depends(get_db),
+):
+    """List the NFC ids of the alias tags currently linked to the current user."""
+    db_user = _me_user(user, db)
+    return [
+        a.alias_id
+        for a in db.query(UserCardAlias).filter(UserCardAlias.user_id == db_user.id).all()
+    ]
+
+
+@router.delete("/me/aliases", response_model=MessageResponse, responses={**HTTP_404})
+def unlink_me_aliases(
+    user: dict = Depends(require_session_user),
+    db: Session = Depends(get_db),
+):
+    """Unlink all alias tags from the current user, freeing them for new registration."""
+    db_user = _me_user(user, db)
+    db.query(UserCardAlias).filter(UserCardAlias.user_id == db_user.id).delete()
+    db.commit()
+    return {"detail": "Alias cards unlinked successfully"}
 
 
 @router.get("/me/transactions", response_model=list[MeTransactionResponse], responses={**HTTP_404})
@@ -198,6 +227,8 @@ def generate_connect_link(
     db: Session = Depends(get_db),
 ):
     """Generate a short-lived OIDC linking URL for an NFC card (device token required)."""
+    if db.query(UserCardAlias).filter(UserCardAlias.alias_id == nfc_id).first():
+        raise HTTPException(status_code=409, detail="Card already linked to an OIDC account")
     user = db.query(User).filter(User.id == nfc_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -213,7 +244,11 @@ def authenticate_nfc(
     device: Machine = Depends(get_current_device),
     db: Session = Depends(get_db),
 ):
-    """Authenticate a user by NFC card UID. Returns name and balance."""
+    """Authenticate a user by NFC card UID. Returns name and balance.
+
+    If nfc_id is an alias tag, the main tag's UID and data are returned instead.
+    """
+    nfc_id = resolve_nfc_id(db, nfc_id)
     user = db.query(User).filter(User.id == nfc_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -355,6 +390,11 @@ def transfer_card(
     db: Session = Depends(get_db),
 ):
     """Transfer all balance, authorizations and history from one NFC card to another (admin only)."""
+    for cid in (old_nfc_id, body.new_id):
+        if db.query(UserCardAlias).filter(UserCardAlias.alias_id == cid).first():
+            raise HTTPException(
+                status_code=400, detail="Card is currently registered as an alias tag"
+            )
     return _do_transfer(old_nfc_id, body.new_id, db)
 
 

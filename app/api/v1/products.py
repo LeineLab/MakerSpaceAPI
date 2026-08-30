@@ -17,7 +17,7 @@ from app.database import get_db
 from app.models.machine import Machine
 from app.models.product import Product, ProductAlias, ProductAudit, ProductAuditType, ProductCategory
 from app.models.transaction import Transaction, TransactionType
-from app.models.user import User
+from app.models.user import User, resolve_nfc_id
 from app.schemas.common import HTTP_400, HTTP_402, HTTP_404, HTTP_409, MessageResponse
 from app.schemas.product import (
     CategoryCreate,
@@ -382,7 +382,7 @@ def purchase_product(
     db: Session = Depends(get_db),
 ):
     """Buy a product (checkout device only). Deducts price from user's balance."""
-    nfc_id = body.nfc_id
+    nfc_id = resolve_nfc_id(db, body.nfc_id)
 
     product = _resolve_product(ean, db)
     if not product.active:

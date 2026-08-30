@@ -13,7 +13,7 @@ from app.database import get_db
 from app.models.machine import Machine, MachineAdmin, MachineAuthorization
 from app.models.session import MachineSession
 from app.models.transaction import Transaction
-from app.models.user import User
+from app.models.user import User, resolve_nfc_id
 from app.schemas.machine import (
     AuthorizationCreate,
     AuthorizationResponse,
@@ -307,14 +307,15 @@ def grant_authorization(
     db: Session = Depends(get_db),
 ):
     user_info, machine = require_machine_manager(slug, request, db)
-    user = db.query(User).filter(User.id == body.nfc_id).first()
+    nfc_id = resolve_nfc_id(db, body.nfc_id)
+    user = db.query(User).filter(User.id == nfc_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     existing = (
         db.query(MachineAuthorization)
         .filter(
             MachineAuthorization.machine_id == machine.id,
-            MachineAuthorization.user_id == body.nfc_id,
+            MachineAuthorization.user_id == nfc_id,
         )
         .first()
     )
@@ -322,7 +323,7 @@ def grant_authorization(
         raise HTTPException(status_code=409, detail="User already authorized for this machine")
     auth = MachineAuthorization(
         machine_id=machine.id,
-        user_id=body.nfc_id,
+        user_id=nfc_id,
         price_per_login=body.price_per_login,
         price_per_minute=body.price_per_minute,
         booking_interval=body.booking_interval,
@@ -344,6 +345,7 @@ def update_authorization(
     db: Session = Depends(get_db),
 ):
     user_info, machine = require_machine_manager(slug, request, db)
+    nfc_id = resolve_nfc_id(db, nfc_id)
     auth = (
         db.query(MachineAuthorization)
         .filter(
@@ -373,6 +375,7 @@ def revoke_authorization(
     db: Session = Depends(get_db),
 ):
     user_info, machine = require_machine_manager(slug, request, db)
+    nfc_id = resolve_nfc_id(db, nfc_id)
     auth = (
         db.query(MachineAuthorization)
         .filter(
@@ -414,6 +417,7 @@ def check_authorization(
             detail="Device token does not match the requested machine",
         )
 
+    nfc_id = resolve_nfc_id(db, nfc_id)
     user = db.query(User).filter(User.id == nfc_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

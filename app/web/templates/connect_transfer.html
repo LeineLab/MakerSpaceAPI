@@ -10,9 +10,11 @@
     </svg>
   </div>
 
-  <h1 class="text-2xl font-bold text-gray-900 text-center">{{ _('connect.transfer_heading') }}</h1>
+  <h1 class="text-2xl font-bold text-gray-900 text-center">{{ _('connect.choice_heading') }}</h1>
+  <p class="text-sm text-gray-600 text-center">{{ _('connect.choice_body') }}</p>
 
   <div class="bg-white rounded-lg shadow p-5 space-y-3 text-sm text-gray-700">
+    <h2 class="font-semibold text-gray-900">{{ _('connect.transfer_heading') }}</h2>
     <p>{{ _('connect.transfer_body') }}</p>
     <dl class="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">
       {% if old_name %}
@@ -29,15 +31,26 @@
     <p class="text-xs text-gray-400 pt-1">{{ _('connect.transfer_warning') }}</p>
   </div>
 
+  <div class="bg-white rounded-lg shadow p-5 space-y-3 text-sm text-gray-700">
+    <h2 class="font-semibold text-gray-900">{{ _('connect.alias_heading') }}</h2>
+    <p>{{ _('connect.alias_body') }}</p>
+  </div>
+
   <div class="flex flex-col gap-3">
     <form method="post" action="/auth/connect/transfer">
       <button type="submit"
-              class="w-full px-4 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700">
+              class="w-full px-4 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50">
         {{ _('connect.transfer_btn') }}
       </button>
     </form>
+    <form method="post" action="/auth/connect/alias">
+      <button type="submit"
+              class="w-full px-4 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700">
+        {{ _('connect.alias_btn') }}
+      </button>
+    </form>
     <a href="/auth/connect/transfer/cancel"
-       class="block text-center px-4 py-3 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50">
+       class="block text-center px-4 py-3 text-gray-500 hover:underline">
       {{ _('connect.transfer_cancel') }}
     </a>
   </div>

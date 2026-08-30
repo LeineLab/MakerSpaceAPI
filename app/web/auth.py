@@ -8,7 +8,7 @@ from app.auth.jwt import create_admin_jwt, verify_admin_jwt, verify_link_token
 from app.auth.oidc import is_admin, is_product_manager, oauth
 from app.config import settings
 from app.database import get_db
-from app.models.user import User
+from app.models.user import User, UserCardAlias
 from app.web.i18n import detect_language, get_translator
 from app.web.templating import templates as _templates
 
@@ -166,7 +166,10 @@ async def connect_transfer(request: Request, db: Session = Depends(get_db)):
 
     from app.api.v1.users import _do_transfer  # local import to avoid circular dependency
     try:
-        user = _do_transfer(transfer_data["old_id"], transfer_data["new_id"], db)
+        old_id = transfer_data["old_id"]
+        # Replacing the main tag frees its alias tags, so they can be registered anew.
+        db.query(UserCardAlias).filter(UserCardAlias.user_id == old_id).delete()
+        user = _do_transfer(old_id, transfer_data["new_id"], db)
     except HTTPException as e:
         db.rollback()
         return _error(e.detail)
@@ -186,9 +189,57 @@ async def connect_transfer(request: Request, db: Session = Depends(get_db)):
     )
 
 
+@router.post("/connect/alias")
+async def connect_alias(request: Request, db: Session = Depends(get_db)):
+    """Merge the newly scanned tag's data onto the existing main tag and register
+    it as an alias, keeping both tags usable and pointing at the same account."""
+    locale = detect_language(request.headers.get("accept-language", ""))
+    _ = get_translator(locale)
+
+    def _error(msg: str):
+        return _templates.TemplateResponse(
+            request, "connect_result.html",
+            {"user": None, "flash": None,
+             "_": _, "lang": locale,
+             "success": False, "error": msg},
+        )
+
+    transfer_data = request.session.pop("_transfer", None)
+    if not transfer_data:
+        return _error(_("connect.err_session"))
+
+    old_id = transfer_data["old_id"]
+    new_id = transfer_data["new_id"]
+
+    from app.api.v1.users import _do_transfer  # local import to avoid circular dependency
+    try:
+        if db.query(UserCardAlias).filter(UserCardAlias.alias_id == new_id).first():
+            raise HTTPException(status_code=409, detail=_("connect.err_card_taken"))
+        # Merge the new tag's data onto old_id (the account keeps its existing id).
+        user = _do_transfer(new_id, old_id, db)
+        db.add(UserCardAlias(alias_id=new_id, user_id=old_id))
+        db.commit()
+    except HTTPException as e:
+        db.rollback()
+        return _error(e.detail)
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Card alias linking failed (old_id=%s, new_id=%s)", old_id, new_id,
+        )
+        return _error(_("connect.err_transfer_failed"))
+
+    return _templates.TemplateResponse(
+        request, "connect_result.html",
+        {"user": None, "flash": None,
+         "_": _, "lang": locale,
+         "success": True, "display_name": user.name if user else None},
+    )
+
+
 @router.get("/connect/transfer/cancel")
 async def connect_transfer_cancel(request: Request):
-    """Cancel a pending card transfer and return to the home page."""
+    """Cancel a pending card transfer/alias linking and return to the home page."""
     request.session.pop("_transfer", None)
     return RedirectResponse(url="/")
 

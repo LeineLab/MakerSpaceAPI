@@ -2,8 +2,8 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import BigInteger, DateTime, Numeric, String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Numeric, String
+from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
 from app.models.base import Base
 
@@ -51,3 +51,30 @@ class User(Base):
     @property
     def has_pin(self) -> bool:
         return self.pin_hash is not None
+
+
+class UserCardAlias(Base):
+    """An additional NFC tag that acts as an alias for another user's main tag.
+
+    alias_id is the alias tag's own NFC UID. It is intentionally not a row in
+    `users` — scanning it should transparently resolve to user_id instead.
+    """
+
+    __tablename__ = "user_card_aliases"
+
+    alias_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", onupdate="CASCADE", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None)
+    )
+
+
+def resolve_nfc_id(db: Session, nfc_id: int) -> int:
+    """Resolve a just-scanned NFC UID to its main tag's UID, if it is an alias."""
+    alias = db.query(UserCardAlias).filter(UserCardAlias.alias_id == nfc_id).first()
+    return alias.user_id if alias else nfc_id
