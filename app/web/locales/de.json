@@ -9,6 +9,8 @@
   "nav.rentals":         "Ausleihe",
   "nav.logout":          "Abmelden",
   "nav.login":           "Anmelden",
+  "nav.dark_mode":       "Dunkler Modus",
+  "nav.light_mode":      "Heller Modus",
 
   "common.name":           "Name",
   "common.slug":           "Slug",

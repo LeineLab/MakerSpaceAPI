@@ -12,80 +12,80 @@
   </div>
 
   <!-- Pending token banner (shown once after machine creation or token regen) -->
-  <div x-show="pendingToken" class="mb-6 bg-yellow-50 border border-yellow-300 rounded-lg p-5">
-    <h2 class="font-semibold text-yellow-800 mb-1"
+  <div x-show="pendingToken" class="mb-6 bg-yellow-50 dark:bg-yellow-900/20 border dark:border-gray-700 border-yellow-300 dark:border-yellow-700 rounded-lg p-5">
+    <h2 class="font-semibold text-yellow-800 dark:text-yellow-300 mb-1"
         x-text='pendingToken ? (pendingToken.regen ? {{ _("machines.regen_title") | tojson }} : {{ _("machines.token_title") | tojson }}).replace("{name}", pendingToken.machine) : ""'>
     </h2>
-    <p class="text-xs text-yellow-700 mb-2">{{ _('machines.token_warning') }}</p>
+    <p class="text-xs text-yellow-700 dark:text-yellow-300 mb-2">{{ _('machines.token_warning') }}</p>
     <div class="flex items-center gap-3">
       <code x-ref="tokenCode"
-            class="flex-1 bg-yellow-100 text-yellow-900 font-mono text-sm px-3 py-2 rounded break-all select-all"
+            class="flex-1 bg-yellow-100 dark:bg-yellow-900/40 text-yellow-900 dark:text-yellow-200 font-mono text-sm px-3 py-2 rounded break-all select-all"
             x-text="pendingToken && pendingToken.token"></code>
       <button @click="navigator.clipboard.writeText(pendingToken.token)"
               class="shrink-0 px-3 py-2 bg-yellow-600 text-white text-xs rounded hover:bg-yellow-700">
         {{ _('common.copy') }}
       </button>
     </div>
-    <p class="text-xs text-gray-500 mt-2">
+    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
       {{ _('machines.token_slug') }}
       <code class="font-mono" x-text="pendingToken && pendingToken.slug"></code>
     </p>
-    <button @click="pendingToken = null" class="mt-2 text-xs text-yellow-700 hover:underline">
+    <button @click="pendingToken = null" class="mt-2 text-xs text-yellow-700 dark:text-yellow-300 hover:underline">
       {{ _('common.close') }}
     </button>
   </div>
 
   <!-- Error message -->
-  <div x-show="error" class="mb-4 bg-red-100 text-red-700 p-3 rounded text-sm" x-text="error"></div>
+  <div x-show="error" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="error"></div>
 
   <!-- Machines table -->
-  <div class="bg-white rounded-lg shadow overflow-hidden">
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
     <div class="overflow-x-auto">
     <table class="w-full text-sm">
-      <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
+      <thead class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 uppercase text-xs">
         <tr>
-          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('name')">{{ _('common.name') }} <span class="text-gray-400" x-text="sortIndicator('name')"></span></th>
-          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('slug')">{{ _('machines.col_slug') }} <span class="text-gray-400" x-text="sortIndicator('slug')"></span></th>
-          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('machine_type')">{{ _('machines.col_type') }} <span class="text-gray-400" x-text="sortIndicator('machine_type')"></span></th>
-          <th class="px-4 py-3 text-center cursor-pointer select-none hover:text-gray-900" @click="toggleSort('active')">{{ _('common.status') }} <span class="text-gray-400" x-text="sortIndicator('active')"></span></th>
-          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('created_at')">{{ _('common.created') }} <span class="text-gray-400" x-text="sortIndicator('created_at')"></span></th>
-          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('last_active_at')">{{ _('machines.col_last_active') }} <span class="text-gray-400" x-text="sortIndicator('last_active_at')"></span></th>
+          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('name')">{{ _('common.name') }} <span class="text-gray-400 dark:text-gray-500" x-text="sortIndicator('name')"></span></th>
+          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('slug')">{{ _('machines.col_slug') }} <span class="text-gray-400 dark:text-gray-500" x-text="sortIndicator('slug')"></span></th>
+          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('machine_type')">{{ _('machines.col_type') }} <span class="text-gray-400 dark:text-gray-500" x-text="sortIndicator('machine_type')"></span></th>
+          <th class="px-4 py-3 text-center cursor-pointer select-none hover:text-gray-900" @click="toggleSort('active')">{{ _('common.status') }} <span class="text-gray-400 dark:text-gray-500" x-text="sortIndicator('active')"></span></th>
+          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('created_at')">{{ _('common.created') }} <span class="text-gray-400 dark:text-gray-500" x-text="sortIndicator('created_at')"></span></th>
+          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('last_active_at')">{{ _('machines.col_last_active') }} <span class="text-gray-400 dark:text-gray-500" x-text="sortIndicator('last_active_at')"></span></th>
           <th class="px-4 py-3 text-right">{{ _('machines.col_actions') }}</th>
         </tr>
       </thead>
       <tbody>
         <template x-if="loading">
-          <tr><td colspan="7" class="px-4 py-8 text-center text-gray-400">Loading…</td></tr>
+          <tr><td colspan="7" class="px-4 py-8 text-center text-gray-400 dark:text-gray-500">Loading…</td></tr>
         </template>
         <template x-if="!loading && machines.length === 0">
-          <tr><td colspan="7" class="px-4 py-8 text-center text-gray-400">
+          <tr><td colspan="7" class="px-4 py-8 text-center text-gray-400 dark:text-gray-500">
             <span x-show="isAdmin">{{ _('machines.empty') }}</span>
             <span x-show="!isAdmin">{{ _('machines.empty_managed') }}</span>
           </td></tr>
         </template>
         <template x-for="m in sorted(machines)" :key="m.id">
-          <tr class="border-t hover:bg-gray-50">
+          <tr class="border-t dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
             <td class="px-4 py-2 font-medium">
-              <a :href="'/machines/' + m.slug" class="text-blue-600 hover:underline" x-text="m.name"></a>
+              <a :href="'/machines/' + m.slug" class="text-blue-600 dark:text-blue-400 hover:underline" x-text="m.name"></a>
             </td>
-            <td class="px-4 py-2 font-mono text-xs text-gray-500" x-text="m.slug"></td>
-            <td class="px-4 py-2 text-gray-500" x-text="m.machine_type"></td>
+            <td class="px-4 py-2 font-mono text-xs text-gray-500 dark:text-gray-400" x-text="m.slug"></td>
+            <td class="px-4 py-2 text-gray-500 dark:text-gray-400" x-text="m.machine_type"></td>
             <td class="px-4 py-2 text-center">
               <span x-show="m.active"
-                    class="text-xs bg-green-100 text-green-700 rounded px-2 py-0.5">{{ _('common.active') }}</span>
+                    class="text-xs bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 rounded px-2 py-0.5">{{ _('common.active') }}</span>
               <span x-show="!m.active"
-                    class="text-xs bg-red-100 text-red-600 rounded px-2 py-0.5">{{ _('common.inactive') }}</span>
+                    class="text-xs bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 rounded px-2 py-0.5">{{ _('common.inactive') }}</span>
             </td>
-            <td class="px-4 py-2 text-gray-500 text-xs" x-text="fmtDate(m.created_at)"></td>
-            <td class="px-4 py-2 text-gray-500 text-xs"
+            <td class="px-4 py-2 text-gray-500 dark:text-gray-400 text-xs" x-text="fmtDate(m.created_at)"></td>
+            <td class="px-4 py-2 text-gray-500 dark:text-gray-400 text-xs"
                 x-text="m.last_active_at ? fmtDateTime(m.last_active_at) : '—'"></td>
             <td class="px-4 py-2 text-right whitespace-nowrap" x-show="isAdmin">
               <button @click="regenToken(m)"
-                      class="text-xs text-blue-600 hover:underline mr-3">{{ _('machines.btn_regen_token') }}</button>
+                      class="text-xs text-blue-600 dark:text-blue-400 hover:underline mr-3">{{ _('machines.btn_regen_token') }}</button>
               <button x-show="m.active" @click="toggleActive(m)"
-                      class="text-xs text-red-500 hover:underline">{{ _('machines.btn_deactivate') }}</button>
+                      class="text-xs text-red-500 dark:text-red-400 hover:underline">{{ _('machines.btn_deactivate') }}</button>
               <button x-show="!m.active" @click="toggleActive(m)"
-                      class="text-xs text-green-600 hover:underline">{{ _('machines.btn_activate') }}</button>
+                      class="text-xs text-green-600 dark:text-green-400 hover:underline">{{ _('machines.btn_activate') }}</button>
             </td>
           </tr>
         </template>
@@ -96,33 +96,33 @@
 
   <!-- Register Machine Modal -->
   <div x-show="showModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-    <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showModal = false">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showModal = false">
       <h2 class="text-lg font-bold mb-4">{{ _('machines.modal_title') }}</h2>
-      <div x-show="formError" class="mb-3 bg-red-100 text-red-700 p-2 rounded text-sm" x-text="formError"></div>
+      <div x-show="formError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="formError"></div>
       <form @submit.prevent="createMachine()" class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('common.name') }}</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('common.name') }}</label>
           <input type="text" x-model="form.name" required placeholder="{{ _('machines.placeholder_name') }}"
-                 class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('common.slug') }}</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('common.slug') }}</label>
           <input type="text" x-model="form.slug" required placeholder="{{ _('machines.placeholder_slug') }}"
                  pattern="[a-z0-9_-]+" title="{{ _('common.slug_hint') }}"
-                 class="w-full border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
-          <p class="text-xs text-gray-400 mt-1">{{ _('common.slug_hint') }}</p>
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">{{ _('common.slug_hint') }}</p>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('machines.label_type') }}</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('machines.label_type') }}</label>
           <select x-model="form.machine_type" required
-                  class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                  class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
             <option value="machine">machine</option>
             <option value="checkout">checkout</option>
           </select>
         </div>
         <div class="flex justify-end gap-3 pt-2">
           <button type="button" @click="showModal = false"
-                  class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">{{ _('common.cancel') }}</button>
+                  class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.cancel') }}</button>
           <button type="submit" :disabled="submitting"
                   class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
             <span x-show="!submitting">{{ _('machines.btn_register_token') }}</span>

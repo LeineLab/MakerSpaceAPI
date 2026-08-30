@@ -11,34 +11,34 @@
     </button>
   </div>
 
-  <div x-show="error" class="mb-4 bg-red-100 text-red-700 p-3 rounded text-sm" x-text="error"></div>
+  <div x-show="error" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="error"></div>
 
   <!-- Currently Rented -->
-  <div class="bg-white rounded-lg shadow mb-6">
-    <div class="px-5 py-4 border-b">
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow mb-6">
+    <div class="px-5 py-4 border-b dark:border-gray-700">
       <h2 class="font-semibold">{{ _('rentals.rented_title') }}</h2>
     </div>
     <div class="overflow-x-auto">
     <table class="w-full text-sm">
-      <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
+      <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs uppercase">
         <tr>
-          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="rentedSort.toggle('item_name')">{{ _('rentals.col_item') }} <span class="text-gray-400" x-text="rentedSort.indicator('item_name')"></span></th>
-          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="rentedSort.toggle('user_name')">{{ _('rentals.col_user') }} <span class="text-gray-400" x-text="rentedSort.indicator('user_name')"></span></th>
-          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="rentedSort.toggle('rented_at')">{{ _('rentals.col_since') }} <span class="text-gray-400" x-text="rentedSort.indicator('rented_at')"></span></th>
+          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="rentedSort.toggle('item_name')">{{ _('rentals.col_item') }} <span class="text-gray-400 dark:text-gray-500" x-text="rentedSort.indicator('item_name')"></span></th>
+          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="rentedSort.toggle('user_name')">{{ _('rentals.col_user') }} <span class="text-gray-400 dark:text-gray-500" x-text="rentedSort.indicator('user_name')"></span></th>
+          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="rentedSort.toggle('rented_at')">{{ _('rentals.col_since') }} <span class="text-gray-400 dark:text-gray-500" x-text="rentedSort.indicator('rented_at')"></span></th>
         </tr>
       </thead>
       <tbody>
         <template x-if="loading">
-          <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400">Loading…</td></tr>
+          <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400 dark:text-gray-500">Loading…</td></tr>
         </template>
         <template x-if="!loading && activeRentals.length === 0">
-          <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400">{{ _('rentals.rented_empty') }}</td></tr>
+          <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400 dark:text-gray-500">{{ _('rentals.rented_empty') }}</td></tr>
         </template>
         <template x-for="r in sortedActiveRentals" :key="r.rental_id">
-          <tr class="border-t hover:bg-gray-50">
+          <tr class="border-t dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
             <td class="px-4 py-2" x-text="r.item_name"></td>
             <td class="px-4 py-2" x-text="r.user_name || r.user_id"></td>
-            <td class="px-4 py-2 text-xs text-gray-500"
+            <td class="px-4 py-2 text-xs text-gray-500 dark:text-gray-400"
                 x-text="r.rented_at ? r.rented_at.substring(0,16).replace('T',' ') : ''"></td>
           </tr>
         </template>
@@ -48,39 +48,39 @@
   </div>
 
   <!-- Rental Items -->
-  <div class="bg-white rounded-lg shadow mb-6">
-    <div class="px-5 py-4 border-b flex flex-wrap items-center justify-between gap-2">
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow mb-6">
+    <div class="px-5 py-4 border-b dark:border-gray-700 flex flex-wrap items-center justify-between gap-2">
       <h2 class="font-semibold">{{ _('rentals.items_title') }}</h2>
-      <span class="text-xs text-gray-400" x-text="items.length + ' {{ _('rentals.items_word') }}'"></span>
+      <span class="text-xs text-gray-400 dark:text-gray-500" x-text="items.length + ' {{ _('rentals.items_word') }}'"></span>
     </div>
     <div class="overflow-x-auto">
     <table class="w-full text-sm">
-      <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
+      <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs uppercase">
         <tr>
-          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="itemSort.toggle('name')">{{ _('common.name') }} <span class="text-gray-400" x-text="itemSort.indicator('name')"></span></th>
-          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="itemSort.toggle('uhf_tid')">{{ _('rentals.col_tid') }} <span class="text-gray-400" x-text="itemSort.indicator('uhf_tid')"></span></th>
-          <th class="px-4 py-2 text-center cursor-pointer select-none hover:text-gray-800" @click="itemSort.toggle('active')">{{ _('rentals.col_active') }} <span class="text-gray-400" x-text="itemSort.indicator('active')"></span></th>
+          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="itemSort.toggle('name')">{{ _('common.name') }} <span class="text-gray-400 dark:text-gray-500" x-text="itemSort.indicator('name')"></span></th>
+          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="itemSort.toggle('uhf_tid')">{{ _('rentals.col_tid') }} <span class="text-gray-400 dark:text-gray-500" x-text="itemSort.indicator('uhf_tid')"></span></th>
+          <th class="px-4 py-2 text-center cursor-pointer select-none hover:text-gray-800" @click="itemSort.toggle('active')">{{ _('rentals.col_active') }} <span class="text-gray-400 dark:text-gray-500" x-text="itemSort.indicator('active')"></span></th>
           <th class="px-4 py-2"></th>
         </tr>
       </thead>
       <tbody>
         <template x-if="loading">
-          <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400">Loading…</td></tr>
+          <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400 dark:text-gray-500">Loading…</td></tr>
         </template>
         <template x-if="!loading && items.length === 0">
-          <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400">{{ _('rentals.items_empty') }}</td></tr>
+          <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400 dark:text-gray-500">{{ _('rentals.items_empty') }}</td></tr>
         </template>
         <template x-for="item in sortedItems" :key="item.id">
-          <tr class="border-t hover:bg-gray-50">
+          <tr class="border-t dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
             <td class="px-4 py-2">
               <span x-text="item.name"></span>
-              <span x-show="item.description" class="block text-xs text-gray-400" x-text="item.description"></span>
+              <span x-show="item.description" class="block text-xs text-gray-400 dark:text-gray-500" x-text="item.description"></span>
             </td>
-            <td class="px-4 py-2 font-mono text-xs text-gray-500" x-text="item.uhf_tid"></td>
+            <td class="px-4 py-2 font-mono text-xs text-gray-500 dark:text-gray-400" x-text="item.uhf_tid"></td>
             <td class="px-4 py-2 text-center" x-text="item.active ? '✓' : '—'"></td>
             <td class="px-4 py-2 text-right">
               <button @click="openEdit(item)"
-                      class="text-xs text-blue-600 hover:underline">{{ _('common.edit') }}</button>
+                      class="text-xs text-blue-600 dark:text-blue-400 hover:underline">{{ _('common.edit') }}</button>
             </td>
           </tr>
         </template>
@@ -90,38 +90,38 @@
   </div>
 
   <!-- Permissions -->
-  <div class="mt-6 bg-white rounded-lg shadow">
-    <div class="px-5 py-4 border-b flex items-center justify-between">
+  <div class="mt-6 bg-white dark:bg-gray-800 rounded-lg shadow">
+    <div class="px-5 py-4 border-b dark:border-gray-700 flex items-center justify-between">
       <h2 class="font-semibold">{{ _('rentals.perms_title') }}</h2>
       <button @click="showPermModal = true"
-              class="text-sm text-blue-600 hover:underline">{{ _('rentals.btn_add_perm') }}</button>
+              class="text-sm text-blue-600 dark:text-blue-400 hover:underline">{{ _('rentals.btn_add_perm') }}</button>
     </div>
     <div class="overflow-x-auto">
     <table class="w-full text-sm">
-      <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
+      <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs uppercase">
         <tr>
-          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="permSort.toggle('user_id')">{{ _('rentals.col_uid') }} <span class="text-gray-400" x-text="permSort.indicator('user_id')"></span></th>
-          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="permSort.toggle('user_name')">{{ _('common.name') }} <span class="text-gray-400" x-text="permSort.indicator('user_name')"></span></th>
-          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="permSort.toggle('granted_at')">{{ _('rentals.col_granted') }} <span class="text-gray-400" x-text="permSort.indicator('granted_at')"></span></th>
+          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="permSort.toggle('user_id')">{{ _('rentals.col_uid') }} <span class="text-gray-400 dark:text-gray-500" x-text="permSort.indicator('user_id')"></span></th>
+          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="permSort.toggle('user_name')">{{ _('common.name') }} <span class="text-gray-400 dark:text-gray-500" x-text="permSort.indicator('user_name')"></span></th>
+          <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-800" @click="permSort.toggle('granted_at')">{{ _('rentals.col_granted') }} <span class="text-gray-400 dark:text-gray-500" x-text="permSort.indicator('granted_at')"></span></th>
           <th class="px-4 py-2"></th>
         </tr>
       </thead>
       <tbody>
         <template x-if="loading">
-          <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400">Loading…</td></tr>
+          <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400 dark:text-gray-500">Loading…</td></tr>
         </template>
         <template x-if="!loading && permissions.length === 0">
-          <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400">{{ _('rentals.perms_empty') }}</td></tr>
+          <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400 dark:text-gray-500">{{ _('rentals.perms_empty') }}</td></tr>
         </template>
         <template x-for="perm in sortedPermissions" :key="perm.user_id">
-          <tr class="border-t hover:bg-gray-50">
+          <tr class="border-t dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
             <td class="px-4 py-2 font-mono text-xs" x-text="perm.user_id"></td>
             <td class="px-4 py-2" x-text="perm.user_name || '—'"></td>
-            <td class="px-4 py-2 text-xs text-gray-500"
+            <td class="px-4 py-2 text-xs text-gray-500 dark:text-gray-400"
                 x-text="perm.granted_at ? perm.granted_at.substring(0,10) : ''"></td>
             <td class="px-4 py-2 text-right">
               <button @click="revokePermission(perm.user_id)"
-                      class="text-xs text-red-500 hover:underline">{{ _('rentals.btn_revoke') }}</button>
+                      class="text-xs text-red-500 dark:text-red-400 hover:underline">{{ _('rentals.btn_revoke') }}</button>
             </td>
           </tr>
         </template>
@@ -132,27 +132,27 @@
 
   <!-- Edit Rental Item Modal -->
   <div x-show="showEditModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-    <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showEditModal = false">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showEditModal = false">
       <h2 class="text-lg font-bold mb-4">{{ _('rentals.edit_title') }}</h2>
-      <div x-show="editError" class="mb-3 bg-red-100 text-red-700 p-2 rounded text-sm" x-text="editError"></div>
+      <div x-show="editError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="editError"></div>
       <form @submit.prevent="saveEdit()" class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('common.name') }}</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('common.name') }}</label>
           <input type="text" x-model="editForm.name" required
-                 class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('rentals.label_description') }}</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('rentals.label_description') }}</label>
           <input type="text" x-model="editForm.description" placeholder="{{ _('rentals.placeholder_desc') }}"
-                 class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
         </div>
         <div class="flex items-center gap-2">
           <input type="checkbox" id="edit-active" x-model="editForm.active" class="rounded">
-          <label for="edit-active" class="text-sm text-gray-700">{{ _('rentals.col_active') }}</label>
+          <label for="edit-active" class="text-sm text-gray-700 dark:text-gray-300">{{ _('rentals.col_active') }}</label>
         </div>
         <div class="flex justify-end gap-3 pt-2">
           <button type="button" @click="showEditModal = false"
-                  class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">{{ _('common.cancel') }}</button>
+                  class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.cancel') }}</button>
           <button type="submit" :disabled="editSubmitting"
                   class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
             <span x-show="!editSubmitting">{{ _('common.save') }}</span>
@@ -165,29 +165,29 @@
 
   <!-- Add Rental Item Modal -->
   <div x-show="showModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-    <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showModal = false">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showModal = false">
       <h2 class="text-lg font-bold mb-4">{{ _('rentals.modal_title') }}</h2>
-      <div x-show="formError" class="mb-3 bg-red-100 text-red-700 p-2 rounded text-sm" x-text="formError"></div>
+      <div x-show="formError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="formError"></div>
       <form @submit.prevent="createItem()" class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('common.name') }}</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('common.name') }}</label>
           <input type="text" x-model="form.name" required placeholder="{{ _('rentals.placeholder_name') }}"
-                 class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('rentals.label_uhf_tid') }}</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('rentals.label_uhf_tid') }}</label>
           <input type="text" x-model="form.uhf_tid" required placeholder="{{ _('rentals.placeholder_tid') }}"
-                 class="w-full border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
-          <p class="text-xs text-gray-400 mt-1">{{ _('rentals.tid_hint') }}</p>
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">{{ _('rentals.tid_hint') }}</p>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('rentals.label_description') }}</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('rentals.label_description') }}</label>
           <input type="text" x-model="form.description" placeholder="{{ _('rentals.placeholder_desc') }}"
-                 class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
         </div>
         <div class="flex justify-end gap-3 pt-2">
           <button type="button" @click="showModal = false"
-                  class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">{{ _('common.cancel') }}</button>
+                  class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.cancel') }}</button>
           <button type="submit" :disabled="submitting"
                   class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
             <span x-show="!submitting">{{ _('rentals.btn_add_item') }}</span>
@@ -200,26 +200,26 @@
 
   <!-- Add Permission Modal -->
   <div x-show="showPermModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-    <div class="bg-white rounded-lg shadow-xl w-full max-w-sm p-6" @click.outside="showPermModal = false">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-sm p-6" @click.outside="showPermModal = false">
       <h2 class="text-lg font-bold mb-4">{{ _('rentals.perm_modal_title') }}</h2>
-      <div x-show="permError" class="mb-3 bg-red-100 text-red-700 p-2 rounded text-sm" x-text="permError"></div>
+      <div x-show="permError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="permError"></div>
       <form @submit.prevent="grantPermission()" class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('rentals.label_uid') }}</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('rentals.label_uid') }}</label>
           <select x-model="permForm.nfc_id" required
-                  class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                  class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
             <option value="">— {{ _('machines.select_user') }} —</option>
             <template x-for="u in permCandidates" :key="u.id">
               <option :value="u.id" x-text="u.name + ' (' + u.id + ')'"></option>
             </template>
           </select>
           <template x-if="!loadingUsers && permCandidates.length === 0">
-            <p class="text-xs text-gray-400 mt-1">{{ _('machines.no_users_available') }}</p>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">{{ _('machines.no_users_available') }}</p>
           </template>
         </div>
         <div class="flex justify-end gap-3 pt-2">
           <button type="button" @click="showPermModal = false"
-                  class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">{{ _('common.cancel') }}</button>
+                  class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.cancel') }}</button>
           <button type="submit" :disabled="permSubmitting"
                   class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
             <span x-show="!permSubmitting">{{ _('rentals.btn_grant') }}</span>

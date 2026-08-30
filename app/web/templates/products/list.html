@@ -6,7 +6,7 @@
   <div class="flex items-center justify-between mb-4">
     <h1 class="text-2xl font-bold">{{ _('products.title') }}</h1>
     <select x-model="selectedCategory" @change="filterProducts()"
-            class="border rounded px-3 py-1.5 text-sm">
+            class="border dark:border-gray-700 rounded px-3 py-1.5 text-sm">
       <option value="">{{ _('products.all_cats') }}</option>
       <template x-for="cat in categories" :key="cat">
         <option :value="cat" x-text="cat"></option>
@@ -14,36 +14,36 @@
     </select>
   </div>
 
-  <div x-show="error" class="mb-4 bg-red-100 text-red-700 p-3 rounded text-sm" x-text="error"></div>
+  <div x-show="error" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="error"></div>
 
-  <div class="bg-white rounded-lg shadow overflow-hidden">
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
     <div class="overflow-x-auto">
     <table class="w-full text-sm">
-      <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
+      <thead class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 uppercase text-xs">
         <tr>
-          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('category')">{{ _('products.col_category') }} <span class="text-gray-400" x-text="sortIndicator('category')"></span></th>
-          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('name')">{{ _('products.col_name') }} <span class="text-gray-400" x-text="sortIndicator('name')"></span></th>
-          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('ean')">{{ _('products.col_ean') }} <span class="text-gray-400" x-text="sortIndicator('ean')"></span></th>
-          <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-900" @click="toggleSort('price')">{{ _('products.col_price') }} <span class="text-gray-400" x-text="sortIndicator('price')"></span></th>
-          <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-900" @click="toggleSort('stock')">{{ _('products.col_stock') }} <span class="text-gray-400" x-text="sortIndicator('stock')"></span></th>
+          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('category')">{{ _('products.col_category') }} <span class="text-gray-400 dark:text-gray-500" x-text="sortIndicator('category')"></span></th>
+          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('name')">{{ _('products.col_name') }} <span class="text-gray-400 dark:text-gray-500" x-text="sortIndicator('name')"></span></th>
+          <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('ean')">{{ _('products.col_ean') }} <span class="text-gray-400 dark:text-gray-500" x-text="sortIndicator('ean')"></span></th>
+          <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-900" @click="toggleSort('price')">{{ _('products.col_price') }} <span class="text-gray-400 dark:text-gray-500" x-text="sortIndicator('price')"></span></th>
+          <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-900" @click="toggleSort('stock')">{{ _('products.col_stock') }} <span class="text-gray-400 dark:text-gray-500" x-text="sortIndicator('stock')"></span></th>
         </tr>
       </thead>
       <tbody>
         <template x-if="loading">
-          <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">Loading…</td></tr>
+          <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400 dark:text-gray-500">Loading…</td></tr>
         </template>
         <template x-if="!loading && filtered.length === 0">
-          <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">{{ _('products.empty') }}</td></tr>
+          <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400 dark:text-gray-500">{{ _('products.empty') }}</td></tr>
         </template>
         <template x-for="(p, i) in sortedFiltered" :key="p.ean">
-          <tr class="border-t hover:bg-gray-50">
-            <td class="px-4 py-2 text-gray-500"
+          <tr class="border-t dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
+            <td class="px-4 py-2 text-gray-500 dark:text-gray-400"
                 x-text="sortKey || i === 0 || sortedFiltered[i-1].category !== p.category ? p.category : ''"></td>
             <td class="px-4 py-2 font-medium" x-text="p.name"></td>
-            <td class="px-4 py-2 text-gray-500 font-mono text-xs" x-text="p.ean"></td>
+            <td class="px-4 py-2 text-gray-500 dark:text-gray-400 font-mono text-xs" x-text="p.ean"></td>
             <td class="px-4 py-2 text-right" x-text="parseFloat(p.price).toFixed(2) + ' €'"></td>
             <td class="px-4 py-2 text-right"
-                :class="p.stock <= 0 ? 'text-red-500 font-semibold' : p.stock < 5 ? 'text-yellow-600' : ''"
+                :class="p.stock <= 0 ? 'text-red-500 dark:text-red-400 font-semibold' : p.stock < 5 ? 'text-yellow-600 dark:text-yellow-400' : ''"
                 x-text="p.stock"></td>
           </tr>
         </template>

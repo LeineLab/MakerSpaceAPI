@@ -6,33 +6,33 @@
 
   <!-- Back link -->
   <div class="mb-4">
-    <a href="/machines" class="text-sm text-blue-600 hover:underline">← {{ _('machines.back') }}</a>
+    <a href="/machines" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">← {{ _('machines.back') }}</a>
   </div>
 
   <!-- Loading / access error -->
-  <div x-show="loading" class="text-gray-400 text-sm">Loading…</div>
-  <div x-show="error && !loading" class="bg-red-100 text-red-700 p-4 rounded text-sm" x-text="error"></div>
+  <div x-show="loading" class="text-gray-400 dark:text-gray-500 text-sm">Loading…</div>
+  <div x-show="error && !loading" class="bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-4 rounded text-sm" x-text="error"></div>
 
   <template x-if="machine && !loading">
     <div class="space-y-8">
 
       <!-- ── Machine info ──────────────────────────────────────────── -->
-      <div class="bg-white rounded-lg shadow p-6">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <div class="flex items-center justify-between mb-4">
           <h1 class="text-2xl font-bold" x-text="machine.name"></h1>
           <span x-show="machine.active"
-                class="text-xs bg-green-100 text-green-700 rounded px-2 py-0.5">{{ _('common.active') }}</span>
+                class="text-xs bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 rounded px-2 py-0.5">{{ _('common.active') }}</span>
           <span x-show="!machine.active"
-                class="text-xs bg-red-100 text-red-600 rounded px-2 py-0.5">{{ _('common.inactive') }}</span>
+                class="text-xs bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 rounded px-2 py-0.5">{{ _('common.inactive') }}</span>
         </div>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm mb-4">
-          <dt class="text-gray-500">{{ _('common.slug') }}</dt>
+          <dt class="text-gray-500 dark:text-gray-400">{{ _('common.slug') }}</dt>
           <dd class="font-mono" x-text="machine.slug"></dd>
-          <dt class="text-gray-500">{{ _('common.type') }}</dt>
+          <dt class="text-gray-500 dark:text-gray-400">{{ _('common.type') }}</dt>
           <dd x-text="machine.machine_type"></dd>
-          <dt class="text-gray-500">{{ _('common.created') }}</dt>
+          <dt class="text-gray-500 dark:text-gray-400">{{ _('common.created') }}</dt>
           <dd x-text="fmtDate(machine.created_at)"></dd>
-          <dt class="text-gray-500">{{ _('machines.col_last_active') }}</dt>
+          <dt class="text-gray-500 dark:text-gray-400">{{ _('machines.col_last_active') }}</dt>
           <dd x-text="machine.last_active_at ? fmtDateTime(machine.last_active_at) : '—'"></dd>
         </dl>
 
@@ -40,25 +40,25 @@
         <template x-if="isAdmin">
           <div>
             <button @click="showEditMachine = !showEditMachine"
-                    class="text-xs text-blue-600 hover:underline">
+                    class="text-xs text-blue-600 dark:text-blue-400 hover:underline">
               <span x-text="showEditMachine ? '{{ _('common.cancel') }}' : '{{ _('common.edit') }}'"></span>
             </button>
             <form x-show="showEditMachine" @submit.prevent="saveMachine()" class="mt-3 space-y-3 max-w-sm">
-              <div x-show="machineEditError" class="text-red-600 text-xs" x-text="machineEditError"></div>
+              <div x-show="machineEditError" class="text-red-600 dark:text-red-400 text-xs" x-text="machineEditError"></div>
               <div>
-                <label class="block text-xs font-medium text-gray-600 mb-1">{{ _('common.name') }}</label>
+                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ _('common.name') }}</label>
                 <input type="text" x-model="editForm.name" required
-                       class="w-full border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                       class="w-full border dark:border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
               </div>
               <div>
-                <label class="block text-xs font-medium text-gray-600 mb-1">{{ _('common.slug') }}</label>
+                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ _('common.slug') }}</label>
                 <input type="text" x-model="editForm.slug" required pattern="[a-z0-9_-]+"
-                       class="w-full border rounded px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
+                       class="w-full border dark:border-gray-700 rounded px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
               </div>
               <div>
-                <label class="block text-xs font-medium text-gray-600 mb-1">{{ _('machines.label_type') }}</label>
+                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ _('machines.label_type') }}</label>
                 <select x-model="editForm.machine_type"
-                        class="w-full border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                        class="w-full border dark:border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
                   <option value="machine">machine</option>
                   <option value="checkout">checkout</option>
                   <option value="bankomat">bankomat</option>
@@ -80,30 +80,30 @@
       </div>
 
       <!-- ── Authorizations ────────────────────────────────────────── -->
-      <div class="bg-white rounded-lg shadow p-6">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <h2 class="text-lg font-semibold mb-4">{{ _('machines.section_authorizations') }}</h2>
 
-        <div x-show="authError" class="mb-3 bg-red-100 text-red-700 p-2 rounded text-sm" x-text="authError"></div>
+        <div x-show="authError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="authError"></div>
 
         <!-- Auth table -->
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
-            <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
+            <thead class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 uppercase text-xs">
               <tr>
-                <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleAuthSort('user_name')">{{ _('common.name') }} <span class="text-gray-400" x-text="authSortIndicator('user_name')"></span></th>
-                <th class="px-4 py-2 text-right cursor-pointer select-none hover:text-gray-900" @click="toggleAuthSort('price_per_login')">{{ _('machines.auth_login_fee') }} <span class="text-gray-400" x-text="authSortIndicator('price_per_login')"></span></th>
-                <th class="px-4 py-2 text-right cursor-pointer select-none hover:text-gray-900" @click="toggleAuthSort('price_per_minute')">{{ _('machines.auth_per_minute') }} <span class="text-gray-400" x-text="authSortIndicator('price_per_minute')"></span></th>
-                <th class="px-4 py-2 text-right cursor-pointer select-none hover:text-gray-900" @click="toggleAuthSort('booking_interval')">{{ _('machines.auth_interval') }} <span class="text-gray-400" x-text="authSortIndicator('booking_interval')"></span></th>
-                <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleAuthSort('granted_by')">{{ _('machines.auth_granted_by') }} <span class="text-gray-400" x-text="authSortIndicator('granted_by')"></span></th>
+                <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleAuthSort('user_name')">{{ _('common.name') }} <span class="text-gray-400 dark:text-gray-500" x-text="authSortIndicator('user_name')"></span></th>
+                <th class="px-4 py-2 text-right cursor-pointer select-none hover:text-gray-900" @click="toggleAuthSort('price_per_login')">{{ _('machines.auth_login_fee') }} <span class="text-gray-400 dark:text-gray-500" x-text="authSortIndicator('price_per_login')"></span></th>
+                <th class="px-4 py-2 text-right cursor-pointer select-none hover:text-gray-900" @click="toggleAuthSort('price_per_minute')">{{ _('machines.auth_per_minute') }} <span class="text-gray-400 dark:text-gray-500" x-text="authSortIndicator('price_per_minute')"></span></th>
+                <th class="px-4 py-2 text-right cursor-pointer select-none hover:text-gray-900" @click="toggleAuthSort('booking_interval')">{{ _('machines.auth_interval') }} <span class="text-gray-400 dark:text-gray-500" x-text="authSortIndicator('booking_interval')"></span></th>
+                <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleAuthSort('granted_by')">{{ _('machines.auth_granted_by') }} <span class="text-gray-400 dark:text-gray-500" x-text="authSortIndicator('granted_by')"></span></th>
                 <th class="px-4 py-2 text-right">{{ _('machines.col_actions') }}</th>
               </tr>
             </thead>
             <tbody>
               <template x-if="authorizations.length === 0">
-                <tr><td colspan="6" class="px-4 py-6 text-center text-gray-400">{{ _('machines.no_auths') }}</td></tr>
+                <tr><td colspan="6" class="px-4 py-6 text-center text-gray-400 dark:text-gray-500">{{ _('machines.no_auths') }}</td></tr>
               </template>
               <template x-for="a in sortedAuthorizations" :key="a.user_id">
-                <tr class="border-t">
+                <tr class="border-t dark:border-gray-700">
                   <td class="px-4 py-2 font-medium" x-text="a.user_name || a.user_id"></td>
                   <td class="px-4 py-2 text-right font-mono text-xs">
                     <template x-if="editingAuth !== a.user_id">
@@ -111,7 +111,7 @@
                     </template>
                     <template x-if="editingAuth === a.user_id">
                       <input type="number" step="0.01" min="0" x-model="authEditForm.price_per_login"
-                             class="w-20 border rounded px-1 py-0.5 text-xs">
+                             class="w-20 border dark:border-gray-700 rounded px-1 py-0.5 text-xs">
                     </template>
                   </td>
                   <td class="px-4 py-2 text-right font-mono text-xs">
@@ -120,7 +120,7 @@
                     </template>
                     <template x-if="editingAuth === a.user_id">
                       <input type="number" step="0.01" min="0" x-model="authEditForm.price_per_minute"
-                             class="w-20 border rounded px-1 py-0.5 text-xs">
+                             class="w-20 border dark:border-gray-700 rounded px-1 py-0.5 text-xs">
                     </template>
                   </td>
                   <td class="px-4 py-2 text-right font-mono text-xs">
@@ -129,25 +129,25 @@
                     </template>
                     <template x-if="editingAuth === a.user_id">
                       <input type="number" min="1" x-model="authEditForm.booking_interval"
-                             class="w-16 border rounded px-1 py-0.5 text-xs">
+                             class="w-16 border dark:border-gray-700 rounded px-1 py-0.5 text-xs">
                     </template>
                   </td>
-                  <td class="px-4 py-2 text-xs text-gray-500" x-text="a.granted_by || '—'"></td>
+                  <td class="px-4 py-2 text-xs text-gray-500 dark:text-gray-400" x-text="a.granted_by || '—'"></td>
                   <td class="px-4 py-2 text-right whitespace-nowrap">
                     <template x-if="editingAuth !== a.user_id">
                       <span>
                         <button @click="startEditAuth(a)"
-                                class="text-xs text-blue-600 hover:underline mr-2">{{ _('common.edit') }}</button>
+                                class="text-xs text-blue-600 dark:text-blue-400 hover:underline mr-2">{{ _('common.edit') }}</button>
                         <button @click="removeAuth(a.user_id)"
-                                class="text-xs text-red-500 hover:underline">{{ _('common.remove') }}</button>
+                                class="text-xs text-red-500 dark:text-red-400 hover:underline">{{ _('common.remove') }}</button>
                       </span>
                     </template>
                     <template x-if="editingAuth === a.user_id">
                       <span>
                         <button @click="saveAuth(a.user_id)"
-                                class="text-xs text-green-600 hover:underline mr-2">{{ _('common.save') }}</button>
+                                class="text-xs text-green-600 dark:text-green-400 hover:underline mr-2">{{ _('common.save') }}</button>
                         <button @click="editingAuth = null"
-                                class="text-xs text-gray-500 hover:underline">{{ _('common.cancel') }}</button>
+                                class="text-xs text-gray-500 dark:text-gray-400 hover:underline">{{ _('common.cancel') }}</button>
                       </span>
                     </template>
                   </td>
@@ -158,17 +158,17 @@
         </div>
 
         <!-- Add auth form (always visible) -->
-        <div class="mt-6 pt-5 border-t">
-          <h3 class="text-sm font-semibold text-gray-700 mb-3">{{ _('machines.btn_add_auth') }}</h3>
-          <div x-show="addAuthError" class="mb-2 bg-red-100 text-red-700 p-2 rounded text-xs" x-text="addAuthError"></div>
-          <div x-show="authUsers.length === 0" class="text-xs text-gray-400 mb-2">
+        <div class="mt-6 pt-5 border-t dark:border-gray-700">
+          <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">{{ _('machines.btn_add_auth') }}</h3>
+          <div x-show="addAuthError" class="mb-2 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-xs" x-text="addAuthError"></div>
+          <div x-show="authUsers.length === 0" class="text-xs text-gray-400 dark:text-gray-500 mb-2">
             {{ _('machines.no_users_available') }}
           </div>
           <form @submit.prevent="addAuth()" class="space-y-3 max-w-sm" x-show="authUsers.length > 0">
             <div>
-              <label class="block text-xs font-medium text-gray-600 mb-1">{{ _('machines.select_user') }}</label>
+              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ _('machines.select_user') }}</label>
               <select x-model="addAuthForm.nfc_id" required
-                      class="w-full border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                      class="w-full border dark:border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
                 <option value="">—</option>
                 <template x-for="u in authUsers" :key="u.id">
                   <option :value="u.id" x-text="u.name + ' (' + u.id + ')'"></option>
@@ -177,19 +177,19 @@
             </div>
             <div class="grid grid-cols-3 gap-2">
               <div>
-                <label class="block text-xs text-gray-600 mb-1">{{ _('machines.auth_login_fee') }} (€)</label>
+                <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">{{ _('machines.auth_login_fee') }} (€)</label>
                 <input type="number" step="0.01" min="0" x-model="addAuthForm.price_per_login"
-                       class="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                       class="w-full border dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
               </div>
               <div>
-                <label class="block text-xs text-gray-600 mb-1">{{ _('machines.auth_per_minute') }} (€)</label>
+                <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">{{ _('machines.auth_per_minute') }} (€)</label>
                 <input type="number" step="0.01" min="0" x-model="addAuthForm.price_per_minute"
-                       class="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                       class="w-full border dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
               </div>
               <div>
-                <label class="block text-xs text-gray-600 mb-1">{{ _('machines.auth_interval') }} (min)</label>
+                <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">{{ _('machines.auth_interval') }} (min)</label>
                 <input type="number" min="1" x-model="addAuthForm.booking_interval"
-                       class="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                       class="w-full border dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
               </div>
             </div>
             <button type="submit" :disabled="addingAuth"
@@ -203,31 +203,31 @@
 
       <!-- ── Machine Admins (admin only) ───────────────────────────── -->
       <template x-if="isAdmin">
-        <div class="bg-white rounded-lg shadow p-6">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
           <h2 class="text-lg font-semibold mb-4">{{ _('machines.section_admins') }}</h2>
 
-          <div x-show="adminError" class="mb-3 bg-red-100 text-red-700 p-2 rounded text-sm" x-text="adminError"></div>
+          <div x-show="adminError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="adminError"></div>
 
           <div class="overflow-x-auto">
             <table class="w-full text-sm">
-              <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
+              <thead class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 uppercase text-xs">
                 <tr>
-                  <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleAdminSort('user_name')">{{ _('common.name') }} <span class="text-gray-400" x-text="adminSortIndicator('user_name')"></span></th>
-                  <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleAdminSort('oidc_sub')">{{ _('machines.admin_oidc_sub') }} <span class="text-gray-400" x-text="adminSortIndicator('oidc_sub')"></span></th>
+                  <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleAdminSort('user_name')">{{ _('common.name') }} <span class="text-gray-400 dark:text-gray-500" x-text="adminSortIndicator('user_name')"></span></th>
+                  <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleAdminSort('oidc_sub')">{{ _('machines.admin_oidc_sub') }} <span class="text-gray-400 dark:text-gray-500" x-text="adminSortIndicator('oidc_sub')"></span></th>
                   <th class="px-4 py-2 text-right">{{ _('machines.col_actions') }}</th>
                 </tr>
               </thead>
               <tbody>
                 <template x-if="machineAdmins.length === 0">
-                  <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400">{{ _('machines.no_admins') }}</td></tr>
+                  <tr><td colspan="3" class="px-4 py-6 text-center text-gray-400 dark:text-gray-500">{{ _('machines.no_admins') }}</td></tr>
                 </template>
                 <template x-for="a in sortedMachineAdmins" :key="a.oidc_sub">
-                  <tr class="border-t">
+                  <tr class="border-t dark:border-gray-700">
                     <td class="px-4 py-2 font-medium" x-text="a.user_name || '—'"></td>
-                    <td class="px-4 py-2 font-mono text-xs text-gray-500" x-text="a.oidc_sub"></td>
+                    <td class="px-4 py-2 font-mono text-xs text-gray-500 dark:text-gray-400" x-text="a.oidc_sub"></td>
                     <td class="px-4 py-2 text-right">
                       <button @click="removeAdmin(a.oidc_sub)"
-                              class="text-xs text-red-500 hover:underline">{{ _('common.remove') }}</button>
+                              class="text-xs text-red-500 dark:text-red-400 hover:underline">{{ _('common.remove') }}</button>
                     </td>
                   </tr>
                 </template>
@@ -236,17 +236,17 @@
           </div>
 
           <!-- Add admin form (always visible) -->
-          <div class="mt-6 pt-5 border-t">
-            <h3 class="text-sm font-semibold text-gray-700 mb-3">{{ _('machines.btn_add_admin') }}</h3>
-            <div x-show="addAdminError" class="mb-2 bg-red-100 text-red-700 p-2 rounded text-xs" x-text="addAdminError"></div>
-            <div x-show="usersWithOidc.length === 0" class="text-xs text-gray-400 mb-2">
+          <div class="mt-6 pt-5 border-t dark:border-gray-700">
+            <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">{{ _('machines.btn_add_admin') }}</h3>
+            <div x-show="addAdminError" class="mb-2 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-xs" x-text="addAdminError"></div>
+            <div x-show="usersWithOidc.length === 0" class="text-xs text-gray-400 dark:text-gray-500 mb-2">
               {{ _('machines.no_oidc_users') }}
             </div>
             <form @submit.prevent="addAdmin()" class="space-y-3 max-w-sm" x-show="usersWithOidc.length > 0">
               <div>
-                <label class="block text-xs font-medium text-gray-600 mb-1">{{ _('machines.select_user') }}</label>
+                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ _('machines.select_user') }}</label>
                 <select x-model="addAdminForm.oidc_sub" required
-                        class="w-full border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                        class="w-full border dark:border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
                   <option value="">—</option>
                   <template x-for="u in usersWithOidc" :key="u.id">
                     <option :value="u.oidc_sub" x-text="(u.name || u.oidc_sub) + ' (' + u.oidc_sub + ')'"></option>
@@ -264,11 +264,11 @@
       </template>
 
       <!-- ── Session History ───────────────────────────────────────── -->
-      <div class="bg-white rounded-lg shadow p-6">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <h2 class="text-lg font-semibold mb-4">{{ _('machines.section_history') }}</h2>
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
-            <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
+            <thead class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 uppercase text-xs">
               <tr>
                 <th class="px-4 py-2 text-left">{{ _('common.name') }}</th>
                 <th class="px-4 py-2 text-left">{{ _('machines.col_start') }}</th>
@@ -278,15 +278,15 @@
             </thead>
             <tbody>
               <template x-if="sessions.length === 0 && !loadingSessions">
-                <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400">{{ _('machines.history_empty') }}</td></tr>
+                <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400 dark:text-gray-500">{{ _('machines.history_empty') }}</td></tr>
               </template>
               <template x-for="s in sessions" :key="s.id">
-                <tr class="border-t">
+                <tr class="border-t dark:border-gray-700">
                   <td class="px-4 py-2 font-medium" x-text="s.user_name || s.user_id"></td>
-                  <td class="px-4 py-2 text-gray-500 text-xs whitespace-nowrap" x-text="fmtDateTime(s.start_time)"></td>
+                  <td class="px-4 py-2 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap" x-text="fmtDateTime(s.start_time)"></td>
                   <td class="px-4 py-2 text-right text-xs tabular-nums">
                     <template x-if="s.end_time === null">
-                      <span class="bg-green-100 text-green-700 rounded px-1.5 py-0.5">{{ _('machines.history_active') }}</span>
+                      <span class="bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 rounded px-1.5 py-0.5">{{ _('machines.history_active') }}</span>
                     </template>
                     <template x-if="s.end_time !== null">
                       <span x-text="fmtDuration(s.duration_seconds)"></span>
@@ -297,14 +297,14 @@
                 </tr>
               </template>
               <template x-if="loadingSessions">
-                <tr><td colspan="4" class="px-4 py-3 text-center text-gray-400 text-xs">…</td></tr>
+                <tr><td colspan="4" class="px-4 py-3 text-center text-gray-400 dark:text-gray-500 text-xs">…</td></tr>
               </template>
             </tbody>
           </table>
         </div>
         <div class="mt-3 text-center" x-show="sessionHasMore && !loadingSessions">
           <button @click="loadSessions()"
-                  class="text-sm text-blue-600 hover:underline">{{ _('machines.history_load_more') }}</button>
+                  class="text-sm text-blue-600 dark:text-blue-400 hover:underline">{{ _('machines.history_load_more') }}</button>
         </div>
       </div>
 

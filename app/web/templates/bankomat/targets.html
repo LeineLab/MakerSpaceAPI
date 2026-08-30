@@ -21,24 +21,24 @@
     </div>
   </div>
 
-  <div x-show="error" class="mb-4 bg-red-100 text-red-700 p-3 rounded text-sm" x-text="error"></div>
-  <div x-show="success" class="mb-4 bg-green-100 text-green-700 p-3 rounded text-sm" x-text="success"></div>
+  <div x-show="error" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="error"></div>
+  <div x-show="success" class="mb-4 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 p-3 rounded text-sm" x-text="success"></div>
 
   <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
     <template x-if="loading">
-      <div class="col-span-3 text-gray-400 text-sm">Loading…</div>
+      <div class="col-span-3 text-gray-400 dark:text-gray-500 text-sm">Loading…</div>
     </template>
     <template x-if="!loading && targets.length === 0">
-      <p class="col-span-3 text-gray-400">{{ _('bankomat.empty') }}</p>
+      <p class="col-span-3 text-gray-400 dark:text-gray-500">{{ _('bankomat.empty') }}</p>
     </template>
     <template x-for="t in targets" :key="t.id">
       <div @click="openStatementModal(t)"
-           class="bg-white rounded-lg shadow p-5 border-l-4 border-blue-500 cursor-pointer hover:shadow-md transition-shadow">
-        <div class="text-2xl font-bold text-blue-600" x-text="parseFloat(t.balance).toFixed(2) + ' €'"></div>
+           class="bg-white dark:bg-gray-800 rounded-lg shadow p-5 border-l-4 border-blue-500 cursor-pointer hover:shadow-md transition-shadow">
+        <div class="text-2xl font-bold text-blue-600 dark:text-blue-400" x-text="parseFloat(t.balance).toFixed(2) + ' €'"></div>
         <div class="font-medium mt-1" x-text="t.name"></div>
-        <div class="text-xs text-gray-400 font-mono" x-text="t.slug"></div>
+        <div class="text-xs text-gray-400 dark:text-gray-500 font-mono" x-text="t.slug"></div>
         <button @click.stop="openAdjustModal(t)"
-                class="text-xs text-yellow-700 hover:underline mt-2">
+                class="text-xs text-yellow-700 dark:text-yellow-300 hover:underline mt-2">
           {{ _('bankomat.btn_adjust') }}
         </button>
       </div>
@@ -55,50 +55,50 @@
   </div>
 
   <template x-if="loadingUsers">
-    <div class="text-gray-400 text-sm mb-4">Loading…</div>
+    <div class="text-gray-400 dark:text-gray-500 text-sm mb-4">Loading…</div>
   </template>
   <template x-if="!loadingUsers && treasurers.length === 0">
-    <p class="text-gray-400 mb-4">{{ _('bankomat.treasurers_empty') }}</p>
+    <p class="text-gray-400 dark:text-gray-500 mb-4">{{ _('bankomat.treasurers_empty') }}</p>
   </template>
   <template x-if="!loadingUsers && treasurers.length > 0">
-    <div class="bg-white rounded-lg shadow overflow-hidden mb-6">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden mb-6">
       <div class="overflow-x-auto">
       <table class="min-w-full text-sm">
-        <thead class="bg-gray-50 text-gray-500 uppercase text-xs">
+        <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
           <tr>
-            <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('id')">{{ _('users.col_nfc') }} <span class="text-gray-400" x-text="sortIndicator('id')"></span></th>
-            <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('name')">{{ _('common.name') }} <span class="text-gray-400" x-text="sortIndicator('name')"></span></th>
+            <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('id')">{{ _('users.col_nfc') }} <span class="text-gray-400 dark:text-gray-500" x-text="sortIndicator('id')"></span></th>
+            <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleSort('name')">{{ _('common.name') }} <span class="text-gray-400 dark:text-gray-500" x-text="sortIndicator('name')"></span></th>
             <th class="px-4 py-3 text-left">{{ _('bankomat.btn_change_pin') }}</th>
             <th class="px-4 py-3 text-left">{{ _('bankomat.btn_clear_pin') }}</th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-gray-100">
+        <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
           <template x-for="t in sorted(treasurers)" :key="t.id">
-            <tr class="hover:bg-gray-50">
-              <td class="px-4 py-3 font-mono text-xs text-gray-500" x-text="t.id"></td>
+            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+              <td class="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400" x-text="t.id"></td>
               <td class="px-4 py-3 font-medium" x-text="t.name || '—'"></td>
               <td class="px-4 py-3">
                 <button @click="toggleEditPin(t.id)"
-                        class="text-blue-600 hover:underline text-xs">
+                        class="text-blue-600 dark:text-blue-400 hover:underline text-xs">
                   {{ _('bankomat.btn_change_pin') }}
                 </button>
                 <div x-show="editingPin[t.id]" class="mt-2 flex gap-2 items-center">
                   <input type="password"
                          x-model="editingPin[t.id].pin"
                          placeholder="{{ _('bankomat.placeholder_pin') }}"
-                         class="border rounded px-2 py-1 text-xs w-32 focus:outline-none focus:ring-1 focus:ring-blue-400">
+                         class="border dark:border-gray-700 rounded px-2 py-1 text-xs w-32 focus:outline-none focus:ring-1 focus:ring-blue-400">
                   <button @click="setPin(t.id, editingPin[t.id].pin)"
                           :disabled="editingPin[t.id].submitting"
                           class="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
                     <span x-show="!editingPin[t.id].submitting">{{ _('bankomat.btn_set_pin') }}</span>
                     <span x-show="editingPin[t.id].submitting">…</span>
                   </button>
-                  <span x-show="editingPin[t.id].error" class="text-red-600 text-xs" x-text="editingPin[t.id].error"></span>
+                  <span x-show="editingPin[t.id].error" class="text-red-600 dark:text-red-400 text-xs" x-text="editingPin[t.id].error"></span>
                 </div>
               </td>
               <td class="px-4 py-3">
                 <button @click="clearPin(t.id, t.name)"
-                        class="text-red-600 hover:underline text-xs">
+                        class="text-red-600 dark:text-red-400 hover:underline text-xs">
                   {{ _('bankomat.btn_clear_pin') }}
                 </button>
               </td>
@@ -112,25 +112,25 @@
 
   <!-- Add Booking Target Modal -->
   <div x-show="showModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-    <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showModal = false">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showModal = false">
       <h2 class="text-lg font-bold mb-4">{{ _('bankomat.modal_title') }}</h2>
-      <div x-show="formError" class="mb-3 bg-red-100 text-red-700 p-2 rounded text-sm" x-text="formError"></div>
+      <div x-show="formError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="formError"></div>
       <form @submit.prevent="createTarget()" class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('common.name') }}</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('common.name') }}</label>
           <input type="text" x-model="form.name" required placeholder="{{ _('bankomat.placeholder_name') }}"
-                 class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('common.slug') }}</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('common.slug') }}</label>
           <input type="text" x-model="form.slug" required placeholder="{{ _('bankomat.placeholder_slug') }}"
                  pattern="[a-z0-9_-]+" title="{{ _('common.slug_hint') }}"
-                 class="w-full border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
-          <p class="text-xs text-gray-400 mt-1">{{ _('common.slug_hint') }}</p>
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">{{ _('common.slug_hint') }}</p>
         </div>
         <div class="flex justify-end gap-3 pt-2">
           <button type="button" @click="showModal = false"
-                  class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">{{ _('common.cancel') }}</button>
+                  class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.cancel') }}</button>
           <button type="submit" :disabled="submitting"
                   class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
             <span x-show="!submitting">{{ _('bankomat.btn_create') }}</span>
@@ -143,30 +143,30 @@
 
   <!-- Statement Generation Modal -->
   <div x-show="showStatementModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-    <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showStatementModal = false">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showStatementModal = false">
       <h2 class="text-lg font-bold mb-1">{{ _('bankomat.statement_title') }}</h2>
-      <p class="text-sm text-gray-500 mb-4"
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-4"
          x-text="statementAll ? {{ _('bankomat.statement_all_subtitle') | tojson }} : (statementTarget && statementTarget.name)"></p>
-      <div x-show="statementError" class="mb-3 bg-red-100 text-red-700 p-2 rounded text-sm" x-text="statementError"></div>
+      <div x-show="statementError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="statementError"></div>
       <form @submit.prevent="generateStatement()" class="space-y-4">
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('bankomat.statement_from') }}</label>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('bankomat.statement_from') }}</label>
             <input type="month" x-model="statementForm.from" required
                    :max="maxMonth"
-                   class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                   class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('bankomat.statement_to') }}</label>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('bankomat.statement_to') }}</label>
             <input type="month" x-model="statementForm.to" required
                    :max="maxMonth"
-                   class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                   class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
           </div>
         </div>
-        <p class="text-xs text-gray-400">{{ _('bankomat.statement_hint') }}</p>
+        <p class="text-xs text-gray-400 dark:text-gray-500">{{ _('bankomat.statement_hint') }}</p>
         <div class="flex justify-end gap-3 pt-2">
           <button type="button" @click="showStatementModal = false"
-                  class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">{{ _('common.cancel') }}</button>
+                  class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.cancel') }}</button>
           <button type="submit" :disabled="statementLoading"
                   class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
             <span x-show="!statementLoading">{{ _('bankomat.statement_generate') }}</span>
@@ -179,15 +179,15 @@
 
   <!-- Denominations Modal -->
   <div x-show="showDenomModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-    <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6"
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6"
          style="max-height: 85vh; overflow-y: auto;"
          @click.outside="showDenomModal = false">
       <h2 class="text-lg font-bold">{{ _('bankomat.denom_title') }}</h2>
-      <p class="text-sm text-gray-500 mt-1 mb-4">{{ _('bankomat.denom_hint') }}</p>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-4">{{ _('bankomat.denom_hint') }}</p>
 
-      <div x-show="denomError" class="mb-3 bg-red-100 text-red-700 p-2 rounded text-sm" x-text="denomError"></div>
+      <div x-show="denomError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="denomError"></div>
       <template x-if="denomLoading">
-        <div class="text-gray-400 text-sm">Loading…</div>
+        <div class="text-gray-400 dark:text-gray-500 text-sm">Loading…</div>
       </template>
 
       <template x-if="!denomLoading && denomReport">
@@ -196,7 +196,7 @@
           <div class="mb-6">
             <h3 class="font-semibold mb-2">{{ _('bankomat.denom_combined') }}</h3>
             <template x-if="denomReport.combined.denominations.length === 0">
-              <p class="text-gray-400 text-sm">{{ _('bankomat.denom_empty') }}</p>
+              <p class="text-gray-400 dark:text-gray-500 text-sm">{{ _('bankomat.denom_empty') }}</p>
             </template>
             <template x-if="denomReport.combined.denominations.length > 0">
               <div class="overflow-x-auto" x-html="denomTable(denomReport.combined.denominations, denomReport.combined.total)"></div>
@@ -205,16 +205,16 @@
 
           <!-- Per target -->
           <template x-if="denomReport.targets.length === 0">
-            <p class="text-gray-400 text-sm">{{ _('bankomat.denom_none') }}</p>
+            <p class="text-gray-400 dark:text-gray-500 text-sm">{{ _('bankomat.denom_none') }}</p>
           </template>
           <template x-for="t in denomReport.targets" :key="t.id">
             <div class="mb-6">
               <div class="flex flex-wrap items-center justify-between gap-1">
                 <h3 class="font-semibold" x-text="t.name"></h3>
-                <span class="text-xs text-gray-400" x-text="sinceLabel(t.last_payout)"></span>
+                <span class="text-xs text-gray-400 dark:text-gray-500" x-text="sinceLabel(t.last_payout)"></span>
               </div>
               <template x-if="t.denominations.length === 0">
-                <p class="text-gray-400 text-sm mt-1">{{ _('bankomat.denom_empty') }}</p>
+                <p class="text-gray-400 dark:text-gray-500 text-sm mt-1">{{ _('bankomat.denom_empty') }}</p>
               </template>
               <template x-if="t.denominations.length > 0">
                 <div class="overflow-x-auto mt-1" x-html="denomTable(t.denominations, t.total)"></div>
@@ -226,42 +226,42 @@
 
       <div class="flex justify-end mt-4">
         <button type="button" @click="showDenomModal = false"
-                class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">{{ _('common.close') }}</button>
+                class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.close') }}</button>
       </div>
     </div>
   </div>
 
   <!-- Adjust / Write-Off Modal -->
   <div x-show="showAdjustModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-    <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showAdjustModal = false">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showAdjustModal = false">
       <h2 class="text-lg font-bold mb-1">{{ _('bankomat.adjust_title') }}</h2>
-      <p class="text-sm text-gray-500 mb-4" x-text="adjustTarget && adjustTarget.name"></p>
-      <div x-show="adjustError" class="mb-3 bg-red-100 text-red-700 p-2 rounded text-sm" x-text="adjustError"></div>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-4" x-text="adjustTarget && adjustTarget.name"></p>
+      <div x-show="adjustError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="adjustError"></div>
       <form @submit.prevent="submitAdjust()" class="space-y-4">
-        <p class="text-sm text-gray-600">{{ _('bankomat.adjust_body') }}</p>
+        <p class="text-sm text-gray-600 dark:text-gray-400">{{ _('bankomat.adjust_body') }}</p>
         <div class="flex justify-between text-sm">
-          <span class="text-gray-500">{{ _('bankomat.adjust_book_balance') }}</span>
+          <span class="text-gray-500 dark:text-gray-400">{{ _('bankomat.adjust_book_balance') }}</span>
           <span class="font-mono" x-text="adjustTarget ? parseFloat(adjustTarget.balance).toFixed(2) + ' €' : ''"></span>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('bankomat.adjust_counted') }}</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('bankomat.adjust_counted') }}</label>
           <input type="number" step="0.01" min="0" x-model="adjustForm.actual" required
-                 class="w-full border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
         </div>
         <div class="flex justify-between text-sm">
-          <span class="text-gray-500">{{ _('bankomat.adjust_difference') }}</span>
+          <span class="text-gray-500 dark:text-gray-400">{{ _('bankomat.adjust_difference') }}</span>
           <span class="font-mono"
-                :class="adjustDifference < 0 ? 'text-red-600' : (adjustDifference > 0 ? 'text-green-600' : 'text-gray-500')"
+                :class="adjustDifference < 0 ? 'text-red-600 dark:text-red-400' : (adjustDifference > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400')"
                 x-text="adjustDifferenceLabel"></span>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('bankomat.adjust_note') }}</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('bankomat.adjust_note') }}</label>
           <input type="text" x-model="adjustForm.note" placeholder="{{ _('bankomat.adjust_note_ph') }}"
-                 class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
         </div>
         <div class="flex justify-end gap-3 pt-2">
           <button type="button" @click="showAdjustModal = false"
-                  class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">{{ _('common.cancel') }}</button>
+                  class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.cancel') }}</button>
           <button type="submit" :disabled="adjustSubmitting"
                   class="px-4 py-2 bg-yellow-600 text-white text-sm rounded hover:bg-yellow-700 disabled:opacity-50">
             <span x-show="!adjustSubmitting">{{ _('bankomat.adjust_submit') }}</span>
@@ -274,32 +274,32 @@
 
   <!-- Add Treasurer Modal -->
   <div x-show="showAddModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-    <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showAddModal = false">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showAddModal = false">
       <h2 class="text-lg font-bold mb-4">{{ _('bankomat.add_treasurer_title') }}</h2>
-      <div x-show="addError" class="mb-3 bg-red-100 text-red-700 p-2 rounded text-sm" x-text="addError"></div>
+      <div x-show="addError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="addError"></div>
       <form @submit.prevent="addTreasurer()" class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('bankomat.label_select_user') }}</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('bankomat.label_select_user') }}</label>
           <select x-model="addForm.nfc_id" required
-                  class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                  class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
             <option value="">— {{ _('machines.select_user') }} —</option>
             <template x-for="u in candidates" :key="u.id">
               <option :value="u.id" x-text="(u.name || u.id) + ' (' + u.id + ')'"></option>
             </template>
           </select>
           <template x-if="candidates.length === 0">
-            <p class="text-xs text-gray-400 mt-1">{{ _('machines.no_users_available') }}</p>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">{{ _('machines.no_users_available') }}</p>
           </template>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ _('bankomat.label_pin') }}</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('bankomat.label_pin') }}</label>
           <input type="password" x-model="addForm.pin" required
                  placeholder="{{ _('bankomat.placeholder_pin') }}"
-                 class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
         </div>
         <div class="flex justify-end gap-3 pt-2">
           <button type="button" @click="showAddModal = false"
-                  class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">{{ _('common.cancel') }}</button>
+                  class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.cancel') }}</button>
           <button type="submit" :disabled="addSubmitting"
                   class="px-4 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:opacity-50">
             <span x-show="!addSubmitting">{{ _('bankomat.btn_set_pin') }}</span>
@@ -485,21 +485,21 @@ function targetList() {
 
     denomTable(denoms, total) {
       const rows = denoms.map(d =>
-        `<tr class="border-t border-gray-100">`
+        `<tr class="border-t dark:border-gray-700 border-gray-100 dark:border-gray-700">`
         + `<td class="px-3 py-1.5 text-right font-mono">${this.fmt(d.amount)}</td>`
         + `<td class="px-3 py-1.5 text-right">${d.count}&times;</td>`
         + `<td class="px-3 py-1.5 text-right font-mono">${this.fmt(d.sum)}</td>`
         + `</tr>`
       ).join('');
-      return `<table class="min-w-full text-sm border border-gray-100 rounded">`
-        + `<thead class="bg-gray-50 text-gray-500 uppercase text-xs">`
+      return `<table class="min-w-full text-sm border dark:border-gray-700 border-gray-100 dark:border-gray-700 rounded">`
+        + `<thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">`
         + `<tr>`
         + `<th class="px-3 py-1.5 text-right font-medium">${DENOM_L.amount}</th>`
         + `<th class="px-3 py-1.5 text-right font-medium">${DENOM_L.count}</th>`
         + `<th class="px-3 py-1.5 text-right font-medium">${DENOM_L.sum}</th>`
         + `</tr></thead>`
         + `<tbody>${rows}</tbody>`
-        + `<tfoot><tr class="border-t border-gray-100 font-semibold">`
+        + `<tfoot><tr class="border-t dark:border-gray-700 border-gray-100 dark:border-gray-700 font-semibold">`
         + `<td class="px-3 py-1.5 text-right" colspan="2">${DENOM_L.total}</td>`
         + `<td class="px-3 py-1.5 text-right font-mono">${this.fmt(total)}</td>`
         + `</tr></tfoot></table>`;

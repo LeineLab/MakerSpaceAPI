@@ -6,37 +6,37 @@
 <div x-data="dashboard()" x-cloak>
   <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
     <a href="/users"
-       class="block bg-white rounded-lg shadow p-5 border-l-4 border-blue-500 hover:shadow-md">
-      <div class="text-3xl font-bold text-blue-600" x-text="stats.users">—</div>
-      <div class="text-sm text-gray-500 mt-1">{{ _('dashboard.users') }}</div>
+       class="block bg-white dark:bg-gray-800 rounded-lg shadow p-5 border-l-4 border-blue-500 hover:shadow-md">
+      <div class="text-3xl font-bold text-blue-600 dark:text-blue-400" x-text="stats.users">—</div>
+      <div class="text-sm text-gray-500 dark:text-gray-400 mt-1">{{ _('dashboard.users') }}</div>
     </a>
     <a href="/machines"
-       class="block bg-white rounded-lg shadow p-5 border-l-4 border-green-500 hover:shadow-md">
-      <div class="text-3xl font-bold text-green-600" x-text="stats.machines">—</div>
-      <div class="text-sm text-gray-500 mt-1">{{ _('dashboard.machines') }}</div>
+       class="block bg-white dark:bg-gray-800 rounded-lg shadow p-5 border-l-4 border-green-500 hover:shadow-md">
+      <div class="text-3xl font-bold text-green-600 dark:text-green-400" x-text="stats.machines">—</div>
+      <div class="text-sm text-gray-500 dark:text-gray-400 mt-1">{{ _('dashboard.machines') }}</div>
     </a>
     <a href="/products/manage"
-       class="block bg-white rounded-lg shadow p-5 border-l-4 border-yellow-500 hover:shadow-md">
-      <div class="text-3xl font-bold text-yellow-600" x-text="stats.products">—</div>
-      <div class="text-sm text-gray-500 mt-1">{{ _('dashboard.products') }}</div>
+       class="block bg-white dark:bg-gray-800 rounded-lg shadow p-5 border-l-4 border-yellow-500 hover:shadow-md">
+      <div class="text-3xl font-bold text-yellow-600 dark:text-yellow-400" x-text="stats.products">—</div>
+      <div class="text-sm text-gray-500 dark:text-gray-400 mt-1">{{ _('dashboard.products') }}</div>
     </a>
     <a href="/bankomat"
-       class="block bg-white rounded-lg shadow p-5 border-l-4 border-purple-500 hover:shadow-md">
-      <div class="text-3xl font-bold text-purple-600" x-text="stats.targets">—</div>
-      <div class="text-sm text-gray-500 mt-1">{{ _('dashboard.booking_targets') }}</div>
+       class="block bg-white dark:bg-gray-800 rounded-lg shadow p-5 border-l-4 border-purple-500 hover:shadow-md">
+      <div class="text-3xl font-bold text-purple-600 dark:text-purple-400" x-text="stats.targets">—</div>
+      <div class="text-sm text-gray-500 dark:text-gray-400 mt-1">{{ _('dashboard.booking_targets') }}</div>
     </a>
   </div>
 </div>
 
 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-  <div class="bg-white rounded-lg shadow p-5">
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-5">
     <h2 class="font-semibold mb-3">{{ _('dashboard.quick_links') }}</h2>
     <ul class="space-y-2 text-sm">
-      <li><a href="/machines"        class="text-blue-600 hover:underline">{{ _('dashboard.link_machine') }}</a></li>
-      <li><a href="/products/manage" class="text-blue-600 hover:underline">{{ _('dashboard.link_products') }}</a></li>
-      <li><a href="/rentals"         class="text-blue-600 hover:underline">{{ _('dashboard.link_rentals') }}</a></li>
-      <li><a href="/bankomat"        class="text-blue-600 hover:underline">{{ _('dashboard.link_bankomat') }}</a></li>
-      <li><a href="/api/docs" target="_blank" class="text-blue-600 hover:underline">{{ _('dashboard.link_api') }}</a></li>
+      <li><a href="/machines"        class="text-blue-600 dark:text-blue-400 hover:underline">{{ _('dashboard.link_machine') }}</a></li>
+      <li><a href="/products/manage" class="text-blue-600 dark:text-blue-400 hover:underline">{{ _('dashboard.link_products') }}</a></li>
+      <li><a href="/rentals"         class="text-blue-600 dark:text-blue-400 hover:underline">{{ _('dashboard.link_rentals') }}</a></li>
+      <li><a href="/bankomat"        class="text-blue-600 dark:text-blue-400 hover:underline">{{ _('dashboard.link_bankomat') }}</a></li>
+      <li><a href="/api/docs" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline">{{ _('dashboard.link_api') }}</a></li>
     </ul>
   </div>
 </div>

@@ -3,7 +3,7 @@
 {% block content %}
 <div class="text-center py-16">
   <h1 class="text-3xl font-bold mb-4">{{ _('index.title') }}</h1>
-  <p class="text-gray-600 mb-8">{{ _('index.subtitle') }}</p>
+  <p class="text-gray-600 dark:text-gray-400 mb-8">{{ _('index.subtitle') }}</p>
   <div class="flex flex-wrap gap-4 justify-center"
        x-data="{ hasCard: false }"
        {% if user %}x-init="fetch('/api/v1/users/me').then(r => { if (r.ok) hasCard = true; }).catch(() => {})"{% endif %}>

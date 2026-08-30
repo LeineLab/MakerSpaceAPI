@@ -9,6 +9,8 @@
   "nav.rentals":         "Rentals",
   "nav.logout":          "Logout",
   "nav.login":           "Login",
+  "nav.dark_mode":       "Dark mode",
+  "nav.light_mode":      "Light mode",
 
   "common.name":           "Name",
   "common.slug":           "Slug",

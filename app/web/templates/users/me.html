@@ -6,7 +6,7 @@
 
   <!-- No card linked -->
   <template x-if="!loading && !profile">
-    <div class="bg-white rounded-lg shadow p-10 text-center text-gray-500 text-sm">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-10 text-center text-gray-500 dark:text-gray-400 text-sm">
       {{ _('me.no_card') }}
     </div>
   </template>
@@ -15,19 +15,19 @@
     <div>
 
       <!-- Profile card -->
-      <div class="bg-white rounded-lg shadow p-6 mb-6 flex flex-wrap items-start justify-between gap-4">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 class="text-2xl font-bold mb-1" x-text="profile.name || '—'"></h1>
-          <p class="text-xs text-gray-400 font-mono">{{ _('me.card_id') }}: <span x-text="profile.id"></span></p>
+          <p class="text-xs text-gray-400 dark:text-gray-500 font-mono">{{ _('me.card_id') }}: <span x-text="profile.id"></span></p>
           <button @click="unlinkCard()"
-                  class="mt-2 text-xs text-red-500 hover:underline">
+                  class="mt-2 text-xs text-red-500 dark:text-red-400 hover:underline">
             {{ _('me.btn_unlink_card') }}
           </button>
           <template x-if="aliases.length">
             <div class="mt-2">
-              <p class="text-xs text-gray-400" x-text="aliasesCountText()"></p>
+              <p class="text-xs text-gray-400 dark:text-gray-500" x-text="aliasesCountText()"></p>
               <button @click="unlinkAliases()"
-                      class="text-xs text-red-500 hover:underline">
+                      class="text-xs text-red-500 dark:text-red-400 hover:underline">
                 {{ _('me.btn_unlink_aliases') }}
               </button>
             </div>
@@ -35,9 +35,9 @@
         </div>
         <div class="text-right">
           <div class="text-3xl font-bold tabular-nums"
-               :class="parseFloat(profile.balance) < 1 ? 'text-red-500' : parseFloat(profile.balance) < 5 ? 'text-yellow-600' : 'text-green-600'"
+               :class="parseFloat(profile.balance) < 1 ? 'text-red-500 dark:text-red-400' : parseFloat(profile.balance) < 5 ? 'text-yellow-600 dark:text-yellow-400' : 'text-green-600 dark:text-green-400'"
                x-text="parseFloat(profile.balance).toFixed(2) + ' €'"></div>
-          <div class="text-xs text-gray-400 mt-1">{{ _('me.balance') }}</div>
+          <div class="text-xs text-gray-400 dark:text-gray-500 mt-1">{{ _('me.balance') }}</div>
         </div>
       </div>
 
@@ -45,23 +45,23 @@
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
 
         <!-- Currently Rented -->
-        <div class="bg-white rounded-lg shadow">
-          <div class="px-5 py-4 border-b">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+          <div class="px-5 py-4 border-b dark:border-gray-700">
             <h2 class="font-semibold">{{ _('me.rentals_title') }}</h2>
           </div>
           <div class="overflow-x-auto">
             <table class="w-full text-sm">
               <tbody>
                 <template x-if="loadingRentals">
-                  <tr><td class="px-4 py-6 text-center text-gray-400">Loading…</td></tr>
+                  <tr><td class="px-4 py-6 text-center text-gray-400 dark:text-gray-500">Loading…</td></tr>
                 </template>
                 <template x-if="!loadingRentals && rentals.length === 0">
-                  <tr><td class="px-4 py-6 text-center text-gray-400">{{ _('me.rentals_empty') }}</td></tr>
+                  <tr><td class="px-4 py-6 text-center text-gray-400 dark:text-gray-500">{{ _('me.rentals_empty') }}</td></tr>
                 </template>
                 <template x-for="r in rentals" :key="r.rental_id">
-                  <tr class="border-t hover:bg-gray-50">
+                  <tr class="border-t dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
                     <td class="px-4 py-2 font-medium" x-text="r.item_name"></td>
-                    <td class="px-4 py-2 text-xs text-gray-400 text-right"
+                    <td class="px-4 py-2 text-xs text-gray-400 dark:text-gray-500 text-right"
                         x-text="fmtDateTime(r.rented_at)"></td>
                   </tr>
                 </template>
@@ -71,26 +71,26 @@
         </div>
 
         <!-- Authorized Machines -->
-        <div class="bg-white rounded-lg shadow">
-          <div class="px-5 py-4 border-b">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+          <div class="px-5 py-4 border-b dark:border-gray-700">
             <h2 class="font-semibold">{{ _('me.machines_title') }}</h2>
           </div>
           <div class="overflow-x-auto">
             <table class="w-full text-sm">
               <tbody>
                 <template x-if="loadingMachines">
-                  <tr><td class="px-4 py-6 text-center text-gray-400">Loading…</td></tr>
+                  <tr><td class="px-4 py-6 text-center text-gray-400 dark:text-gray-500">Loading…</td></tr>
                 </template>
                 <template x-if="!loadingMachines && machines.length === 0">
-                  <tr><td class="px-4 py-6 text-center text-gray-400">{{ _('me.machines_empty') }}</td></tr>
+                  <tr><td class="px-4 py-6 text-center text-gray-400 dark:text-gray-500">{{ _('me.machines_empty') }}</td></tr>
                 </template>
                 <template x-for="m in machines" :key="m.machine_id">
-                  <tr class="border-t hover:bg-gray-50">
+                  <tr class="border-t dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
                     <td class="px-4 py-2 font-medium">
-                      <a :href="'/machines/' + m.machine_slug" class="hover:underline text-blue-600"
+                      <a :href="'/machines/' + m.machine_slug" class="hover:underline text-blue-600 dark:text-blue-400"
                          x-text="m.machine_name"></a>
                     </td>
-                    <td class="px-4 py-2 text-xs text-gray-400 text-right"
+                    <td class="px-4 py-2 text-xs text-gray-400 dark:text-gray-500 text-right"
                         x-text="parseFloat(m.price_per_minute) > 0
                           ? parseFloat(m.price_per_minute).toFixed(2) + ' €/min'
                           : {{ _('me.free') | tojson }}"></td>
@@ -104,13 +104,13 @@
       </div>
 
       <!-- Machine Session History -->
-      <div class="bg-white rounded-lg shadow mb-6">
-        <div class="px-5 py-4 border-b">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow mb-6">
+        <div class="px-5 py-4 border-b dark:border-gray-700">
           <h2 class="font-semibold">{{ _('me.sessions_title') }}</h2>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
-            <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
+            <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs uppercase">
               <tr>
                 <th class="px-4 py-2 text-left">{{ _('me.sessions_machine') }}</th>
                 <th class="px-4 py-2 text-left">{{ _('machines.col_start') }}</th>
@@ -120,18 +120,18 @@
             </thead>
             <tbody>
               <template x-if="loadingSessions">
-                <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400">Loading…</td></tr>
+                <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400 dark:text-gray-500">Loading…</td></tr>
               </template>
               <template x-if="!loadingSessions && sessions.length === 0">
-                <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400">{{ _('me.sessions_empty') }}</td></tr>
+                <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400 dark:text-gray-500">{{ _('me.sessions_empty') }}</td></tr>
               </template>
               <template x-for="s in sessions" :key="s.id">
-                <tr class="border-t hover:bg-gray-50">
+                <tr class="border-t dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
                   <td class="px-4 py-2 font-medium" x-text="s.machine_name"></td>
-                  <td class="px-4 py-2 text-xs text-gray-500 whitespace-nowrap" x-text="fmtDateTime(s.start_time)"></td>
-                  <td class="px-4 py-2 text-xs text-gray-500">
+                  <td class="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap" x-text="fmtDateTime(s.start_time)"></td>
+                  <td class="px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
                     <template x-if="s.end_time === null">
-                      <span class="bg-green-100 text-green-700 rounded px-1.5 py-0.5">{{ _('machines.history_active') }}</span>
+                      <span class="bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 rounded px-1.5 py-0.5">{{ _('machines.history_active') }}</span>
                     </template>
                     <template x-if="s.end_time !== null">
                       <span x-text="fmtDuration(s.duration_seconds)"></span>
@@ -146,18 +146,18 @@
         </div>
         <div class="mt-3 px-5 pb-3 text-center" x-show="sessionHasMore && !loadingSessions">
           <button @click="loadSessions()"
-                  class="text-sm text-blue-600 hover:underline">{{ _('machines.history_load_more') }}</button>
+                  class="text-sm text-blue-600 dark:text-blue-400 hover:underline">{{ _('machines.history_load_more') }}</button>
         </div>
       </div>
 
       <!-- Transaction history -->
-      <div class="bg-white rounded-lg shadow">
-        <div class="px-5 py-4 border-b">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+        <div class="px-5 py-4 border-b dark:border-gray-700">
           <h2 class="font-semibold">{{ _('me.transactions_title') }}</h2>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
-            <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
+            <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs uppercase">
               <tr>
                 <th class="px-4 py-2 text-left">{{ _('me.col_date') }}</th>
                 <th class="px-4 py-2 text-left">{{ _('me.col_type') }}</th>
@@ -167,29 +167,29 @@
             </thead>
             <tbody>
               <template x-if="loadingTx">
-                <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400">Loading…</td></tr>
+                <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400 dark:text-gray-500">Loading…</td></tr>
               </template>
               <template x-if="!loadingTx && transactions.length === 0">
-                <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400">{{ _('me.tx_empty') }}</td></tr>
+                <tr><td colspan="4" class="px-4 py-6 text-center text-gray-400 dark:text-gray-500">{{ _('me.tx_empty') }}</td></tr>
               </template>
               <template x-for="t in transactions" :key="t.id">
-                <tr class="border-t hover:bg-gray-50">
-                  <td class="px-4 py-2 text-xs text-gray-500 whitespace-nowrap"
+                <tr class="border-t dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <td class="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap"
                       x-text="fmtDateTime(t.created_at)"></td>
                   <td class="px-4 py-2 text-xs" x-text="txLabel(t.type)"></td>
-                  <td class="px-4 py-2 text-xs text-gray-500"
+                  <td class="px-4 py-2 text-xs text-gray-500 dark:text-gray-400"
                       x-text="t.note || t.machine_name || '—'"></td>
                   <td class="px-4 py-2 text-right font-medium tabular-nums text-sm"
-                      :class="parseFloat(t.amount) >= 0 ? 'text-green-600' : 'text-red-500'"
+                      :class="parseFloat(t.amount) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'"
                       x-text="(parseFloat(t.amount) >= 0 ? '+' : '') + parseFloat(t.amount).toFixed(2) + ' €'"></td>
                 </tr>
               </template>
             </tbody>
           </table>
         </div>
-        <div x-show="!loadingTx && hasMore" class="px-5 py-3 border-t text-center">
+        <div x-show="!loadingTx && hasMore" class="px-5 py-3 border-t dark:border-gray-700 text-center">
           <button @click="loadMoreTx()" :disabled="loadingMoreTx"
-                  class="text-sm text-blue-600 hover:underline disabled:opacity-50">
+                  class="text-sm text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50">
             <span x-show="!loadingMoreTx">{{ _('me.load_more') }}</span>
             <span x-show="loadingMoreTx">…</span>
           </button>
