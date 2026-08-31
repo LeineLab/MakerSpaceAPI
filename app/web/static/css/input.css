@@ -1,3 +1,15 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  /* Form controls never got an explicit background/text color anywhere in the
+     templates (only border colors). They inherit `color` from <body> via
+     Tailwind's preflight, but keep the browser's native (light) background,
+     so dark mode renders near-white text on a white field. */
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    @apply bg-white text-gray-900 dark:bg-gray-700 dark:text-gray-100;
+  }
+}
