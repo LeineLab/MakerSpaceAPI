@@ -96,23 +96,39 @@ def test_purchase_via_alias_debits_main_account(client, checkout_token, db, test
 # ---------------------------------------------------------------------------
 
 def test_do_transfer_merges_new_tag_onto_main_tag(db, test_user):
-    """Simulates the 'add as alias' flow: _do_transfer(new_id, old_id) merges the
-    new tag's data onto the existing main tag, keeping the main tag's id."""
+    """Simulates the 'add as alias' flow (app/web/auth.py connect_alias):
+    _do_transfer(new_id, old_id) merges the new tag's data onto the existing
+    main tag and keeps the main tag's id, but since _do_transfer keeps its
+    FIRST argument's own columns, the main account's oidc_sub/name/pin_hash
+    must be snapshotted before the call and restored after — otherwise they
+    get silently overwritten by the (blank) new tag's columns."""
     from app.api.v1.users import _do_transfer
+
+    test_user.oidc_sub = "test-oidc-sub"
+    test_user.name = "Main Account"
+    test_user.pin_hash = "bcrypt-hash-of-pin"
+    db.commit()
 
     new_tag = User(id=UNLINKED_ID, name="Spare Tag", balance=Decimal("5.00"),
                     created_at=datetime.now(UTC).replace(tzinfo=None))
     db.add(new_tag)
     db.commit()
     main_balance = test_user.balance
+    oidc_sub, name, pin_hash, created_at = (
+        test_user.oidc_sub, test_user.name, test_user.pin_hash, test_user.created_at
+    )
 
     result = _do_transfer(UNLINKED_ID, test_user.id, db)
+    result.oidc_sub, result.name, result.pin_hash, result.created_at = oidc_sub, name, pin_hash, created_at
     db.add(UserCardAlias(alias_id=UNLINKED_ID, user_id=test_user.id,
                           created_at=datetime.now(UTC).replace(tzinfo=None)))
     db.commit()
 
     assert result.id == test_user.id
     assert result.balance == main_balance + Decimal("5.00")
+    assert result.oidc_sub == "test-oidc-sub"
+    assert result.name == "Main Account"
+    assert result.pin_hash == "bcrypt-hash-of-pin"
     assert db.query(User).filter(User.id == UNLINKED_ID).first() is None
     assert resolve_nfc_id(db, UNLINKED_ID) == test_user.id
 

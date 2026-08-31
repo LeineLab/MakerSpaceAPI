@@ -215,8 +215,20 @@ async def connect_alias(request: Request, db: Session = Depends(get_db)):
     try:
         if db.query(UserCardAlias).filter(UserCardAlias.alias_id == new_id).first():
             raise HTTPException(status_code=409, detail=_("connect.err_card_taken"))
-        # Merge the new tag's data onto old_id (the account keeps its existing id).
+        main = db.query(User).filter(User.id == old_id).first()
+        if not main:
+            raise HTTPException(status_code=404, detail=_("connect.err_session"))
+        # _do_transfer keeps its FIRST argument's own columns (oidc_sub, name,
+        # pin_hash, created_at) and merges the second argument's balance/history
+        # into it, then renames the surviving row to the second argument's id.
+        # Calling it as (new_id, old_id) keeps old_id's numeric id, but the
+        # surviving row's own columns end up being the (blank) new tag's —
+        # wiping the account's OIDC link, PIN and name. Snapshot them first and
+        # restore them after the merge so the account keeps both its id and its
+        # own identity.
+        oidc_sub, name, pin_hash, created_at = main.oidc_sub, main.name, main.pin_hash, main.created_at
         user = _do_transfer(new_id, old_id, db)
+        user.oidc_sub, user.name, user.pin_hash, user.created_at = oidc_sub, name, pin_hash, created_at
         db.add(UserCardAlias(alias_id=new_id, user_id=old_id))
         db.commit()
     except HTTPException as e:
