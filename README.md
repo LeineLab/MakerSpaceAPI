@@ -244,13 +244,13 @@ Use `--dry-run` to preview changes without writing. Use `--only machines product
 
 > **Note:** NFCKasse card UIDs were stored as MD5 hashes and cannot be reversed. Cards registered in the legacy NFCKasse system must be re-registered in MakerSpaceAPI.
 
-## Legacy hardware projects
+## Hardware projects
 
 The `projects/` directory contains updated versions of the three original hardware projects, modified to call the MakerSpaceAPI REST endpoints instead of connecting directly to MySQL.
 
 | Project | Config | Key change |
 |---|---|---|
-| `MachineUserManager/` | Set `DB_TYPE = 'api'`, `API_URL`, `API_TOKEN` in `user_config.py` | New `dbconnectors/db_api.py` connector |
+| `MachineUserManager/` | Set `API_URL`, `API_TOKEN` in `user_config.py` | `makerspaceapi.py` connector at project root |
 | `Bankomat/` | Set `API_URL`, `API_TOKEN` in `user_config.py` | `unified_kasse.py`, `nfckasse.py`, `machines.py` use REST API |
 | `NFCKasse/` | Set `api_url`, `api_token`, `uid_hash = False` in `settings.py` | `database.py` uses REST API; raw integer UIDs |
 
@@ -271,18 +271,17 @@ app/
 └── web/
     ├── locales/     # i18n translation files (en.json, de.json)
     ├── static/
-    │   ├── css/     # tailwind.css (CLI-built, committed)
+    │   ├── css/     # input.css (source); tailwind.css is CLI-built, not committed
     │   └── js/      # alpine.min.js, htmx.min.js (local copies)
     ├── templates/   # Jinja2 HTML templates (shell + Alpine.js components)
-    ├── auth.py      # OIDC login / callback / logout + /auth/me
+    ├── auth.py      # OIDC login / callback / logout / connect + /auth/me
     ├── i18n.py      # Language detection and translation helpers
     └── router.py    # Web page routes (thin — no DB queries)
 
 alembic/versions/    # Database migration scripts
 scripts/             # Utility scripts (migrate_legacy.py)
-projects/            # Updated legacy hardware project connectors
 tests/               # pytest test suite
-package.json         # Tailwind CSS CLI build (optional, for CSS rebuilds)
+package.json         # Tailwind CSS CLI build (required to build the CSS)
 tailwind.config.js   # Tailwind content paths
 ```
 
