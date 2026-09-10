@@ -1,0 +1,3 @@
+Bezeichnung Auftragskonto;IBAN Auftragskonto;BIC Auftragskonto;Bankname Auftragskonto;Buchungstag;Valutadatum;Name Zahlungsbeteiligter;IBAN Zahlungsbeteiligter;BIC (SWIFT-Code) Zahlungsbeteiligter;Buchungstext;Verwendungszweck;Betrag;Waehrung;Saldo nach Buchung;Bemerkung;Gekennzeichneter Umsatz;Glaeubiger ID;Mandatsreferenz
+Vereinskonto;DE02120300000000202051;GENODEF1XXX;Testbank;01.03.2026;01.03.2026;Max Mustermann;DE89370400440532013000;COBADEFFXXX;Gutschrift;Mitgliedsbeitrag 2026;50,00;EUR;1050,00;;;;
+Vereinskonto;DE02120300000000202051;GENODEF1XXX;Testbank;02.03.2026;02.03.2026;Getraenke GmbH;DE12500105170648489890;COBADEFFXXX;Lastschrift;Wareneinkauf;-30,00;EUR;1020,00;;;DE98ZZZ09999999999;MANDREF123

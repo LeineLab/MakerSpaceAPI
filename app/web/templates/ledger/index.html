@@ -70,13 +70,21 @@
               <th class="px-4 py-3 text-left">{{ _('ledger.col_description') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_lines') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_paperless') }}</th>
+              <th class="px-4 py-3 text-left" x-show="userIsTreasurer">{{ _('ledger.col_actions') }}</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
             <template x-for="e in entries" :key="e.id">
               <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 align-top">
                 <td class="px-4 py-3 whitespace-nowrap" x-text="e.entry_date"></td>
-                <td class="px-4 py-3" x-text="e.description"></td>
+                <td class="px-4 py-3">
+                  <span x-text="e.description"></span>
+                  <span x-show="e.reverses_entry_id" class="ml-2 px-2 py-0.5 rounded text-xs font-medium bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300"
+                        x-text="REVERSES_TMPL.replace('{id}', e.reverses_entry_id)"></span>
+                  <span x-show="reversedByMap[e.id]" class="ml-2 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                    {{ _('ledger.reversed_badge') }}
+                  </span>
+                </td>
                 <td class="px-4 py-3 text-xs">
                   <template x-for="l in e.lines" :key="l.id">
                     <div class="whitespace-nowrap">
@@ -86,7 +94,18 @@
                     </div>
                   </template>
                 </td>
-                <td class="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400" x-text="e.paperless_document_id || '—'"></td>
+                <td class="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">
+                  <a x-show="e.paperless_document_id && config.paperless_url" :href="paperlessDocUrl(e.paperless_document_id)"
+                     target="_blank" rel="noopener" class="text-blue-600 dark:text-blue-400 hover:underline" x-text="e.paperless_document_id"></a>
+                  <span x-show="e.paperless_document_id && !config.paperless_url" x-text="e.paperless_document_id"></span>
+                  <span x-show="!e.paperless_document_id">—</span>
+                </td>
+                <td class="px-4 py-3" x-show="userIsTreasurer">
+                  <button x-show="!reversedByMap[e.id]" @click="reverseEntry(e)"
+                          class="text-xs text-red-600 dark:text-red-400 hover:underline">
+                    {{ _('ledger.btn_reverse_entry') }}
+                  </button>
+                </td>
               </tr>
             </template>
           </tbody>
@@ -94,6 +113,13 @@
         </div>
       </div>
     </template>
+
+    <div x-show="!loadingEntries && entries.length < entriesTotal" class="mt-4 text-center">
+      <button @click="loadMoreEntries()" :disabled="loadingMoreEntries"
+              class="text-sm text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
+              x-text="loadingMoreEntries ? '…' : LOAD_MORE_TMPL.replace('{shown}', entries.length).replace('{total}', entriesTotal)">
+      </button>
+    </div>
   </div>
 
   <!-- ================= Accounts ================= -->
@@ -123,6 +149,7 @@
               <th class="px-4 py-3 text-left">{{ _('ledger.col_iban') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_name') }}</th>
               <th class="px-4 py-3 text-right">{{ _('ledger.col_opening_balance') }}</th>
+              <th class="px-4 py-3 text-right">{{ _('ledger.col_current_balance') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_tracked') }}</th>
             </tr>
           </thead>
@@ -137,6 +164,14 @@
                   </span>
                 </td>
                 <td class="px-4 py-3 text-right font-mono" x-text="fmt(a.opening_balance)"></td>
+                <td class="px-4 py-3 text-right font-mono">
+                  <template x-if="accountBalances[a.id]">
+                    <span :title="balanceReconciliationHint(a)"
+                          :class="balanceMismatch(a) ? 'text-amber-600 dark:text-amber-400 underline decoration-dotted' : ''"
+                          x-text="fmt(accountBalances[a.id].computed_balance)"></span>
+                  </template>
+                  <span x-show="!accountBalances[a.id]">…</span>
+                </td>
                 <td class="px-4 py-3">
                   <label class="inline-flex items-center gap-2" :class="userIsTreasurer ? 'cursor-pointer' : 'opacity-60'">
                     <input type="checkbox" :checked="a.tracked" :disabled="!userIsTreasurer"
@@ -312,14 +347,91 @@
       </div>
       <div>
         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.import_label_file') }}</label>
-        <input type="file" @change="onImportFileChange($event)" accept=".sta,.txt,.xml"
+        <input type="file" @change="onImportFileChange($event)" accept=".sta,.txt,.xml,.csv"
                class="text-sm">
       </div>
-      <button @click="uploadImportFile()" :disabled="!importAccountId || !importFile || importUploading"
+      <button x-show="!showCsvMapping" @click="uploadImportFile()" :disabled="!importAccountId || !importFile || importUploading"
               class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50">
         <span x-show="!importUploading">{{ _('ledger.import_btn_upload') }}</span>
         <span x-show="importUploading">…</span>
       </button>
+    </div>
+
+    <!-- CSV column mapping: shown once a .csv file is selected, since banks have no standard CSV schema -->
+    <div x-show="showCsvMapping" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-6">
+      <h3 class="font-semibold mb-3">{{ _('ledger.csv_mapping_title') }}</h3>
+      <div x-show="csvMappingError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="csvMappingError"></div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <div>
+          <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.csv_label_delimiter') }}</label>
+          <input type="text" x-model="csvMapping.delimiter" maxlength="1"
+                 class="w-full border dark:border-gray-700 rounded px-2 py-1 text-sm font-mono bg-white dark:bg-gray-800">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.csv_label_decimal') }}</label>
+          <select x-model="csvMapping.decimal_separator" class="w-full border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+            <option value=",">1.234,56</option>
+            <option value=".">1,234.56</option>
+          </select>
+        </div>
+        <div class="col-span-2">
+          <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.csv_label_date_format') }}</label>
+          <input type="text" x-model="csvMapping.date_format" placeholder="%d.%m.%Y"
+                 class="w-full border dark:border-gray-700 rounded px-2 py-1 text-sm font-mono bg-white dark:bg-gray-800">
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <template x-for="field in CSV_FIELDS" :key="field.key">
+          <div>
+            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <span x-text="field.label"></span>
+              <span x-show="field.required" class="text-red-500">*</span>
+            </label>
+            <select x-model="csvMapping[field.key]" class="w-full border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+              <option value="">{{ _('ledger.csv_column_none') }}</option>
+              <template x-for="col in csvPreview.columns" :key="col">
+                <option :value="col" x-text="col"></option>
+              </template>
+            </select>
+          </div>
+        </template>
+      </div>
+
+      <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">{{ _('ledger.csv_sample_title') }}</p>
+      <div class="overflow-x-auto mb-4 border dark:border-gray-700 rounded">
+        <table class="min-w-full text-xs">
+          <thead class="bg-gray-50 dark:bg-gray-900">
+            <tr>
+              <template x-for="col in csvPreview.columns" :key="'h-' + col">
+                <th class="px-2 py-1 text-left whitespace-nowrap" x-text="col"></th>
+              </template>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+            <template x-for="(row, i) in csvPreview.sample_rows" :key="'r-' + i">
+              <tr>
+                <template x-for="(cell, j) in row" :key="'c-' + i + '-' + j">
+                  <td class="px-2 py-1 whitespace-nowrap" x-text="cell"></td>
+                </template>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="flex gap-2">
+        <button @click="uploadCsvWithMapping()"
+                :disabled="!importAccountId || !csvMapping.booking_date_column || !csvMapping.amount_column || importUploading"
+                class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50">
+          <span x-show="!importUploading">{{ _('ledger.import_btn_upload') }}</span>
+          <span x-show="importUploading">…</span>
+        </button>
+        <button @click="cancelCsvMapping()" type="button" class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">
+          {{ _('common.cancel') }}
+        </button>
+      </div>
     </div>
 
     <!-- FinTS live-pull: hidden entirely when FINTS_PRODUCT_ID isn't configured -->
@@ -514,9 +626,15 @@
                     :class="parseFloat(l.amount) < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'"
                     x-text="fmtSigned(l.amount)"></td>
                 <td class="px-4 py-3 text-xs" x-text="l.purpose_text || '—'"></td>
-                <td class="px-4 py-3 text-xs" x-text="l.counterparty_name || '—'"></td>
+                <td class="px-4 py-3 text-xs">
+                  <span x-text="l.counterparty_name || '—'"></span>
+                  <span x-show="l.status === 'duplicate'" class="ml-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
+                        :title="DUPLICATE_HINT_L">
+                    {{ _('ledger.import_status_duplicate') }}
+                  </span>
+                </td>
                 <td class="px-4 py-3" x-show="userIsTreasurer">
-                  <template x-if="l.status === 'new'">
+                  <template x-if="l.status === 'new' || l.status === 'duplicate'">
                     <div class="flex gap-2">
                       <button @click="openBookModal(l)" class="text-blue-600 dark:text-blue-400 hover:underline text-xs">
                         {{ _('ledger.btn_book') }}
@@ -534,6 +652,13 @@
         </div>
       </div>
     </template>
+
+    <div x-show="!loadingImportLines && importLines.length < importLinesTotal" class="mt-4 text-center">
+      <button @click="loadMoreImportLines()" :disabled="loadingMoreImportLines"
+              class="text-sm text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
+              x-text="loadingMoreImportLines ? '…' : LOAD_MORE_TMPL.replace('{shown}', importLines.length).replace('{total}', importLinesTotal)">
+      </button>
+    </div>
   </div>
 
   <!-- ============ Book Import Line Modal ============ -->
@@ -568,6 +693,7 @@
           <p class="text-xs text-gray-400 dark:text-gray-500 mt-1" x-show="bookForm.paperless_document_id">
             <span x-text="'ID: ' + bookForm.paperless_document_id"></span>
           </p>
+          <p x-show="paperlessDuplicateWarning" class="text-xs text-amber-600 dark:text-amber-400 mt-1" x-text="paperlessDuplicateWarning"></p>
         </div>
 
         <div>
@@ -631,7 +757,9 @@
           <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_paperless_id') }}</label>
             <input type="text" x-model="entryForm.paperless_document_id" placeholder="{{ _('ledger.placeholder_paperless_id') }}"
+                   @input.debounce.400ms="checkPaperlessDuplicate(entryForm.paperless_document_id)"
                    class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <p x-show="paperlessDuplicateWarning" class="text-xs text-amber-600 dark:text-amber-400 mt-1" x-text="paperlessDuplicateWarning"></p>
           </div>
         </div>
         <div>
@@ -807,6 +935,25 @@ const IMPORT_STATUS_L = {
 const IMPORT_SUMMARY_TMPL = {{ _('ledger.import_summary') | tojson }};
 const FINTS_DECOUPLED_HINT = {{ _('ledger.fints_decoupled_hint') | tojson }};
 const FINTS_PRESET_DELETE_L = {{ _('ledger.fints_preset_delete') | tojson }};
+const REVERSES_TMPL = {{ _('ledger.reverses_badge') | tojson }};
+const REVERSE_CONFIRM_L = {{ _('ledger.reverse_confirm') | tojson }};
+const PAPERLESS_DUPLICATE_TMPL = {{ _('ledger.paperless_duplicate_warning') | tojson }};
+const DUPLICATE_HINT_L = {{ _('ledger.import_duplicate_hint') | tojson }};
+const PAGE_SIZE = 50;
+const LOAD_MORE_TMPL = {{ _('ledger.load_more') | tojson }};
+const NO_STATEMENT_BALANCE_L = {{ _('ledger.no_statement_balance') | tojson }};
+const RECONCILIATION_MATCH_TMPL = {{ _('ledger.reconciliation_match') | tojson }};
+const RECONCILIATION_MISMATCH_TMPL = {{ _('ledger.reconciliation_mismatch') | tojson }};
+const CSV_FIELDS = [
+  { key: 'booking_date_column', required: true, label: {{ _('ledger.csv_field_booking_date') | tojson }} },
+  { key: 'amount_column', required: true, label: {{ _('ledger.csv_field_amount') | tojson }} },
+  { key: 'purpose_column', required: false, label: {{ _('ledger.csv_field_purpose') | tojson }} },
+  { key: 'counterparty_name_column', required: false, label: {{ _('ledger.csv_field_counterparty_name') | tojson }} },
+  { key: 'counterparty_iban_column', required: false, label: {{ _('ledger.csv_field_counterparty_iban') | tojson }} },
+  { key: 'bank_reference_column', required: false, label: {{ _('ledger.csv_field_bank_reference') | tojson }} },
+  { key: 'own_iban_column', required: false, label: {{ _('ledger.csv_field_own_iban') | tojson }} },
+  { key: 'balance_after_column', required: false, label: {{ _('ledger.csv_field_balance_after') | tojson }} },
+];
 
 function ledgerApp(userIsTreasurer) {
   return {
@@ -815,7 +962,9 @@ function ledgerApp(userIsTreasurer) {
     config: { spheres_enabled: true },
 
     entries: [],
+    entriesTotal: 0,
     loadingEntries: true,
+    loadingMoreEntries: false,
     entriesError: null,
     filterYear: new Date().getFullYear(),
     showEntryModal: false,
@@ -824,6 +973,7 @@ function ledgerApp(userIsTreasurer) {
     entrySubmitting: false,
 
     accounts: [],
+    accountBalances: {},
     loadingAccounts: true,
     accountsError: null,
     showAccountModal: false,
@@ -852,9 +1002,21 @@ function ledgerApp(userIsTreasurer) {
     importError: null,
     importSummary: null,
 
+    showCsvMapping: false,
+    csvPreview: { columns: [], sample_rows: [] },
+    csvMapping: {
+      delimiter: ';', decimal_separator: ',', date_format: '%d.%m.%Y',
+      booking_date_column: '', amount_column: '', purpose_column: '',
+      counterparty_name_column: '', counterparty_iban_column: '',
+      bank_reference_column: '', own_iban_column: '', balance_after_column: '',
+    },
+    csvMappingError: null,
+
     importStatus: 'new',
     importLines: [],
+    importLinesTotal: 0,
     loadingImportLines: true,
+    loadingMoreImportLines: false,
     importLinesError: null,
 
     showBookModal: false,
@@ -864,6 +1026,7 @@ function ledgerApp(userIsTreasurer) {
     bookSubmitting: false,
     paperlessQuery: '',
     paperlessResults: [],
+    paperlessDuplicateWarning: null,
 
     fintsForm: { server: '', bank_identifier: '', login: '', pin: '' },
     fintsPresets: [],
@@ -903,6 +1066,19 @@ function ledgerApp(userIsTreasurer) {
       return years;
     },
 
+    get reversedByMap() {
+      // original_entry_id -> reversing entry's id, built from the currently
+      // loaded (year-filtered) entries. A reversal booked in a different
+      // year than the original won't show up here — the "reverse" button
+      // would then still appear enabled, but the backend's 409 on a second
+      // reversal is the actual guard, not this map.
+      const map = {};
+      for (const e of this.entries) {
+        if (e.reverses_entry_id) map[e.reverses_entry_id] = e.id;
+      }
+      return map;
+    },
+
     async init() {
       await this.loadConfig();
       await Promise.all([this.loadAccounts(), this.loadCategories()]);
@@ -938,14 +1114,51 @@ function ledgerApp(userIsTreasurer) {
       this.loadingEntries = true;
       this.entriesError = null;
       try {
-        const r = await apiFetch(`/api/v1/ledger/entries?year=${this.filterYear}`);
+        const r = await apiFetch(`/api/v1/ledger/entries?year=${this.filterYear}&limit=${PAGE_SIZE}`);
         if (!r.ok) throw new Error('Failed to load entries');
         this.entries = await r.json();
+        this.entriesTotal = Number(r.headers.get('X-Total-Count')) || this.entries.length;
       } catch (e) {
         if (e !== 'unauthenticated') this.entriesError = e.message || String(e);
       } finally {
         this.loadingEntries = false;
       }
+    },
+
+    async loadMoreEntries() {
+      this.loadingMoreEntries = true;
+      try {
+        const r = await apiFetch(
+          `/api/v1/ledger/entries?year=${this.filterYear}&limit=${PAGE_SIZE}&offset=${this.entries.length}`
+        );
+        if (!r.ok) throw new Error('Failed to load entries');
+        this.entries = this.entries.concat(await r.json());
+        this.entriesTotal = Number(r.headers.get('X-Total-Count')) || this.entries.length;
+      } catch (e) {
+        if (e !== 'unauthenticated') this.entriesError = e.message || String(e);
+      } finally {
+        this.loadingMoreEntries = false;
+      }
+    },
+
+    async reverseEntry(entry) {
+      if (!confirm(REVERSE_CONFIRM_L)) return;
+      this.entriesError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/entries/${entry.id}/reverse`, { method: 'POST' });
+        const data = await r.json();
+        if (!r.ok) {
+          this.entriesError = data.detail || 'Error reversing entry';
+          return;
+        }
+        await this.loadEntries();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.entriesError = e.message || String(e);
+      }
+    },
+
+    paperlessDocUrl(docId) {
+      return this.config.paperless_url ? `${this.config.paperless_url.replace(/\/+$/, '')}/documents/${docId}` : null;
     },
 
     async loadAccounts() {
@@ -955,11 +1168,25 @@ function ledgerApp(userIsTreasurer) {
         const r = await apiFetch('/api/v1/ledger/accounts');
         if (!r.ok) throw new Error('Failed to load accounts');
         this.accounts = await r.json();
+        this.loadAccountBalances();
       } catch (e) {
         if (e !== 'unauthenticated') this.accountsError = e.message || String(e);
       } finally {
         this.loadingAccounts = false;
       }
+    },
+
+    async loadAccountBalances() {
+      // Fire-and-forget per account — a slow/failed balance lookup shouldn't
+      // block the accounts table itself from rendering.
+      await Promise.all(this.accounts.map(async (a) => {
+        try {
+          const r = await apiFetch(`/api/v1/ledger/accounts/${a.id}/balance`);
+          if (r.ok) this.accountBalances[a.id] = await r.json();
+        } catch (e) {
+          // non-critical
+        }
+      }));
     },
 
     async loadCategories() {
@@ -1029,6 +1256,7 @@ function ledgerApp(userIsTreasurer) {
         lines: [{ ref: '', amount: '' }, { ref: '', amount: '' }],
       };
       this.entryError = null;
+      this.paperlessDuplicateWarning = null;
       this.showEntryModal = true;
     },
 
@@ -1204,9 +1432,114 @@ function ledgerApp(userIsTreasurer) {
       return parseFloat(v).toFixed(2) + ' €';
     },
 
+    balanceMismatch(account) {
+      const b = this.accountBalances[account.id];
+      if (!b || b.balance_as_of_last_statement === null || b.balance_as_of_last_statement === undefined) return false;
+      return Math.abs(parseFloat(b.balance_as_of_last_statement) - parseFloat(b.last_statement_balance)) > 0.001;
+    },
+
+    balanceReconciliationHint(account) {
+      const b = this.accountBalances[account.id];
+      if (!b) return '';
+      if (b.last_statement_balance === null || b.last_statement_balance === undefined) {
+        return NO_STATEMENT_BALANCE_L;
+      }
+      return this.balanceMismatch(account)
+        ? RECONCILIATION_MISMATCH_TMPL
+            .replace('{statement}', this.fmt(b.last_statement_balance))
+            .replace('{date}', b.last_statement_balance_date)
+        : RECONCILIATION_MATCH_TMPL.replace('{date}', b.last_statement_balance_date);
+    },
+
     // --- import: file upload ---
     onImportFileChange(event) {
       this.importFile = event.target.files[0] || null;
+      this.importError = null;
+      if (this.importFile && this.importFile.name.toLowerCase().endsWith('.csv')) {
+        this.previewCsvFile();
+      } else {
+        this.showCsvMapping = false;
+      }
+    },
+
+    async previewCsvFile() {
+      this.csvMappingError = null;
+      try {
+        const buf = await this.importFile.arrayBuffer();
+        const r = await apiFetch('/api/v1/ledger/import/csv/preview', {
+          method: 'POST', headers: { 'Content-Type': 'text/csv' }, body: buf,
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          this.importError = data.detail || 'Error reading CSV file';
+          return;
+        }
+        this.csvPreview = { columns: data.columns, sample_rows: data.sample_rows };
+        // Prefer this account's remembered mapping (if any) over a fresh
+        // name-based guess — it's a much stronger signal for a bank we've
+        // already imported from before.
+        const account = this.accounts.find(a => a.id === this.importAccountId);
+        const remembered = account && account.csv_mapping;
+        const base = remembered || { delimiter: data.delimiter, decimal_separator: ',', date_format: '%d.%m.%Y', ...data.guessed_mapping };
+        this.csvMapping = {
+          delimiter: base.delimiter || data.delimiter,
+          decimal_separator: base.decimal_separator || ',',
+          date_format: base.date_format || '%d.%m.%Y',
+          booking_date_column: base.booking_date_column || '',
+          amount_column: base.amount_column || '',
+          purpose_column: base.purpose_column || '',
+          counterparty_name_column: base.counterparty_name_column || '',
+          counterparty_iban_column: base.counterparty_iban_column || '',
+          bank_reference_column: base.bank_reference_column || '',
+          own_iban_column: base.own_iban_column || '',
+          balance_after_column: base.balance_after_column || '',
+        };
+        this.showCsvMapping = true;
+      } catch (e) {
+        if (e !== 'unauthenticated') this.importError = e.message || String(e);
+      }
+    },
+
+    async uploadCsvWithMapping() {
+      if (!this.importAccountId || !this.importFile) return;
+      this.importUploading = true;
+      this.importError = null;
+      this.importSummary = null;
+      try {
+        const params = new URLSearchParams({
+          bank_account_id: this.importAccountId,
+          filename: this.importFile.name,
+          ...this.csvMapping,
+        });
+        // Drop empty optional fields rather than sending them as blank strings.
+        for (const [k, v] of [...params.entries()]) {
+          if (!v && !['delimiter', 'decimal_separator', 'date_format', 'bank_account_id', 'filename'].includes(k)) {
+            params.delete(k);
+          }
+        }
+        const buf = await this.importFile.arrayBuffer();
+        const r = await apiFetch(`/api/v1/ledger/import/csv?${params.toString()}`, {
+          method: 'POST', headers: { 'Content-Type': 'text/csv' }, body: buf,
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          this.importError = data.detail || 'Error importing CSV file';
+          return;
+        }
+        this.importSummary = data;
+        this.cancelCsvMapping();
+        await Promise.all([this.loadImportLines(), this.loadAccounts()]);
+      } catch (e) {
+        if (e !== 'unauthenticated') this.importError = e.message || String(e);
+      } finally {
+        this.importUploading = false;
+      }
+    },
+
+    cancelCsvMapping() {
+      this.showCsvMapping = false;
+      this.importFile = null;
+      this.csvPreview = { columns: [], sample_rows: [] };
     },
 
     async uploadImportFile() {
@@ -1238,13 +1571,30 @@ function ledgerApp(userIsTreasurer) {
       this.loadingImportLines = true;
       this.importLinesError = null;
       try {
-        const r = await apiFetch(`/api/v1/ledger/import/lines?status=${this.importStatus}`);
+        const r = await apiFetch(`/api/v1/ledger/import/lines?status=${this.importStatus}&limit=${PAGE_SIZE}`);
         if (!r.ok) throw new Error('Failed to load import lines');
         this.importLines = await r.json();
+        this.importLinesTotal = Number(r.headers.get('X-Total-Count')) || this.importLines.length;
       } catch (e) {
         if (e !== 'unauthenticated') this.importLinesError = e.message || String(e);
       } finally {
         this.loadingImportLines = false;
+      }
+    },
+
+    async loadMoreImportLines() {
+      this.loadingMoreImportLines = true;
+      try {
+        const r = await apiFetch(
+          `/api/v1/ledger/import/lines?status=${this.importStatus}&limit=${PAGE_SIZE}&offset=${this.importLines.length}`
+        );
+        if (!r.ok) throw new Error('Failed to load import lines');
+        this.importLines = this.importLines.concat(await r.json());
+        this.importLinesTotal = Number(r.headers.get('X-Total-Count')) || this.importLines.length;
+      } catch (e) {
+        if (e !== 'unauthenticated') this.importLinesError = e.message || String(e);
+      } finally {
+        this.loadingMoreImportLines = false;
       }
     },
 
@@ -1268,6 +1618,7 @@ function ledgerApp(userIsTreasurer) {
       this.bookError = null;
       this.paperlessQuery = '';
       this.paperlessResults = [];
+      this.paperlessDuplicateWarning = null;
       this.showBookModal = true;
     },
 
@@ -1343,6 +1694,24 @@ function ledgerApp(userIsTreasurer) {
       this.bookForm.paperless_document_id = String(doc.id);
       this.paperlessResults = [];
       this.paperlessQuery = doc.title;
+      this.checkPaperlessDuplicate(this.bookForm.paperless_document_id);
+    },
+
+    async checkPaperlessDuplicate(docId) {
+      // Warn, don't block — a partial payment against the same invoice is a
+      // legitimate reason to link one document to more than one entry.
+      this.paperlessDuplicateWarning = null;
+      if (!docId) return;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/entries?paperless_document_id=${encodeURIComponent(docId)}`);
+        if (!r.ok) return;
+        const existing = await r.json();
+        if (existing.length > 0) {
+          this.paperlessDuplicateWarning = PAPERLESS_DUPLICATE_TMPL.replace('{count}', existing.length);
+        }
+      } catch (e) {
+        // non-critical
+      }
     },
 
     // --- FinTS live-pull (Phase 3) ---

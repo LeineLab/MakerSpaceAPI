@@ -156,6 +156,58 @@ def test_update_unknown_account_404(treasurer_client):
 
 
 # ---------------------------------------------------------------------------
+# GET /ledger/accounts/{id}/balance
+# ---------------------------------------------------------------------------
+
+def test_account_balance_starts_at_opening_balance(treasurer_client, bank_account):
+    resp = treasurer_client.get(f"/api/v1/ledger/accounts/{bank_account.id}/balance")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["computed_balance"] == "0.00"
+    assert data["last_statement_balance"] is None
+
+
+def test_account_balance_reflects_booked_entries(treasurer_client, bank_account, income_category):
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-01",
+            "description": "Beitrag",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "50.00"},
+                {"category_id": income_category.id, "amount": "-50.00"},
+            ],
+        },
+    )
+    resp = treasurer_client.get(f"/api/v1/ledger/accounts/{bank_account.id}/balance")
+    assert resp.json()["computed_balance"] == "50.00"
+
+
+def test_account_balance_as_of_excludes_later_entries(treasurer_client, bank_account, income_category):
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-06-01",
+            "description": "Spätere Buchung",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "50.00"},
+                {"category_id": income_category.id, "amount": "-50.00"},
+            ],
+        },
+    )
+    resp = treasurer_client.get(f"/api/v1/ledger/accounts/{bank_account.id}/balance?as_of=2026-03-01")
+    assert resp.json()["computed_balance"] == "0.00"
+
+    resp_later = treasurer_client.get(f"/api/v1/ledger/accounts/{bank_account.id}/balance?as_of=2026-06-01")
+    assert resp_later.json()["computed_balance"] == "50.00"
+
+
+def test_account_balance_unknown_account_404(treasurer_client):
+    resp = treasurer_client.get("/api/v1/ledger/accounts/999/balance")
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # GET/POST /ledger/categories
 # ---------------------------------------------------------------------------
 
@@ -205,6 +257,63 @@ def test_create_category_duplicate_slug_conflicts(treasurer_client, income_categ
     resp = treasurer_client.post(
         "/api/v1/ledger/categories",
         json={"name": "Andere", "slug": income_category.slug, "kind": "income", "sphere": "ideell"},
+    )
+    assert resp.status_code == 409
+
+
+def test_update_unused_category_can_change_kind_sphere_slug(treasurer_client, income_category):
+    resp = treasurer_client.put(
+        f"/api/v1/ledger/categories/{income_category.id}",
+        json={"slug": "spenden", "kind": "expense", "sphere": "zweckbetrieb"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["slug"] == "spenden"
+    assert data["kind"] == "expense"
+    assert data["sphere"] == "zweckbetrieb"
+
+
+def test_update_used_category_cannot_change_kind(
+    treasurer_client, bank_account, income_category
+):
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-01",
+            "description": "Beitrag",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "50.00"},
+                {"category_id": income_category.id, "amount": "-50.00"},
+            ],
+        },
+    )
+
+    resp = treasurer_client.put(
+        f"/api/v1/ledger/categories/{income_category.id}", json={"kind": "expense"}
+    )
+    assert resp.status_code == 409
+
+    # name/active stay changeable regardless of usage
+    resp = treasurer_client.put(
+        f"/api/v1/ledger/categories/{income_category.id}", json={"name": "Umbenannt"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "Umbenannt"
+
+
+def test_update_category_sphere_rejected_when_spheres_disabled(treasurer_client, income_category, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "LEDGER_SPHERES_ENABLED", False)
+    resp = treasurer_client.put(
+        f"/api/v1/ledger/categories/{income_category.id}", json={"sphere": "ideell"}
+    )
+    assert resp.status_code == 400
+
+
+def test_update_category_slug_conflicts_with_another_category(treasurer_client, income_category, expense_category):
+    resp = treasurer_client.put(
+        f"/api/v1/ledger/categories/{income_category.id}", json={"slug": expense_category.slug}
     )
     assert resp.status_code == 409
 
@@ -331,6 +440,40 @@ def test_auditor_cannot_create_entry(auditor_client, bank_account, income_catego
     assert resp.status_code in (401, 403)
 
 
+def test_list_entries_filters_by_paperless_document_id(treasurer_client, bank_account, income_category):
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-01",
+            "description": "Mit Beleg",
+            "paperless_document_id": "42",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "50.00"},
+                {"category_id": income_category.id, "amount": "-50.00"},
+            ],
+        },
+    )
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-02",
+            "description": "Ohne Beleg",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "10.00"},
+                {"category_id": income_category.id, "amount": "-10.00"},
+            ],
+        },
+    )
+
+    resp = treasurer_client.get("/api/v1/ledger/entries?paperless_document_id=42")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["description"] == "Mit Beleg"
+
+    assert treasurer_client.get("/api/v1/ledger/entries?paperless_document_id=999").json() == []
+
+
 def test_auditor_can_list_entries(auditor_client, treasurer_client, bank_account, income_category):
     treasurer_client.post(
         "/api/v1/ledger/entries",
@@ -346,6 +489,97 @@ def test_auditor_can_list_entries(auditor_client, treasurer_client, bank_account
     resp = auditor_client.get("/api/v1/ledger/entries")
     assert resp.status_code == 200
     assert len(resp.json()) == 1
+
+
+def test_list_entries_reports_total_count_and_pages(treasurer_client, bank_account, income_category):
+    for i in range(3):
+        treasurer_client.post(
+            "/api/v1/ledger/entries",
+            json={
+                "entry_date": "2026-03-01",
+                "description": f"Beitrag {i}",
+                "lines": [
+                    {"bank_account_id": bank_account.id, "amount": "10.00"},
+                    {"category_id": income_category.id, "amount": "-10.00"},
+                ],
+            },
+        )
+
+    resp = treasurer_client.get("/api/v1/ledger/entries?limit=2")
+    assert resp.status_code == 200
+    assert resp.headers["X-Total-Count"] == "3"
+    assert len(resp.json()) == 2
+
+    second_page = treasurer_client.get("/api/v1/ledger/entries?limit=2&offset=2")
+    assert second_page.headers["X-Total-Count"] == "3"
+    assert len(second_page.json()) == 1
+
+
+# ---------------------------------------------------------------------------
+# Entry reversal ("undo" a booking without editing/deleting anything)
+# ---------------------------------------------------------------------------
+
+def _create_entry(client, bank_account, income_category, amount="50.00", description="Beitrag"):
+    resp = client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-01",
+            "description": description,
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": amount},
+                {"category_id": income_category.id, "amount": str(-Decimal(amount))},
+            ],
+        },
+    )
+    assert resp.status_code == 201
+    return resp.json()
+
+
+def test_reverse_entry_posts_offsetting_entry(treasurer_client, bank_account, income_category):
+    original = _create_entry(treasurer_client, bank_account, income_category, amount="50.00")
+
+    resp = treasurer_client.post(f"/api/v1/ledger/entries/{original['id']}/reverse")
+    assert resp.status_code == 201
+    reversal = resp.json()
+
+    assert reversal["reverses_entry_id"] == original["id"]
+    assert reversal["description"] == f"Storno: {original['description']}"
+    amounts = {Decimal(str(l["amount"])) for l in reversal["lines"]}
+    assert amounts == {Decimal("-50.00"), Decimal("50.00")}
+
+    # the original entry is untouched — immutability preserved
+    all_entries = treasurer_client.get("/api/v1/ledger/entries").json()
+    original_entry = next(e for e in all_entries if e["id"] == original["id"])
+    original_amounts = {Decimal(str(l["amount"])) for l in original_entry["lines"]}
+    assert original_amounts == {Decimal("-50.00"), Decimal("50.00")}
+
+
+def test_reverse_entry_cancels_out_in_euer_report(treasurer_client, bank_account, income_category):
+    original = _create_entry(treasurer_client, bank_account, income_category, amount="50.00")
+    treasurer_client.post(f"/api/v1/ledger/entries/{original['id']}/reverse")
+
+    report = treasurer_client.get("/api/v1/ledger/report/euer?year=2026").json()
+    assert report["total_income"] == "0.00"
+
+
+def test_reverse_entry_twice_conflicts(treasurer_client, bank_account, income_category):
+    original = _create_entry(treasurer_client, bank_account, income_category)
+    first = treasurer_client.post(f"/api/v1/ledger/entries/{original['id']}/reverse")
+    assert first.status_code == 201
+
+    second = treasurer_client.post(f"/api/v1/ledger/entries/{original['id']}/reverse")
+    assert second.status_code == 409
+
+
+def test_reverse_unknown_entry_404(treasurer_client):
+    resp = treasurer_client.post("/api/v1/ledger/entries/999/reverse")
+    assert resp.status_code == 404
+
+
+def test_auditor_cannot_reverse_entry(auditor_client, treasurer_client, bank_account, income_category):
+    original = _create_entry(treasurer_client, bank_account, income_category)
+    resp = auditor_client.post(f"/api/v1/ledger/entries/{original['id']}/reverse")
+    assert resp.status_code in (401, 403)
 
 
 # ---------------------------------------------------------------------------

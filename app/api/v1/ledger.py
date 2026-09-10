@@ -1,6 +1,7 @@
 import hashlib
 import json
-from datetime import UTC, datetime
+from dataclasses import asdict
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Optional
@@ -27,9 +28,11 @@ from app.models.ledger import (
 )
 from app.schemas.common import HTTP_400, HTTP_404, HTTP_409, HTTP_502, MessageResponse
 from app.schemas.ledger import (
+    BankAccountBalanceResponse,
     BankAccountCreate,
     BankAccountResponse,
     BankAccountUpdate,
+    CsvPreviewResponse,
     EuerCategoryTotal,
     EuerReportResponse,
     FinTSImportRequest,
@@ -50,7 +53,15 @@ from app.schemas.ledger import (
     PaperlessDocumentResult,
 )
 from app.services import fints_client, paperless
-from app.services.bank_statement import UnsupportedStatementFormat, parse_statement_file
+from app.services.bank_statement import (
+    CsvColumnMapping,
+    UnsupportedStatementFormat,
+    account_identifier_matches,
+    guess_csv_mapping,
+    parse_csv_statement,
+    parse_statement_file,
+    preview_csv,
+)
 from app.web.i18n import get_translator
 
 router = APIRouter()
@@ -62,6 +73,7 @@ def get_config(_viewer: dict = Depends(require_ledger_viewer_user)):
     return LedgerConfigResponse(
         spheres_enabled=settings.LEDGER_SPHERES_ENABLED,
         paperless_enabled=paperless.is_configured(),
+        paperless_url=settings.PAPERLESS_URL if paperless.is_configured() else None,
         fints_enabled=bool(settings.FINTS_PRODUCT_ID),
     )
 
@@ -101,6 +113,66 @@ def create_account(
     db.commit()
     db.refresh(account)
     return account
+
+
+def _computed_balance(db: Session, account: BankAccount, as_of: date) -> Decimal:
+    booked_sum = (
+        db.query(func.coalesce(func.sum(LedgerEntryLine.amount), Decimal("0.00")))
+        .join(LedgerEntry, LedgerEntry.id == LedgerEntryLine.entry_id)
+        .filter(LedgerEntryLine.bank_account_id == account.id, LedgerEntry.entry_date <= as_of)
+        .scalar()
+    )
+    return account.opening_balance + booked_sum
+
+
+@router.get("/accounts/{account_id}/balance", response_model=BankAccountBalanceResponse, responses={**HTTP_404})
+def get_account_balance(
+    account_id: int,
+    as_of: Optional[date] = Query(default=None),
+    _viewer: dict = Depends(require_ledger_viewer_user),
+    db: Session = Depends(get_db),
+):
+    """Computed balance = opening_balance + sum of *booked* ledger lines up to
+    and including `as_of` (default today) — the double-entry ledger's own
+    truth, not derived from any bank statement. `last_statement_*` is the
+    most recent file import's own reported closing balance for this account
+    (None if no import ever carried one); `balance_as_of_last_statement` is
+    the *computed* balance evaluated at that same statement date (not
+    `as_of`, which is usually today) — that's the pair to actually compare
+    for reconciliation, since comparing today's computed balance against a
+    past statement's balance would show a spurious mismatch for every
+    legitimate booking made since. If everything up to the statement date
+    has actually been booked, the two should match — a gap means something's
+    still sitting unbooked in the staging queue, or was booked with a wrong
+    amount/date."""
+    account = db.query(BankAccount).filter(BankAccount.id == account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Bank account not found")
+
+    as_of = as_of or datetime.now(UTC).date()
+
+    last_batch = (
+        db.query(LedgerImportBatch)
+        .filter(
+            LedgerImportBatch.bank_account_id == account_id,
+            LedgerImportBatch.statement_closing_balance.isnot(None),
+        )
+        .order_by(LedgerImportBatch.statement_balance_date.desc(), LedgerImportBatch.id.desc())
+        .first()
+    )
+    balance_as_of_last_statement = (
+        _computed_balance(db, account, last_batch.statement_balance_date)
+        if last_batch and last_batch.statement_balance_date else None
+    )
+
+    return BankAccountBalanceResponse(
+        account_id=account_id,
+        as_of=as_of,
+        computed_balance=_computed_balance(db, account, as_of),
+        last_statement_balance=last_batch.statement_closing_balance if last_batch else None,
+        last_statement_balance_date=last_batch.statement_balance_date if last_batch else None,
+        balance_as_of_last_statement=balance_as_of_last_statement,
+    )
 
 
 @router.put("/accounts/{account_id}", response_model=BankAccountResponse, responses={**HTTP_404})
@@ -159,7 +231,7 @@ def create_category(
     return category
 
 
-@router.put("/categories/{category_id}", response_model=LedgerCategoryResponse, responses={**HTTP_404})
+@router.put("/categories/{category_id}", response_model=LedgerCategoryResponse, responses={**HTTP_400, **HTTP_404, **HTTP_409})
 def update_category(
     category_id: int,
     body: LedgerCategoryUpdate,
@@ -169,6 +241,27 @@ def update_category(
     category = db.query(LedgerCategory).filter(LedgerCategory.id == category_id).first()
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
+
+    reclassifying = body.slug is not None or body.kind is not None or body.sphere is not None
+    if reclassifying:
+        in_use = db.query(LedgerEntryLine).filter(LedgerEntryLine.category_id == category_id).first()
+        if in_use:
+            raise HTTPException(
+                status_code=409,
+                detail="Category already has booked entries — slug/kind/sphere can no longer be changed "
+                       "(would retroactively reclassify past bookings). Deactivate it and create a new one instead.",
+            )
+
+    if body.slug is not None:
+        if db.query(LedgerCategory).filter(LedgerCategory.slug == body.slug, LedgerCategory.id != category_id).first():
+            raise HTTPException(status_code=409, detail="Slug already exists")
+        category.slug = body.slug
+    if body.kind is not None:
+        category.kind = body.kind
+    if body.sphere is not None:
+        if not settings.LEDGER_SPHERES_ENABLED:
+            raise HTTPException(status_code=400, detail="Sphären are disabled (LEDGER_SPHERES_ENABLED=false)")
+        category.sphere = body.sphere
     if body.name is not None:
         category.name = body.name
     if body.active is not None:
@@ -182,14 +275,19 @@ def update_category(
 
 @router.get("/entries", response_model=list[LedgerEntryResponse])
 def list_entries(
+    response: Response,
     year: Optional[int] = Query(default=None),
     bank_account_id: Optional[int] = Query(default=None),
     category_id: Optional[int] = Query(default=None),
+    paperless_document_id: Optional[str] = Query(default=None),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     _viewer: dict = Depends(require_ledger_viewer_user),
     db: Session = Depends(get_db),
 ):
+    """`X-Total-Count` on the response tells the frontend whether more pages
+    exist beyond this `limit`/`offset` window — the list itself stays a bare
+    JSON array (not an envelope) so existing callers are unaffected."""
     q = db.query(LedgerEntry).options(
         joinedload(LedgerEntry.lines).joinedload(LedgerEntryLine.bank_account),
         joinedload(LedgerEntry.lines).joinedload(LedgerEntryLine.category),
@@ -198,15 +296,21 @@ def list_entries(
         q = q.filter(
             LedgerEntry.entry_date >= f"{year}-01-01", LedgerEntry.entry_date <= f"{year}-12-31"
         )
+    if paperless_document_id is not None:
+        # Used by the frontend to warn (not block — partial payments against
+        # the same invoice are a legitimate reason to link it more than once)
+        # when a document is about to be linked a second time.
+        q = q.filter(LedgerEntry.paperless_document_id == paperless_document_id)
     if bank_account_id is not None or category_id is not None:
         q = q.join(LedgerEntryLine)
         if bank_account_id is not None:
             q = q.filter(LedgerEntryLine.bank_account_id == bank_account_id)
         if category_id is not None:
             q = q.filter(LedgerEntryLine.category_id == category_id)
+    q = q.distinct()
+    response.headers["X-Total-Count"] = str(q.count())
     return (
         q.order_by(LedgerEntry.entry_date.desc(), LedgerEntry.id.desc())
-        .distinct()
         .offset(offset)
         .limit(limit)
         .all()
@@ -259,6 +363,60 @@ def create_entry(
     db.commit()
     db.refresh(entry)
     return entry
+
+
+@router.post(
+    "/entries/{entry_id}/reverse", response_model=LedgerEntryResponse, status_code=201,
+    responses={**HTTP_404, **HTTP_409},
+)
+def reverse_entry(
+    entry_id: int,
+    treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    """Undo a booking without editing or deleting anything — entries are
+    immutable (Key Design Decision #18), same audit-trail philosophy as
+    `transactions`. Posts a new entry with every line's amount negated,
+    linked back via `reverses_entry_id`. If the original entry came from
+    booking an import staging line, that line is reopened (status back to
+    `new`, `matched_entry_id` cleared) so it can be re-booked correctly."""
+    original = (
+        db.query(LedgerEntry).options(joinedload(LedgerEntry.lines))
+        .filter(LedgerEntry.id == entry_id).first()
+    )
+    if not original:
+        raise HTTPException(status_code=404, detail="Entry not found")
+
+    already_reversed = db.query(LedgerEntry).filter(LedgerEntry.reverses_entry_id == entry_id).first()
+    if already_reversed:
+        raise HTTPException(status_code=409, detail=f"Already reversed by entry {already_reversed.id}")
+
+    reversal = LedgerEntry(
+        entry_date=datetime.now(UTC).date(),
+        description=f"Storno: {original.description}",
+        reverses_entry_id=original.id,
+        created_by=treasurer.get("sub", "unknown"),
+        created_at=datetime.now(UTC).replace(tzinfo=None),
+    )
+    reversal.lines = [
+        LedgerEntryLine(
+            bank_account_id=line.bank_account_id,
+            category_id=line.category_id,
+            amount=-line.amount,
+            note=line.note,
+        )
+        for line in original.lines
+    ]
+    db.add(reversal)
+
+    import_line = db.query(LedgerImportLine).filter(LedgerImportLine.matched_entry_id == entry_id).first()
+    if import_line:
+        import_line.status = LedgerImportStatus.new
+        import_line.matched_entry_id = None
+
+    db.commit()
+    db.refresh(reversal)
+    return reversal
 
 
 # --- EÜR report ---
@@ -531,7 +689,7 @@ async def import_bank_statement_file(
     except UnsupportedStatementFormat as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
-    if parsed.iban != account.iban:
+    if not account_identifier_matches(parsed.iban, account.iban):
         raise HTTPException(
             status_code=400,
             detail=f"File is for IBAN {parsed.iban}, not the selected account's {account.iban}",
@@ -541,6 +699,102 @@ async def import_bank_statement_file(
         bank_account_id=account.id,
         source=LedgerImportSource.file,
         filename=filename,
+        statement_opening_balance=parsed.opening_balance,
+        statement_closing_balance=parsed.closing_balance,
+        statement_balance_date=parsed.closing_balance_date,
+        imported_by=treasurer.get("sub", "unknown"),
+    )
+    db.add(batch)
+    db.flush()
+    return _store_import_lines(db, batch, account.id, parsed.lines)
+
+
+# --- CSV import (no standard schema across banks — column mapping is user-driven) ---
+
+@router.post("/import/csv/preview", response_model=CsvPreviewResponse, responses={**HTTP_400})
+async def preview_csv_import(
+    request: Request,
+    delimiter: Optional[str] = Query(default=None),
+    _treasurer: dict = Depends(require_treasurer_user),
+):
+    """Step 1: sniff the delimiter (unless given), return the file's own
+    columns, a few sample rows, and a best-effort name-based mapping guess —
+    never applied unseen, just a starting point for the mapping form."""
+    content = await request.body()
+    try:
+        used_delimiter, columns, sample_rows = preview_csv(content, delimiter)
+    except UnsupportedStatementFormat as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return CsvPreviewResponse(
+        delimiter=used_delimiter, columns=columns, sample_rows=sample_rows,
+        guessed_mapping=guess_csv_mapping(columns),
+    )
+
+
+@router.post(
+    "/import/csv", response_model=LedgerImportSummary, status_code=201,
+    responses={**HTTP_400, **HTTP_404},
+)
+async def import_csv_statement(
+    request: Request,
+    bank_account_id: int = Query(...),
+    filename: str = Query(...),
+    delimiter: str = Query(default=";"),
+    decimal_separator: str = Query(default=","),
+    date_format: str = Query(default="%d.%m.%Y"),
+    booking_date_column: str = Query(...),
+    amount_column: str = Query(...),
+    purpose_column: Optional[str] = Query(default=None),
+    counterparty_name_column: Optional[str] = Query(default=None),
+    counterparty_iban_column: Optional[str] = Query(default=None),
+    bank_reference_column: Optional[str] = Query(default=None),
+    own_iban_column: Optional[str] = Query(default=None),
+    balance_after_column: Optional[str] = Query(default=None),
+    treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    """Step 2: import with a confirmed column mapping. Same staging/dedup
+    pipeline as `POST /import/file` (`_store_import_lines`) — only the
+    parsing differs. The mapping is remembered on the account
+    (`BankAccount.csv_mapping`) so the next upload from the same bank starts
+    pre-filled instead of from scratch. The IBAN-match safety check only
+    applies when `own_iban_column` was actually mapped — many CSV exports
+    don't carry the account's own IBAN at all, unlike MT940/CAMT.053 where
+    it's mandatory."""
+    account = db.query(BankAccount).filter(BankAccount.id == bank_account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Bank account not found")
+    if account.is_offline:
+        raise HTTPException(status_code=400, detail="Offline accounts have no bank statement to import")
+    if not account.tracked:
+        raise HTTPException(status_code=400, detail="Account is marked as ignored (tracked=false)")
+
+    mapping = CsvColumnMapping(
+        delimiter=delimiter, decimal_separator=decimal_separator, date_format=date_format,
+        booking_date_column=booking_date_column, amount_column=amount_column,
+        purpose_column=purpose_column, counterparty_name_column=counterparty_name_column,
+        counterparty_iban_column=counterparty_iban_column, bank_reference_column=bank_reference_column,
+        own_iban_column=own_iban_column, balance_after_column=balance_after_column,
+    )
+    content = await request.body()
+    try:
+        parsed = parse_csv_statement(content, mapping)
+    except UnsupportedStatementFormat as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    if parsed.iban and not account_identifier_matches(parsed.iban, account.iban):
+        raise HTTPException(
+            status_code=400,
+            detail=f"File is for IBAN {parsed.iban}, not the selected account's {account.iban}",
+        )
+
+    account.csv_mapping = asdict(mapping)
+    batch = LedgerImportBatch(
+        bank_account_id=account.id,
+        source=LedgerImportSource.file,
+        filename=filename,
+        statement_closing_balance=parsed.closing_balance,
+        statement_balance_date=parsed.closing_balance_date,
         imported_by=treasurer.get("sub", "unknown"),
     )
     db.add(batch)
@@ -550,18 +804,27 @@ async def import_bank_statement_file(
 
 @router.get("/import/lines", response_model=list[LedgerImportLineResponse])
 def list_import_lines(
+    response: Response,
     status: Optional[LedgerImportStatus] = Query(default=LedgerImportStatus.new),
     bank_account_id: Optional[int] = Query(default=None),
     limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
     _viewer: dict = Depends(require_ledger_viewer_user),
     db: Session = Depends(get_db),
 ):
+    """`X-Total-Count` on the response tells the frontend whether more pages
+    exist beyond this `limit`/`offset` window — the list itself stays a bare
+    JSON array (not an envelope) so existing callers are unaffected."""
     q = db.query(LedgerImportLine)
     if status is not None:
         q = q.filter(LedgerImportLine.status == status)
     if bank_account_id is not None:
         q = q.filter(LedgerImportLine.bank_account_id == bank_account_id)
-    return q.order_by(LedgerImportLine.booking_date.desc(), LedgerImportLine.id.desc()).limit(limit).all()
+    response.headers["X-Total-Count"] = str(q.count())
+    return (
+        q.order_by(LedgerImportLine.booking_date.desc(), LedgerImportLine.id.desc())
+        .offset(offset).limit(limit).all()
+    )
 
 
 @router.post(

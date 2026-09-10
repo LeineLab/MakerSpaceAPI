@@ -31,9 +31,38 @@ class BankAccountResponse(BaseModel):
     is_offline: bool
     tracked: bool
     opening_balance: Decimal = Field(examples=[Decimal("0.00")])
+    csv_mapping: Optional[dict] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class BankAccountBalanceResponse(BaseModel):
+    """Computed from the double-entry ledger itself (opening_balance + booked
+    lines up to `as_of`) — independent of what any bank statement claims.
+    `last_statement_*` is the most recent import batch's own reported
+    closing balance for this account (None if no import ever carried one),
+    for the treasurer to eyeball against `computed_balance`."""
+    account_id: int
+    as_of: date
+    computed_balance: Decimal = Field(examples=[Decimal("1234.56")])
+    last_statement_balance: Optional[Decimal] = None
+    last_statement_balance_date: Optional[date] = None
+    # The *computed* balance evaluated at last_statement_balance_date (not at
+    # `as_of`) — the actually-comparable figure for reconciliation. None
+    # whenever last_statement_balance_date is None.
+    balance_as_of_last_statement: Optional[Decimal] = None
+
+
+class CsvPreviewResponse(BaseModel):
+    """Step 1 of the CSV import flow: shows the file's own columns and a few
+    sample rows, plus a best-effort name-based mapping guess — the frontend
+    pre-fills the mapping form from `guessed_mapping` but always shows the
+    sample rows so the treasurer confirms it before importing anything."""
+    delimiter: str
+    columns: list[str]
+    sample_rows: list[list[str]]
+    guessed_mapping: dict[str, Optional[str]]
 
 
 class LedgerCategoryCreate(BaseModel):
@@ -46,7 +75,15 @@ class LedgerCategoryCreate(BaseModel):
 
 
 class LedgerCategoryUpdate(BaseModel):
+    """`slug`/`kind`/`sphere` reclassify the category and are only accepted
+    while it isn't referenced by any booked line yet (checked in the
+    endpoint) — changing them after the fact would retroactively reclassify
+    already-booked history in the EÜR report. `name`/`active` have no such
+    restriction; they're just a display label and a retire switch."""
     name: Optional[str] = None
+    slug: Optional[str] = None
+    kind: Optional[LedgerCategoryKind] = None
+    sphere: Optional[LedgerSphere] = None
     active: Optional[bool] = None
 
 
@@ -65,6 +102,7 @@ class LedgerConfigResponse(BaseModel):
     """Frontend-facing feature flags for the ledger module."""
     spheres_enabled: bool
     paperless_enabled: bool
+    paperless_url: Optional[str] = None
     fints_enabled: bool
 
 
@@ -101,6 +139,7 @@ class LedgerEntryResponse(BaseModel):
     entry_date: date
     description: str
     paperless_document_id: Optional[str]
+    reverses_entry_id: Optional[int]
     created_by: str
     created_at: datetime
     lines: list[LedgerEntryLineResponse]

@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     Date,
@@ -71,6 +72,11 @@ class BankAccount(Base):
     opening_balance: Mapped[Decimal] = mapped_column(
         Numeric(10, 2), nullable=False, default=Decimal("0.00")
     )
+    # Remembered CSV column mapping (app.services.bank_statement.CsvColumnMapping,
+    # as a dict) from this account's last successful CSV import — banks have no
+    # standard CSV schema, so the treasurer maps columns once and it's reused
+    # (still editable) on the next upload instead of starting from scratch.
+    csv_mapping: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
 
 
@@ -111,6 +117,14 @@ class LedgerEntry(Base):
     entry_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     description: Mapped[str] = mapped_column(String(255), nullable=False)
     paperless_document_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    # Set on a reversal entry (created by POST /ledger/entries/{id}/reverse) to
+    # the original entry it cancels out — entries are otherwise immutable, so
+    # "undoing" a booking means posting an offsetting entry, not editing/
+    # deleting anything. RESTRICT: a reversed entry can never itself be
+    # deleted (it never can be, there's no delete endpoint — belt and braces).
+    reverses_entry_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("ledger_entries.id", ondelete="RESTRICT"), nullable=True
+    )
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
 
@@ -156,6 +170,13 @@ class LedgerImportBatch(Base):
     )
     source: Mapped[LedgerImportSource] = mapped_column(Enum(LedgerImportSource), nullable=False)
     filename: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # The bank's own reported balances, when the statement carries them (MT940
+    # :60F:/:62F:, CAMT.053 <Bal> OPBD/CLBD) — for manual reconciliation via
+    # GET /ledger/accounts/{id}/balance, not compared automatically here (the
+    # lines from this very batch aren't booked yet at import time).
+    statement_opening_balance: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
+    statement_closing_balance: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
+    statement_balance_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     imported_by: Mapped[str] = mapped_column(String(255), nullable=False)
     imported_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
 
