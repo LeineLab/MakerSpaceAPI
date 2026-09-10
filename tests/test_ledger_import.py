@@ -2,6 +2,7 @@ from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
+import httpx
 import pytest
 
 from app.models.ledger import BankAccount, LedgerCategory, LedgerCategoryKind, LedgerSphere
@@ -285,8 +286,10 @@ def test_paperless_search_when_configured(auditor_client, monkeypatch):
     assert auditor_client.get("/api/v1/ledger/config").json()["paperless_enabled"] is True
 
     fake_response = {"results": [{"id": 42, "title": "Rechnung Baumarkt", "created": "2026-03-01"}]}
-    with patch("app.services.paperless.urllib.request.urlopen") as mock_urlopen:
-        mock_urlopen.return_value.__enter__.return_value.read.return_value = __import__("json").dumps(fake_response).encode()
+    with patch("app.services.paperless.httpx.get") as mock_get:
+        mock_get.return_value = httpx.Response(
+            200, json=fake_response, request=httpx.Request("GET", "https://paperless.example.com/api/documents/"),
+        )
         resp = auditor_client.get("/api/v1/ledger/paperless/search?q=baumarkt")
 
     assert resp.status_code == 200
@@ -299,7 +302,7 @@ def test_paperless_search_unreachable_returns_empty(auditor_client, monkeypatch)
     monkeypatch.setattr(settings, "PAPERLESS_URL", "https://paperless.example.com")
     monkeypatch.setattr(settings, "PAPERLESS_API_TOKEN", "test-token")
 
-    with patch("app.services.paperless.urllib.request.urlopen", side_effect=OSError("unreachable")):
+    with patch("app.services.paperless.httpx.get", side_effect=httpx.ConnectError("unreachable")):
         resp = auditor_client.get("/api/v1/ledger/paperless/search?q=baumarkt")
 
     assert resp.status_code == 200

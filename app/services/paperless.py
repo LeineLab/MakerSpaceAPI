@@ -1,13 +1,12 @@
 """Thin read-only client for Paperless-ngx document search.
 
-Standard-library only (no httpx/requests) — this is a single authenticated
-GET request, not worth a dependency for. Paperless-ngx stays the sole place
-documents are stored/managed; we only ever reference a document id.
+Uses httpx — already a hard transitive dependency of
+authlib.integrations.starlette_client (OIDC), so there's no dependency cost
+to using it here too instead of maintaining a second, stdlib-based HTTP call
+pattern. Paperless-ngx stays the sole place documents are stored/managed; we
+only ever reference a document id.
 """
-import json
-import urllib.error
-import urllib.parse
-import urllib.request
+import httpx
 
 from app.config import settings
 
@@ -27,21 +26,20 @@ def search_documents(query: str, limit: int = 10) -> list[dict]:
     if not is_configured():
         return []
 
-    url = settings.PAPERLESS_URL.rstrip("/") + "/api/documents/?" + urllib.parse.urlencode({
-        "query": query,
-        "page_size": limit,
-    })
-    request = urllib.request.Request(
-        url,
-        headers={
-            "Authorization": f"Token {settings.PAPERLESS_API_TOKEN}",
-            "Accept": "application/json",
-        },
-    )
+    url = settings.PAPERLESS_URL.rstrip("/") + "/api/documents/"
     try:
-        with urllib.request.urlopen(request, timeout=_TIMEOUT_SECONDS) as response:
-            data = json.loads(response.read())
-    except (OSError, ValueError):
+        response = httpx.get(
+            url,
+            params={"query": query, "page_size": limit},
+            headers={
+                "Authorization": f"Token {settings.PAPERLESS_API_TOKEN}",
+                "Accept": "application/json",
+            },
+            timeout=_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        data = response.json()
+    except (httpx.HTTPError, ValueError):
         return []
 
     return [
