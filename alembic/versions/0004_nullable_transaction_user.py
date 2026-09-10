@@ -13,19 +13,28 @@ branch_labels = None
 depends_on = None
 
 
+def _set_nullable(nullable: bool) -> None:
+    # SQLite doesn't support ALTER TABLE ... ALTER COLUMN outside of batch
+    # mode (copy-and-swap); MariaDB/MySQL handles a plain alter_column directly.
+    if op.get_bind().dialect.name == "sqlite":
+        with op.batch_alter_table("transactions") as batch_op:
+            batch_op.alter_column(
+                "user_id",
+                existing_type=sa.BigInteger(),
+                nullable=nullable,
+            )
+    else:
+        op.alter_column(
+            "transactions",
+            "user_id",
+            existing_type=sa.BigInteger(),
+            nullable=nullable,
+        )
+
+
 def upgrade() -> None:
-    op.alter_column(
-        "transactions",
-        "user_id",
-        existing_type=sa.BigInteger(),
-        nullable=True,
-    )
+    _set_nullable(True)
 
 
 def downgrade() -> None:
-    op.alter_column(
-        "transactions",
-        "user_id",
-        existing_type=sa.BigInteger(),
-        nullable=False,
-    )
+    _set_nullable(False)

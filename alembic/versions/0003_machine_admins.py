@@ -13,23 +13,32 @@ branch_labels = None
 depends_on = None
 
 
+def _rename_column(old_name: str, new_name: str) -> None:
+    # SQLite doesn't support ALTER TABLE ... ALTER COLUMN outside of batch
+    # mode (copy-and-swap); MariaDB/MySQL handles a plain alter_column directly.
+    if op.get_bind().dialect.name == "sqlite":
+        with op.batch_alter_table("machine_admins") as batch_op:
+            batch_op.alter_column(
+                old_name,
+                new_column_name=new_name,
+                existing_type=sa.String(255),
+                nullable=False,
+            )
+    else:
+        op.alter_column(
+            "machine_admins",
+            old_name,
+            new_column_name=new_name,
+            existing_type=sa.String(255),
+            nullable=False,
+        )
+
+
 def upgrade() -> None:
     op.rename_table("machine_admin_groups", "machine_admins")
-    op.alter_column(
-        "machine_admins",
-        "oidc_group",
-        new_column_name="oidc_sub",
-        existing_type=sa.String(255),
-        nullable=False,
-    )
+    _rename_column("oidc_group", "oidc_sub")
 
 
 def downgrade() -> None:
-    op.alter_column(
-        "machine_admins",
-        "oidc_sub",
-        new_column_name="oidc_group",
-        existing_type=sa.String(255),
-        nullable=False,
-    )
+    _rename_column("oidc_sub", "oidc_group")
     op.rename_table("machine_admins", "machine_admin_groups")
