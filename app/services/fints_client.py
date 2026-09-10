@@ -6,8 +6,19 @@ to the frontend between requests.
 
 python-fints's own serialization primitives are explicitly designed for this
 stateless-across-requests use case:
-- `client.deconstruct()` -> bytes (no PIN, no bound closures; restore via
-  `FinTS3PinTanClient(..., from_data=blob)`)
+- `client.deconstruct(including_private=True)` -> bytes (no PIN, no bound
+  closures; restore via `FinTS3PinTanClient(..., from_data=blob)`).
+  `including_private` MUST be True here: with the default False, the blob
+  drops UPD (user parameter data, incl. the security function/TAN mechanism
+  negotiated during the dialog that produced it), and a client rebuilt from
+  that stripped blob fails its very next dialog with a misleading
+  `FinTSClientPINError("...PIN wrong?")` — confirmed against a real bank
+  (scripts/debug_fints.py --reconstruct=public reproduces it standalone,
+  --reconstruct=private doesn't). `including_private` only affects what's
+  IN the blob (account numbers/names, per the library's own docstring), not
+  whether the PIN is included — the PIN is never serialized either way. This
+  is a real footgun in the upstream API: the "public" default looks like the
+  privacy-safe choice but silently breaks the very next request.
 - `NeedTANResponse.get_data()` -> bytes, restored via `NeedRetryResponse.from_data()`
   and completed with `client.send_tan(response, tan)`
 
@@ -18,11 +29,21 @@ challenges (pushTAN-style app confirmation) are resolved by resubmitting with
 an empty TAN until the bank reports it's been confirmed — that's what
 `poll_decoupled()` does.
 
-None of this has been exercised against a real bank (no test access available)
-— see tests/test_ledger_fints.py, which mocks FinTS3PinTanClient instead. The
-control flow here follows the library's documented/source-level behavior as
-closely as possible, but treat the very first real-bank run as the actual
-verification of this module.
+Verified against a real bank (2026-09-10): account listing, a short-range
+transaction fetch, and a >90-day transaction fetch crossing the PSD2 SCA
+exemption window all work end-to-end through the full session/deconstruct/
+rebuild cycle. The SCA case does surface as a proper `decoupled=True`
+`NeedTANResponse` ("Bitte bestätigen Sie den Vorgang in Ihrer SecureGo plus
+App"), not as an exception — an earlier note here speculated python-fints
+would raise a plain, unresumable error for this case instead; that turned out
+to be wrong for the bank/scenario actually tested, so `poll_decoupled()` /
+`POST /ledger/fints/poll` is the normal, working path for it, same as any
+other decoupled challenge. (The genuinely-broken case, a `FinTSClientPINError`
+masking a real bank rejection, is still possible in principle per
+`_process_response`'s code-ordering in the fints package — just not what this
+bank does for an SCA-required request.)
+See tests/test_ledger_fints.py, which mocks FinTS3PinTanClient — that suite
+covers the session/TAN bookkeeping logic, not the real protocol exchange.
 """
 import secrets
 from dataclasses import dataclass, field
@@ -118,7 +139,7 @@ def _settle(session_id: str, client, bank_identifier: str, server: str, login: s
 
     if isinstance(response, NeedTANResponse):
         session = _Session(
-            client_blob=client.deconstruct(),
+            client_blob=client.deconstruct(including_private=True),
             bank_identifier=bank_identifier, server=server, login=login, pin=pin,
             pending_response_blob=response.get_data(), pending_action=action,
         )
@@ -137,7 +158,7 @@ def _settle(session_id: str, client, bank_identifier: str, server: str, login: s
     if action == "accounts":
         accounts = [_account_to_dict(a) for a in response]
         _sessions[session_id] = _Session(
-            client_blob=client.deconstruct(),
+            client_blob=client.deconstruct(including_private=True),
             bank_identifier=bank_identifier, server=server, login=login, pin=pin,
             accounts=accounts,
         )
@@ -149,7 +170,7 @@ def _settle(session_id: str, client, bank_identifier: str, server: str, login: s
     # defeat the point of listing them together in step 1.
     existing = _sessions.get(session_id)
     _sessions[session_id] = _Session(
-        client_blob=client.deconstruct(),
+        client_blob=client.deconstruct(including_private=True),
         bank_identifier=bank_identifier, server=server, login=login, pin=pin,
         accounts=existing.accounts if existing else None,
     )

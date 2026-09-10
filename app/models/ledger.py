@@ -74,6 +74,22 @@ class BankAccount(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
 
 
+class FintsBankPreset(Base):
+    """Non-secret FinTS connection presets a treasurer can save for reuse:
+    server URL + Bankleitzahl + a display name. Login and PIN are never
+    stored anywhere (typed fresh on every /fints/start call, held only in
+    the in-memory session — see app/services/fints_client.py); this table
+    only saves the two fields that rarely change and are tedious to look up
+    each time."""
+    __tablename__ = "fints_bank_presets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    server: Mapped[str] = mapped_column(String(255), nullable=False)
+    bank_identifier: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
+
+
 class LedgerCategory(Base):
     __tablename__ = "ledger_categories"
 

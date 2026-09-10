@@ -173,6 +173,23 @@ class PaperlessDocumentResult(BaseModel):
     created: Optional[str] = None
 
 
+# --- FinTS bank presets: server/BLZ/name only, saved for reuse — never credentials ---
+
+class FintsBankPresetCreate(BaseModel):
+    name: str = Field(examples=["Beispielbank"])
+    server: str = Field(examples=["https://banking-fints.example.com/fints30"])
+    bank_identifier: str = Field(examples=["12030000"])
+
+
+class FintsBankPresetResponse(BaseModel):
+    id: int
+    name: str
+    server: str
+    bank_identifier: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 # --- FinTS live-pull (Phase 3) — nothing here is ever persisted ---
 
 class FinTSStartRequest(BaseModel):

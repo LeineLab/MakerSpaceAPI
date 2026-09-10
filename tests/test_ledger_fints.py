@@ -139,7 +139,12 @@ class _FakeClient:
     def __exit__(self, *exc):
         return False
 
-    def deconstruct(self):
+    def deconstruct(self, including_private=False):
+        # Regression guard: including_private=False drops UPD (user parameter
+        # data incl. the negotiated TAN mechanism) from the blob, which broke
+        # a rebuilt client's very next dialog with a misleading "PIN wrong?"
+        # error — confirmed against a real bank. See fints_client.py.
+        assert including_private is True
         return b"client-blob"
 
     def get_sepa_accounts(self):
@@ -492,3 +497,45 @@ def test_ledger_config_reports_fints_enabled(auditor_client, monkeypatch):
     monkeypatch.setattr(settings, "FINTS_PRODUCT_ID", "test-product-id")
     resp = auditor_client.get("/api/v1/ledger/config")
     assert resp.json()["fints_enabled"] is True
+
+
+# ---------------------------------------------------------------------------
+# FinTS bank presets (server/BLZ/name only — never login/PIN)
+# ---------------------------------------------------------------------------
+
+def test_create_and_list_fints_preset(treasurer_client):
+    resp = treasurer_client.post("/api/v1/ledger/fints/presets", json={
+        "name": "Beispielbank", "server": "https://banking-fints.example.com/fints30",
+        "bank_identifier": "12030000",
+    })
+    assert resp.status_code == 201
+    preset = resp.json()
+    assert preset["name"] == "Beispielbank"
+    assert "login" not in preset and "pin" not in preset
+
+    listed = treasurer_client.get("/api/v1/ledger/fints/presets").json()
+    assert listed == [preset]
+
+
+def test_auditor_can_list_but_not_create_fints_preset(auditor_client):
+    assert auditor_client.get("/api/v1/ledger/fints/presets").status_code == 200
+
+    resp = auditor_client.post("/api/v1/ledger/fints/presets", json={
+        "name": "Beispielbank", "server": "https://bank.example/fints", "bank_identifier": "12030000",
+    })
+    assert resp.status_code in (401, 403)
+
+
+def test_delete_fints_preset(treasurer_client):
+    created = treasurer_client.post("/api/v1/ledger/fints/presets", json={
+        "name": "Beispielbank", "server": "https://bank.example/fints", "bank_identifier": "12030000",
+    }).json()
+
+    resp = treasurer_client.delete(f"/api/v1/ledger/fints/presets/{created['id']}")
+    assert resp.status_code == 204
+    assert treasurer_client.get("/api/v1/ledger/fints/presets").json() == []
+
+
+def test_delete_unknown_fints_preset_404(treasurer_client):
+    resp = treasurer_client.delete("/api/v1/ledger/fints/presets/999")
+    assert resp.status_code == 404

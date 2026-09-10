@@ -15,6 +15,7 @@ from app.config import settings
 from app.database import get_db
 from app.models.ledger import (
     BankAccount,
+    FintsBankPreset,
     LedgerCategory,
     LedgerCategoryKind,
     LedgerEntry,
@@ -35,6 +36,8 @@ from app.schemas.ledger import (
     FinTSPollRequest,
     FinTSStartRequest,
     FinTSTanRequest,
+    FintsBankPresetCreate,
+    FintsBankPresetResponse,
     LedgerCategoryCreate,
     LedgerCategoryResponse,
     LedgerCategoryUpdate,
@@ -640,6 +643,42 @@ def search_paperless(
     _viewer: dict = Depends(require_ledger_viewer_user),
 ):
     return paperless.search_documents(q)
+
+
+# --- FinTS bank presets (server/BLZ/name only — never login/PIN) ---
+
+@router.get("/fints/presets", response_model=list[FintsBankPresetResponse])
+def list_fints_presets(
+    _viewer: dict = Depends(require_ledger_viewer_user),
+    db: Session = Depends(get_db),
+):
+    return db.query(FintsBankPreset).order_by(FintsBankPreset.name).all()
+
+
+@router.post("/fints/presets", response_model=FintsBankPresetResponse, status_code=201)
+def create_fints_preset(
+    body: FintsBankPresetCreate,
+    _treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    preset = FintsBankPreset(name=body.name, server=body.server, bank_identifier=body.bank_identifier)
+    db.add(preset)
+    db.commit()
+    db.refresh(preset)
+    return preset
+
+
+@router.delete("/fints/presets/{preset_id}", status_code=204, responses={**HTTP_404})
+def delete_fints_preset(
+    preset_id: int,
+    _treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    preset = db.query(FintsBankPreset).filter(FintsBankPreset.id == preset_id).first()
+    if not preset:
+        raise HTTPException(status_code=404, detail="Preset not found")
+    db.delete(preset)
+    db.commit()
 
 
 # --- FinTS live-pull (Phase 3): manual only, nothing persisted between requests ---

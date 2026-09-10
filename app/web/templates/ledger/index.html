@@ -332,33 +332,64 @@
 
         <!-- Step 1: connection form -->
         <template x-if="!fintsSessionId">
-          <form @submit.prevent="fintsStart()" class="flex flex-wrap gap-3 items-end">
-            <div>
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.fints_label_server') }}</label>
-              <input type="text" x-model="fintsForm.server" required placeholder="{{ _('ledger.fints_placeholder_server') }}"
-                     class="border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <div>
+            <!-- Saved presets: server + BLZ only, never login/PIN -->
+            <div x-show="fintsPresets.length" class="flex flex-wrap items-center gap-2 mb-3">
+              <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ _('ledger.fints_label_preset') }}</label>
+              <select x-model="fintsPresetId" @change="applyFintsPreset()"
+                      class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                <option value="">{{ _('ledger.fints_preset_none') }}</option>
+                <template x-for="p in fintsPresets" :key="p.id">
+                  <option :value="p.id" x-text="p.name"></option>
+                </template>
+              </select>
+              <template x-for="p in fintsPresets" :key="'chip-' + p.id">
+                <button type="button" x-show="String(p.id) === fintsPresetId" @click="deleteFintsPreset(p)"
+                        class="text-xs text-red-600 dark:text-red-400 hover:underline" x-text="FINTS_PRESET_DELETE_L"></button>
+              </template>
             </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.fints_label_blz') }}</label>
-              <input type="text" x-model="fintsForm.bank_identifier" required
-                     class="w-28 border dark:border-gray-700 rounded px-3 py-2 text-sm font-mono bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+
+            <form @submit.prevent="fintsStart()" class="flex flex-wrap gap-3 items-end">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.fints_label_server') }}</label>
+                <input type="text" x-model="fintsForm.server" required placeholder="{{ _('ledger.fints_placeholder_server') }}"
+                       class="border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.fints_label_blz') }}</label>
+                <input type="text" x-model="fintsForm.bank_identifier" required
+                       class="w-28 border dark:border-gray-700 rounded px-3 py-2 text-sm font-mono bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.fints_label_login') }}</label>
+                <input type="text" x-model="fintsForm.login" required
+                       class="border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.fints_label_pin') }}</label>
+                <input type="password" x-model="fintsForm.pin" required
+                       class="border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+              </div>
+              <button type="submit" :disabled="fintsBusy"
+                      class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50">
+                <span x-show="!fintsBusy">{{ _('ledger.fints_btn_connect') }}</span>
+                <span x-show="fintsBusy">…</span>
+              </button>
+            </form>
+
+            <!-- Save current server+BLZ as a new preset -->
+            <div x-show="fintsForm.server && fintsForm.bank_identifier" class="flex flex-wrap items-end gap-2 mt-3">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.fints_label_preset_name') }}</label>
+                <input type="text" x-model="fintsPresetName" placeholder="{{ _('ledger.fints_placeholder_preset_name') }}"
+                       class="border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+              </div>
+              <button type="button" @click="saveFintsPreset()" :disabled="!fintsPresetName"
+                      class="border dark:border-gray-700 text-sm px-3 py-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50">
+                {{ _('ledger.fints_btn_save_preset') }}
+              </button>
             </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.fints_label_login') }}</label>
-              <input type="text" x-model="fintsForm.login" required
-                     class="border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.fints_label_pin') }}</label>
-              <input type="password" x-model="fintsForm.pin" required
-                     class="border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
-            </div>
-            <button type="submit" :disabled="fintsBusy"
-                    class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50">
-              <span x-show="!fintsBusy">{{ _('ledger.fints_btn_connect') }}</span>
-              <span x-show="fintsBusy">…</span>
-            </button>
-          </form>
+          </div>
         </template>
 
         <!-- Step 2a: typed TAN -->
@@ -775,6 +806,7 @@ const IMPORT_STATUS_L = {
 };
 const IMPORT_SUMMARY_TMPL = {{ _('ledger.import_summary') | tojson }};
 const FINTS_DECOUPLED_HINT = {{ _('ledger.fints_decoupled_hint') | tojson }};
+const FINTS_PRESET_DELETE_L = {{ _('ledger.fints_preset_delete') | tojson }};
 
 function ledgerApp(userIsTreasurer) {
   return {
@@ -834,6 +866,9 @@ function ledgerApp(userIsTreasurer) {
     paperlessResults: [],
 
     fintsForm: { server: '', bank_identifier: '', login: '', pin: '' },
+    fintsPresets: [],
+    fintsPresetId: '',
+    fintsPresetName: '',
     fintsSessionId: null,
     fintsStatus: null,  // 'tan_required' | 'decoupled' | 'accounts'
     fintsChallenge: null,
@@ -877,7 +912,10 @@ function ledgerApp(userIsTreasurer) {
     switchTab(tab) {
       this.activeTab = tab;
       if (tab === 'report' && !this.report) this.loadReport();
-      if (tab === 'import') this.loadImportLines();
+      if (tab === 'import') {
+        this.loadImportLines();
+        if (this.config.fints_enabled) this.loadFintsPresets();
+      }
     },
 
     get importSummaryText() {
@@ -1466,6 +1504,64 @@ function ledgerApp(userIsTreasurer) {
       this.fintsAccounts = [];
       this.fintsError = null;
       this.fintsForm = { server: '', bank_identifier: '', login: '', pin: '' };
+      this.fintsPresetId = '';
+    },
+
+    async loadFintsPresets() {
+      try {
+        const r = await apiFetch('/api/v1/ledger/fints/presets');
+        if (r.ok) this.fintsPresets = await r.json();
+      } catch (e) {
+        // non-critical — the connection form still works without presets
+      }
+    },
+
+    applyFintsPreset() {
+      const preset = this.fintsPresets.find(p => p.id === Number(this.fintsPresetId));
+      if (!preset) return;
+      this.fintsForm.server = preset.server;
+      this.fintsForm.bank_identifier = preset.bank_identifier;
+    },
+
+    async saveFintsPreset() {
+      if (!this.fintsPresetName || !this.fintsForm.server || !this.fintsForm.bank_identifier) return;
+      this.fintsError = null;
+      try {
+        const r = await apiFetch('/api/v1/ledger/fints/presets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: this.fintsPresetName,
+            server: this.fintsForm.server,
+            bank_identifier: this.fintsForm.bank_identifier,
+          }),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          this.fintsError = data.detail || 'Error saving preset';
+          return;
+        }
+        this.fintsPresetName = '';
+        await this.loadFintsPresets();
+        this.fintsPresetId = String(data.id);
+      } catch (e) {
+        if (e !== 'unauthenticated') this.fintsError = e.message || String(e);
+      }
+    },
+
+    async deleteFintsPreset(preset) {
+      try {
+        const r = await apiFetch(`/api/v1/ledger/fints/presets/${preset.id}`, { method: 'DELETE' });
+        if (!r.ok && r.status !== 404) {
+          const data = await r.json();
+          this.fintsError = data.detail || 'Error deleting preset';
+          return;
+        }
+        if (this.fintsPresetId === String(preset.id)) this.fintsPresetId = '';
+        await this.loadFintsPresets();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.fintsError = e.message || String(e);
+      }
     },
   };
 }
