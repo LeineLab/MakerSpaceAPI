@@ -77,6 +77,11 @@ class BankAccount(Base):
     # standard CSV schema, so the treasurer maps columns once and it's reused
     # (still editable) on the next upload instead of starting from scratch.
     csv_mapping: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # The one shared "Kassenbestand" clearing account used as the technical
+    # counter-leg when booking a Kassen payout (see Key Design Decision #34)
+    # — at most one account has this set at a time (enforced in the API
+    # layer, not the DB: setting it on one account clears it on every other).
+    is_cash_clearing_account: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
 
 
@@ -124,6 +129,12 @@ class LedgerEntry(Base):
     # deleted (it never can be, there's no delete endpoint — belt and braces).
     reverses_entry_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("ledger_entries.id", ondelete="RESTRICT"), nullable=True
+    )
+    # Set when this entry books a Kassen (NFC booking_target) payout —
+    # references transactions.id (type=booking_target_payout), UNIQUE so the
+    # same payout can never be booked twice. See Key Design Decision #34.
+    booking_target_payout_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("transactions.id", ondelete="SET NULL"), nullable=True, unique=True
     )
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))

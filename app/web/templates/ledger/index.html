@@ -32,6 +32,11 @@
             :class="activeTab === 'import' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
       {{ _('ledger.tab_import') }}
     </button>
+    <button @click="switchTab('targets')"
+            class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
+            :class="activeTab === 'targets' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+      {{ _('ledger.tab_targets') }}
+    </button>
   </div>
 
   <!-- ================= Entries ================= -->
@@ -151,6 +156,7 @@
               <th class="px-4 py-3 text-right">{{ _('ledger.col_opening_balance') }}</th>
               <th class="px-4 py-3 text-right">{{ _('ledger.col_current_balance') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_tracked') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_cash_clearing') }}</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -178,6 +184,16 @@
                            @change="toggleTracked(a)"
                            class="rounded border-gray-300 dark:border-gray-600">
                     <span class="text-xs text-gray-500 dark:text-gray-400" x-text="a.tracked ? YES_NO_L.yes : YES_NO_L.no"></span>
+                  </label>
+                </td>
+                <td class="px-4 py-3">
+                  <!-- Radio, not checkbox — only one account can be the shared
+                       Kassenbestand clearing account at a time (see #34). -->
+                  <label class="inline-flex items-center gap-2" :class="userIsTreasurer ? 'cursor-pointer' : 'opacity-60'"
+                         :title="CASH_CLEARING_HINT_L">
+                    <input type="radio" name="cash_clearing_account" :checked="a.is_cash_clearing_account" :disabled="!userIsTreasurer"
+                           @change="setCashClearingAccount(a)"
+                           class="border-gray-300 dark:border-gray-600">
                   </label>
                 </td>
               </tr>
@@ -661,9 +677,175 @@
     </div>
   </div>
 
+  <!-- ================= Kassen (Kassen -> Ledger bridge) ================= -->
+  <div x-show="activeTab === 'targets'">
+    <h2 class="text-xl font-semibold mb-1">{{ _('ledger.targets_title') }}</h2>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">{{ _('ledger.targets_hint') }}</p>
+
+    <div x-show="targetsError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="targetsError"></div>
+
+    <template x-if="loadingTargets">
+      <div class="text-gray-400 dark:text-gray-500 text-sm">Loading…</div>
+    </template>
+    <template x-if="!loadingTargets && targets.length === 0">
+      <p class="text-gray-400 dark:text-gray-500">{{ _('ledger.targets_empty') }}</p>
+    </template>
+    <template x-if="!loadingTargets && targets.length > 0">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden mb-8">
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
+            <tr>
+              <th class="px-4 py-3 text-left">{{ _('common.name') }}</th>
+              <th class="px-4 py-3 text-right">{{ _('ledger.col_balance') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_default_category') }}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+            <template x-for="t in targets" :key="t.id">
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                <td class="px-4 py-3 font-medium" x-text="t.name"></td>
+                <td class="px-4 py-3 text-right font-mono" x-text="fmt(t.balance)"></td>
+                <td class="px-4 py-3">
+                  <!-- :selected on each <option>, not :value on the <select> — the
+                       select's own :value binding would be evaluated (and its DOM
+                       .value set) before the nested x-for below has created any
+                       <option> elements to match against, so a pre-existing
+                       (non-empty) mapping would silently fail to show as selected. -->
+                  <select @change="updateTargetMapping(t, $event.target.value)"
+                          :disabled="!userIsTreasurer"
+                          class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800 disabled:opacity-60">
+                    <option value="" :selected="!t.default_category_id">{{ _('ledger.select_category_none') }}</option>
+                    <template x-for="c in activeCategories" :key="c.id">
+                      <option :value="c.id" :selected="c.id === t.default_category_id" x-text="c.name"></option>
+                    </template>
+                  </select>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </template>
+
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+      <h2 class="text-xl font-semibold">{{ _('ledger.target_payouts_title') }}</h2>
+      <div class="flex gap-1">
+        <template x-for="f in ['open', 'booked', 'all']" :key="f">
+          <button @click="targetPayoutsFilter = f; loadTargetPayouts()"
+                  class="px-3 py-1.5 rounded text-sm"
+                  :class="targetPayoutsFilter === f ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'"
+                  x-text="TARGET_PAYOUT_FILTER_L[f]"></button>
+        </template>
+      </div>
+    </div>
+
+    <div x-show="targetPayoutsError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="targetPayoutsError"></div>
+
+    <template x-if="loadingTargetPayouts">
+      <div class="text-gray-400 dark:text-gray-500 text-sm">Loading…</div>
+    </template>
+    <template x-if="!loadingTargetPayouts && targetPayouts.length === 0">
+      <p class="text-gray-400 dark:text-gray-500">{{ _('ledger.target_payouts_empty') }}</p>
+    </template>
+    <template x-if="!loadingTargetPayouts && targetPayouts.length > 0">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
+            <tr>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_date') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_target') }}</th>
+              <th class="px-4 py-3 text-right">{{ _('ledger.label_amount') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_note') }}</th>
+              <th class="px-4 py-3 text-left" x-show="userIsTreasurer">{{ _('ledger.col_actions') }}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+            <template x-for="p in targetPayouts" :key="p.transaction_id">
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                <td class="px-4 py-3 whitespace-nowrap" x-text="p.created_at.slice(0, 10)"></td>
+                <td class="px-4 py-3" x-text="p.target_name"></td>
+                <td class="px-4 py-3 text-right font-mono" x-text="fmt(p.amount)"></td>
+                <td class="px-4 py-3 text-xs" x-text="p.note || '—'"></td>
+                <td class="px-4 py-3" x-show="userIsTreasurer">
+                  <button x-show="!p.booked" @click="openTargetPayoutModal(p)" class="text-blue-600 dark:text-blue-400 hover:underline text-xs">
+                    {{ _('ledger.btn_book') }}
+                  </button>
+                  <span x-show="p.booked" class="px-2 py-0.5 rounded text-xs font-medium bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
+                        x-text="TARGET_PAYOUT_BOOKED_TMPL.replace('{id}', p.ledger_entry_id)"></span>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- ============ Book Target Payout Modal ============ -->
+  <div x-show="showTargetPayoutModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+       @mousedown.self="modalMousedownOutside = true">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6"
+         @mousedown="modalMousedownOutside = false" @click.outside="if (modalMousedownOutside) showTargetPayoutModal = false">
+      <h2 class="text-lg font-bold mb-4">{{ _('ledger.target_payout_modal_title') }}</h2>
+
+      <div x-show="targetPayoutBookError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="targetPayoutBookError"></div>
+
+      <template x-if="bookingTargetPayout">
+        <div class="mb-4 text-sm text-gray-600 dark:text-gray-300">
+          <span x-text="bookingTargetPayout.target_name"></span> —
+          <span class="font-mono font-semibold" x-text="fmt(bookingTargetPayout.amount)"></span>
+        </div>
+      </template>
+
+      <template x-if="!cashClearingAccountConfigured">
+        <p class="mb-3 text-xs text-amber-600 dark:text-amber-400">{{ _('ledger.target_payout_no_clearing_account_hint') }}</p>
+      </template>
+
+      <div class="mb-3">
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.target_payout_label_bank_account') }}</label>
+        <select x-model.number="targetPayoutForm.bank_account_id"
+                class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800">
+          <option value="">{{ _('ledger.import_select_account') }}</option>
+          <template x-for="a in payoutDestinationAccounts" :key="a.id">
+            <option :value="a.id" x-text="a.name"></option>
+          </template>
+        </select>
+      </div>
+
+      <div class="mb-3">
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.target_payout_label_date') }}</label>
+        <input type="date" x-model="targetPayoutForm.entry_date"
+               class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800">
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_description') }}</label>
+        <input type="text" x-model="targetPayoutForm.description"
+               class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800">
+      </div>
+
+      <div class="flex justify-end gap-2">
+        <button type="button" @click="showTargetPayoutModal = false" class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">
+          {{ _('common.cancel') }}
+        </button>
+        <button @click="submitTargetPayoutBook()" :disabled="!targetPayoutForm.bank_account_id || !cashClearingAccountConfigured || targetPayoutBookSubmitting"
+                class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50">
+          <span x-show="!targetPayoutBookSubmitting">{{ _('ledger.btn_submit_target_payout') }}</span>
+          <span x-show="targetPayoutBookSubmitting">…</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- ============ Book Import Line Modal ============ -->
-  <div x-show="showBookModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl p-6" style="max-height: 90vh; overflow-y: auto;" @click.outside="showBookModal = false">
+  <div x-show="showBookModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+       @mousedown.self="modalMousedownOutside = true">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl p-6" style="max-height: 90vh; overflow-y: auto;"
+         @mousedown="modalMousedownOutside = false" @click.outside="if (modalMousedownOutside) showBookModal = false">
       <h2 class="text-lg font-bold mb-4">{{ _('ledger.book_modal_title') }}</h2>
       <div x-show="bookError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="bookError"></div>
       <form @submit.prevent="submitBooking()" class="space-y-4" x-show="bookingLine">
@@ -697,18 +879,26 @@
         </div>
 
         <div>
+          <label class="inline-flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" x-model="bookForm.isTransfer" @change="onTransferToggle()"
+                   class="rounded border-gray-300 dark:border-gray-600">
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ _('ledger.book_is_transfer') }}</span>
+          </label>
+        </div>
+
+        <div x-show="!bookForm.isTransfer">
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ _('ledger.lines_title') }}</label>
           <div class="space-y-2">
             <template x-for="(line, idx) in bookForm.category_lines" :key="idx">
               <div class="flex gap-2 items-center">
-                <select x-model="line.category_id" required
+                <select x-model="line.category_id" :required="!bookForm.isTransfer"
                         class="flex-1 border dark:border-gray-700 rounded px-2 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
                   <option value="">{{ _('ledger.select_target') }}</option>
                   <template x-for="c in activeCategories" :key="c.id">
                     <option :value="c.id" x-text="c.name"></option>
                   </template>
                 </select>
-                <input type="number" step="0.01" x-model="line.amount" required placeholder="{{ _('ledger.label_amount') }}"
+                <input type="number" step="0.01" x-model="line.amount" :required="!bookForm.isTransfer" placeholder="{{ _('ledger.label_amount') }}"
                        class="w-32 border dark:border-gray-700 rounded px-2 py-2 text-sm font-mono bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
                 <button type="button" @click="removeBookLine(idx)" x-show="bookForm.category_lines.length > 1"
                         class="text-red-600 dark:text-red-400 hover:underline text-xs shrink-0">
@@ -722,7 +912,40 @@
           </button>
         </div>
 
-        <div class="flex items-center justify-between text-sm border-t dark:border-gray-700 pt-3">
+        <div x-show="bookForm.isTransfer">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.book_transfer_target_account') }}</label>
+          <select x-model="bookForm.transferAccountId" @change="onTransferAccountChange()"
+                  class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="">{{ _('ledger.select_target') }}</option>
+            <template x-for="a in trackedAccounts.filter(a => bookingLine && a.id !== bookingLine.bank_account_id)" :key="a.id">
+              <option :value="a.id" x-text="a.name"></option>
+            </template>
+          </select>
+          <p class="text-xs text-gray-400 dark:text-gray-500 mt-1" x-text="TRANSFER_AMOUNT_HINT_L"></p>
+
+          <div x-show="bookForm.transferAccountId" class="mt-3">
+            <p class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.book_transfer_candidates_title') }}</p>
+            <p x-show="loadingTransferCandidates" class="text-xs text-gray-400 dark:text-gray-500">…</p>
+            <div x-show="!loadingTransferCandidates && transferCandidates.length === 0" class="text-xs text-gray-400 dark:text-gray-500">
+              {{ _('ledger.book_transfer_no_candidates') }}
+            </div>
+            <div x-show="!loadingTransferCandidates && transferCandidates.length > 0" class="space-y-1">
+              <template x-for="c in transferCandidates" :key="c.id">
+                <label class="flex items-center gap-2 text-sm px-2 py-1 rounded hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
+                  <input type="radio" name="transferCandidate" :value="c.id" x-model="bookForm.matchedImportLineId">
+                  <span x-text="c.booking_date"></span>
+                  <span class="text-gray-500 dark:text-gray-400" x-text="c.purpose_text || c.counterparty_name || '—'"></span>
+                </label>
+              </template>
+              <label class="flex items-center gap-2 text-sm px-2 py-1 rounded hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
+                <input type="radio" name="transferCandidate" value="" x-model="bookForm.matchedImportLineId">
+                <span class="text-gray-500 dark:text-gray-400">{{ _('ledger.book_transfer_no_link') }}</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div x-show="!bookForm.isTransfer" class="flex items-center justify-between text-sm border-t dark:border-gray-700 pt-3">
           <span class="text-gray-500 dark:text-gray-400">{{ _('ledger.sum_label') }}</span>
           <span class="font-mono font-semibold"
                 :class="bookBalanced ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
@@ -743,8 +966,10 @@
   </div>
 
   <!-- ============ New Entry Modal ============ -->
-  <div x-show="showEntryModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl p-6" style="max-height: 90vh; overflow-y: auto;" @click.outside="showEntryModal = false">
+  <div x-show="showEntryModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+       @mousedown.self="modalMousedownOutside = true">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl p-6" style="max-height: 90vh; overflow-y: auto;"
+         @mousedown="modalMousedownOutside = false" @click.outside="if (modalMousedownOutside) showEntryModal = false">
       <h2 class="text-lg font-bold mb-4">{{ _('ledger.entry_modal_title') }}</h2>
       <div x-show="entryError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="entryError"></div>
       <form @submit.prevent="createEntry()" class="space-y-4">
@@ -822,8 +1047,10 @@
   </div>
 
   <!-- ============ New Account Modal ============ -->
-  <div x-show="showAccountModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showAccountModal = false">
+  <div x-show="showAccountModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+       @mousedown.self="modalMousedownOutside = true">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6"
+         @mousedown="modalMousedownOutside = false" @click.outside="if (modalMousedownOutside) showAccountModal = false">
       <h2 class="text-lg font-bold mb-4">{{ _('ledger.account_modal_title') }}</h2>
       <div x-show="accountError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="accountError"></div>
       <form @submit.prevent="createAccount()" class="space-y-4">
@@ -862,8 +1089,10 @@
   </div>
 
   <!-- ============ New Category Modal ============ -->
-  <div x-show="showCategoryModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showCategoryModal = false">
+  <div x-show="showCategoryModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+       @mousedown.self="modalMousedownOutside = true">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6"
+         @mousedown="modalMousedownOutside = false" @click.outside="if (modalMousedownOutside) showCategoryModal = false">
       <h2 class="text-lg font-bold mb-4">{{ _('ledger.category_modal_title') }}</h2>
       <div x-show="categoryError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="categoryError"></div>
       <form @submit.prevent="createCategory()" class="space-y-4">
@@ -923,6 +1152,7 @@ const SPHERE_NONE = {{ _('ledger.sphere_none') | tojson }};
 // attribute (the JSON string's own quotes terminate the attribute early), so
 // every translated string used inside an x-text expression is predefined here.
 const YES_NO_L = { yes: {{ _('common.yes') | tojson }}, no: {{ _('common.no') | tojson }} };
+const CASH_CLEARING_HINT_L = {{ _('ledger.cash_clearing_hint') | tojson }};
 const ACTIVE_L = { active: {{ _('common.active') | tojson }}, inactive: {{ _('common.inactive') | tojson }} };
 const KIND_L = { income: {{ _('ledger.kind_income') | tojson }}, expense: {{ _('ledger.kind_expense') | tojson }} };
 const SUM_L = { balanced: {{ _('ledger.sum_balanced') | tojson }}, unbalanced: {{ _('ledger.sum_unbalanced') | tojson }} };
@@ -939,8 +1169,15 @@ const REVERSES_TMPL = {{ _('ledger.reverses_badge') | tojson }};
 const REVERSE_CONFIRM_L = {{ _('ledger.reverse_confirm') | tojson }};
 const PAPERLESS_DUPLICATE_TMPL = {{ _('ledger.paperless_duplicate_warning') | tojson }};
 const DUPLICATE_HINT_L = {{ _('ledger.import_duplicate_hint') | tojson }};
+const TRANSFER_AMOUNT_HINT_L = {{ _('ledger.book_transfer_amount_hint') | tojson }};
 const PAGE_SIZE = 50;
 const LOAD_MORE_TMPL = {{ _('ledger.load_more') | tojson }};
+const TARGET_PAYOUT_FILTER_L = {
+  open: {{ _('ledger.target_payouts_filter_open') | tojson }},
+  booked: {{ _('ledger.target_payouts_filter_booked') | tojson }},
+  all: {{ _('ledger.target_payouts_filter_all') | tojson }},
+};
+const TARGET_PAYOUT_BOOKED_TMPL = {{ _('ledger.target_payout_booked_badge') | tojson }};
 const NO_STATEMENT_BALANCE_L = {{ _('ledger.no_statement_balance') | tojson }};
 const RECONCILIATION_MATCH_TMPL = {{ _('ledger.reconciliation_match') | tojson }};
 const RECONCILIATION_MISMATCH_TMPL = {{ _('ledger.reconciliation_mismatch') | tojson }};
@@ -960,6 +1197,12 @@ function ledgerApp(userIsTreasurer) {
     userIsTreasurer,
     activeTab: 'entries',
     config: { spheres_enabled: true },
+    // Shared by every modal's backdrop-click-to-close: a text-selection drag
+    // that starts inside the modal and ends (mouseup) outside it still fires
+    // a native `click` on the backdrop — @click.outside alone can't tell
+    // that apart from an actual "click away" — so closing only happens when
+    // the mousedown *also* started on the backdrop, not just the click.
+    modalMousedownOutside: false,
 
     entries: [],
     entriesTotal: 0,
@@ -1021,9 +1264,11 @@ function ledgerApp(userIsTreasurer) {
 
     showBookModal: false,
     bookingLine: null,
-    bookForm: { description: '', paperless_document_id: '', category_lines: [] },
+    bookForm: { description: '', paperless_document_id: '', category_lines: [], isTransfer: false, transferAccountId: '', matchedImportLineId: '' },
     bookError: null,
     bookSubmitting: false,
+    transferCandidates: [],
+    loadingTransferCandidates: false,
     paperlessQuery: '',
     paperlessResults: [],
     paperlessDuplicateWarning: null,
@@ -1042,6 +1287,21 @@ function ledgerApp(userIsTreasurer) {
     fintsSummary: null,
     fintsPollTimer: null,
 
+    targets: [],
+    loadingTargets: true,
+    targetsError: null,
+
+    targetPayoutsFilter: 'open',
+    targetPayouts: [],
+    loadingTargetPayouts: true,
+    targetPayoutsError: null,
+
+    showTargetPayoutModal: false,
+    bookingTargetPayout: null,
+    targetPayoutForm: { bank_account_id: '', category_id: '', entry_date: '', description: '' },
+    targetPayoutBookError: null,
+    targetPayoutBookSubmitting: false,
+
     get activeCategories() {
       return this.categories.filter(c => c.active);
     },
@@ -1057,6 +1317,15 @@ function ledgerApp(userIsTreasurer) {
       // Used for the file-upload account picker — offline accounts have no
       // bank statement to import, so they're excluded here (unlike trackedAccounts).
       return this.accounts.filter(a => a.tracked && !a.is_offline);
+    },
+
+    get cashClearingAccountConfigured() {
+      return this.accounts.some(a => a.is_cash_clearing_account);
+    },
+
+    get payoutDestinationAccounts() {
+      // The clearing account itself can't be its own transfer destination.
+      return this.trackedAccounts.filter(a => !a.is_cash_clearing_account);
     },
 
     get yearOptions() {
@@ -1091,6 +1360,10 @@ function ledgerApp(userIsTreasurer) {
       if (tab === 'import') {
         this.loadImportLines();
         if (this.config.fints_enabled) this.loadFintsPresets();
+      }
+      if (tab === 'targets') {
+        this.loadTargets();
+        this.loadTargetPayouts();
       }
     },
 
@@ -1202,6 +1475,88 @@ function ledgerApp(userIsTreasurer) {
         if (e !== 'unauthenticated') this.categoriesError = e.message || String(e);
       } finally {
         this.loadingCategories = false;
+      }
+    },
+
+    async loadTargets() {
+      this.loadingTargets = true;
+      this.targetsError = null;
+      try {
+        const r = await apiFetch('/api/v1/ledger/targets');
+        if (!r.ok) throw new Error('Failed to load targets');
+        this.targets = await r.json();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.targetsError = e.message || String(e);
+      } finally {
+        this.loadingTargets = false;
+      }
+    },
+
+    async updateTargetMapping(target, value) {
+      const categoryId = value ? parseInt(value, 10) : null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/targets/${target.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ default_category_id: categoryId }),
+        });
+        if (r.ok) target.default_category_id = categoryId;
+      } catch (e) {
+        // leave select state as-is on failure
+      }
+    },
+
+    async loadTargetPayouts() {
+      this.loadingTargetPayouts = true;
+      this.targetPayoutsError = null;
+      try {
+        const params = this.targetPayoutsFilter === 'all' ? '' : `?booked=${this.targetPayoutsFilter === 'booked'}`;
+        const r = await apiFetch(`/api/v1/ledger/target-payouts${params}`);
+        if (!r.ok) throw new Error('Failed to load target payouts');
+        this.targetPayouts = await r.json();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.targetPayoutsError = e.message || String(e);
+      } finally {
+        this.loadingTargetPayouts = false;
+      }
+    },
+
+    openTargetPayoutModal(payout) {
+      this.bookingTargetPayout = payout;
+      this.targetPayoutForm = {
+        bank_account_id: '',
+        entry_date: payout.created_at.slice(0, 10),
+        description: '',
+      };
+      this.targetPayoutBookError = null;
+      this.showTargetPayoutModal = true;
+    },
+
+    async submitTargetPayoutBook() {
+      this.targetPayoutBookSubmitting = true;
+      this.targetPayoutBookError = null;
+      try {
+        const body = {
+          bank_account_id: this.targetPayoutForm.bank_account_id,
+        };
+        if (this.targetPayoutForm.entry_date) body.entry_date = this.targetPayoutForm.entry_date;
+        if (this.targetPayoutForm.description) body.description = this.targetPayoutForm.description;
+        const r = await apiFetch(`/api/v1/ledger/target-payouts/${this.bookingTargetPayout.transaction_id}/book`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) {
+          const data = await r.json().catch(() => ({}));
+          this.targetPayoutBookError = data.detail || 'Error booking payout';
+          return;
+        }
+        this.showTargetPayoutModal = false;
+        await this.loadTargetPayouts();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.targetPayoutBookError = e.message || String(e);
+      } finally {
+        this.targetPayoutBookSubmitting = false;
       }
     },
 
@@ -1371,6 +1726,21 @@ function ledgerApp(userIsTreasurer) {
         if (r.ok) account.tracked = next;
       } catch (e) {
         // leave checkbox state as-is on failure
+      }
+    },
+
+    async setCashClearingAccount(account) {
+      try {
+        const r = await apiFetch(`/api/v1/ledger/accounts/${account.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_cash_clearing_account: true }),
+        });
+        if (r.ok) {
+          for (const a of this.accounts) a.is_cash_clearing_account = (a.id === account.id);
+        }
+      } catch (e) {
+        // leave radio state as-is on failure
       }
     },
 
@@ -1614,12 +1984,40 @@ function ledgerApp(userIsTreasurer) {
         description: line.purpose_text || '',
         paperless_document_id: '',
         category_lines: [{ category_id: '', amount: '', note: '' }],
+        isTransfer: false,
+        transferAccountId: '',
+        matchedImportLineId: '',
       };
+      this.transferCandidates = [];
       this.bookError = null;
       this.paperlessQuery = '';
       this.paperlessResults = [];
       this.paperlessDuplicateWarning = null;
       this.showBookModal = true;
+    },
+
+    onTransferToggle() {
+      this.bookForm.transferAccountId = '';
+      this.bookForm.matchedImportLineId = '';
+      this.transferCandidates = [];
+    },
+
+    async onTransferAccountChange() {
+      this.bookForm.matchedImportLineId = '';
+      this.transferCandidates = [];
+      if (!this.bookForm.transferAccountId || !this.bookingLine) return;
+      this.loadingTransferCandidates = true;
+      try {
+        const targetAmount = (-parseFloat(this.bookingLine.amount)).toFixed(2);
+        const r = await apiFetch(
+          `/api/v1/ledger/import/lines?bank_account_id=${this.bookForm.transferAccountId}&amount=${targetAmount}&status=new`
+        );
+        if (r.ok) this.transferCandidates = await r.json();
+      } catch (e) {
+        // non-critical — booking still works without a matched candidate
+      } finally {
+        this.loadingTransferCandidates = false;
+      }
     },
 
     addBookLine() {
@@ -1640,24 +2038,31 @@ function ledgerApp(userIsTreasurer) {
     },
 
     get bookBalanced() {
-      return !!this.bookingLine && Math.abs(this.bookLineSum - this.bookTargetSum) < 0.005;
+      if (!this.bookingLine) return false;
+      if (this.bookForm.isTransfer) return !!this.bookForm.transferAccountId;
+      return Math.abs(this.bookLineSum - this.bookTargetSum) < 0.005;
     },
 
     async submitBooking() {
       this.bookSubmitting = true;
       this.bookError = null;
       try {
+        const categoryLines = this.bookForm.isTransfer
+          ? [{ bank_account_id: parseInt(this.bookForm.transferAccountId, 10), amount: -parseFloat(this.bookingLine.amount) }]
+          : this.bookForm.category_lines.map(l => ({
+              category_id: parseInt(l.category_id, 10),
+              amount: parseFloat(l.amount),
+              note: l.note || null,
+            }));
         const r = await apiFetch(`/api/v1/ledger/import/lines/${this.bookingLine.id}/book`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             description: this.bookForm.description,
             paperless_document_id: this.bookForm.paperless_document_id || null,
-            category_lines: this.bookForm.category_lines.map(l => ({
-              category_id: parseInt(l.category_id, 10),
-              amount: parseFloat(l.amount),
-              note: l.note || null,
-            })),
+            category_lines: categoryLines,
+            matched_import_line_id: (this.bookForm.isTransfer && this.bookForm.matchedImportLineId)
+              ? parseInt(this.bookForm.matchedImportLineId, 10) : null,
           }),
         });
         const data = await r.json();

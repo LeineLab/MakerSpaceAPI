@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
@@ -5,7 +6,16 @@ from unittest.mock import patch
 import httpx
 import pytest
 
-from app.models.ledger import BankAccount, LedgerCategory, LedgerCategoryKind, LedgerSphere
+from app.models.ledger import (
+    BankAccount,
+    LedgerCategory,
+    LedgerCategoryKind,
+    LedgerImportBatch,
+    LedgerImportLine,
+    LedgerImportSource,
+    LedgerImportStatus,
+    LedgerSphere,
+)
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 _MT940_SAMPLE = (_FIXTURES / "sample.sta").read_bytes()
@@ -368,6 +378,164 @@ def test_book_import_line_rejects_unbalanced_split(treasurer_client, bank_accoun
         json={
             "description": "Falsch",
             "category_lines": [{"category_id": income_category.id, "amount": "-40.00"}],
+        },
+    )
+    assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Booking an import line as a transfer to another account
+# ---------------------------------------------------------------------------
+
+def _stage_counter_line(db, account, amount, booking_date=date(2026, 3, 2)):
+    """Simulate the counter-account already having its own staged line for
+    the same real-world transfer (as if its statement had been imported
+    separately) — status='new', not yet booked."""
+    batch = LedgerImportBatch(bank_account_id=account.id, source=LedgerImportSource.file, imported_by="test")
+    db.add(batch)
+    db.flush()
+    line = LedgerImportLine(
+        batch_id=batch.id, bank_account_id=account.id, booking_date=booking_date,
+        amount=amount, purpose_text="Umbuchung", dedup_hash=f"counter-{account.id}-{amount}",
+        status=LedgerImportStatus.new,
+    )
+    db.add(line)
+    db.commit()
+    return line
+
+
+def test_book_import_line_as_unmatched_transfer(treasurer_client, bank_account, db):
+    other = BankAccount(iban="DE00999999990000000000", name="Sparkonto")
+    db.add(other)
+    db.commit()
+
+    _upload(treasurer_client, bank_account.id, _MT940_SAMPLE)
+    lines = treasurer_client.get("/api/v1/ledger/import/lines").json()
+    debit_line = next(l for l in lines if Decimal(str(l["amount"])) < 0)  # -30.00
+
+    resp = treasurer_client.post(
+        f"/api/v1/ledger/import/lines/{debit_line['id']}/book",
+        json={
+            "description": "Umbuchung ins Sparkonto",
+            "category_lines": [{"bank_account_id": other.id, "amount": "30.00"}],
+        },
+    )
+    assert resp.status_code == 201
+    entry = resp.json()
+    assert len(entry["lines"]) == 2
+    assert any(l["bank_account_id"] == other.id for l in entry["lines"])
+
+
+def test_book_import_line_as_transfer_links_matched_counter_line(treasurer_client, bank_account, db):
+    other = BankAccount(iban="DE00999999990000000000", name="Sparkonto")
+    db.add(other)
+    db.commit()
+    counter = _stage_counter_line(db, other, Decimal("30.00"))
+
+    _upload(treasurer_client, bank_account.id, _MT940_SAMPLE)
+    lines = treasurer_client.get("/api/v1/ledger/import/lines").json()
+    debit_line = next(l for l in lines if Decimal(str(l["amount"])) < 0)  # -30.00
+
+    candidates = treasurer_client.get(
+        f"/api/v1/ledger/import/lines?bank_account_id={other.id}&amount=30.00&status=new"
+    ).json()
+    assert len(candidates) == 1
+    assert candidates[0]["id"] == counter.id
+
+    resp = treasurer_client.post(
+        f"/api/v1/ledger/import/lines/{debit_line['id']}/book",
+        json={
+            "description": "Umbuchung ins Sparkonto",
+            "category_lines": [{"bank_account_id": other.id, "amount": "30.00"}],
+            "matched_import_line_id": counter.id,
+        },
+    )
+    assert resp.status_code == 201
+    entry = resp.json()
+
+    counter_after = treasurer_client.get(f"/api/v1/ledger/import/lines?bank_account_id={other.id}&status=booked").json()
+    assert len(counter_after) == 1
+    assert counter_after[0]["id"] == counter.id
+    assert counter_after[0]["matched_entry_id"] == entry["id"]
+
+
+def test_book_import_line_transfer_matched_line_wrong_account_rejected(treasurer_client, bank_account, db):
+    other = BankAccount(iban="DE00999999990000000000", name="Sparkonto")
+    third = BankAccount(iban="DE00111111110000000000", name="Drittes Konto")
+    db.add_all([other, third])
+    db.commit()
+    counter = _stage_counter_line(db, third, Decimal("30.00"))  # staged on the WRONG account
+
+    _upload(treasurer_client, bank_account.id, _MT940_SAMPLE)
+    lines = treasurer_client.get("/api/v1/ledger/import/lines").json()
+    debit_line = next(l for l in lines if Decimal(str(l["amount"])) < 0)
+
+    resp = treasurer_client.post(
+        f"/api/v1/ledger/import/lines/{debit_line['id']}/book",
+        json={
+            "description": "Umbuchung ins Sparkonto",
+            "category_lines": [{"bank_account_id": other.id, "amount": "30.00"}],
+            "matched_import_line_id": counter.id,
+        },
+    )
+    assert resp.status_code == 400
+
+
+def test_book_import_line_transfer_matched_line_wrong_amount_rejected(treasurer_client, bank_account, db):
+    other = BankAccount(iban="DE00999999990000000000", name="Sparkonto")
+    db.add(other)
+    db.commit()
+    counter = _stage_counter_line(db, other, Decimal("25.00"))  # doesn't match the 30.00 transfer
+
+    _upload(treasurer_client, bank_account.id, _MT940_SAMPLE)
+    lines = treasurer_client.get("/api/v1/ledger/import/lines").json()
+    debit_line = next(l for l in lines if Decimal(str(l["amount"])) < 0)
+
+    resp = treasurer_client.post(
+        f"/api/v1/ledger/import/lines/{debit_line['id']}/book",
+        json={
+            "description": "Umbuchung ins Sparkonto",
+            "category_lines": [{"bank_account_id": other.id, "amount": "30.00"}],
+            "matched_import_line_id": counter.id,
+        },
+    )
+    assert resp.status_code == 400
+
+
+def test_book_import_line_transfer_requires_exactly_one_of_category_or_account(treasurer_client, bank_account, income_category):
+    other = BankAccount(iban="DE00999999990000000000", name="Sparkonto")
+    _upload(treasurer_client, bank_account.id, _MT940_SAMPLE)
+    lines = treasurer_client.get("/api/v1/ledger/import/lines").json()
+    debit_line = next(l for l in lines if Decimal(str(l["amount"])) < 0)
+
+    resp = treasurer_client.post(
+        f"/api/v1/ledger/import/lines/{debit_line['id']}/book",
+        json={
+            "description": "Ungültig",
+            "category_lines": [{"category_id": income_category.id, "bank_account_id": 999, "amount": "30.00"}],
+        },
+    )
+    assert resp.status_code == 400
+
+
+def test_book_import_line_at_most_one_transfer_split(treasurer_client, bank_account, db):
+    a = BankAccount(iban="DE00999999990000000000", name="Konto A")
+    b = BankAccount(iban="DE00111111110000000000", name="Konto B")
+    db.add_all([a, b])
+    db.commit()
+
+    _upload(treasurer_client, bank_account.id, _MT940_SAMPLE)
+    lines = treasurer_client.get("/api/v1/ledger/import/lines").json()
+    debit_line = next(l for l in lines if Decimal(str(l["amount"])) < 0)
+
+    resp = treasurer_client.post(
+        f"/api/v1/ledger/import/lines/{debit_line['id']}/book",
+        json={
+            "description": "Zwei Umbuchungsziele",
+            "category_lines": [
+                {"bank_account_id": a.id, "amount": "15.00"},
+                {"bank_account_id": b.id, "amount": "15.00"},
+            ],
         },
     )
     assert resp.status_code == 400

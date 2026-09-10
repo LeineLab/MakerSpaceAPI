@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.auth.deps import require_ledger_viewer_user, require_treasurer_user
 from app.config import settings
 from app.database import get_db
+from app.models.booking_target import BookingTarget
 from app.models.ledger import (
     BankAccount,
     FintsBankPreset,
@@ -26,12 +27,15 @@ from app.models.ledger import (
     LedgerImportSource,
     LedgerImportStatus,
 )
+from app.models.transaction import Transaction, TransactionType
+from app.schemas.booking_target import BookingTargetResponse
 from app.schemas.common import HTTP_400, HTTP_404, HTTP_409, HTTP_502, MessageResponse
 from app.schemas.ledger import (
     BankAccountBalanceResponse,
     BankAccountCreate,
     BankAccountResponse,
     BankAccountUpdate,
+    BookTargetPayoutRequest,
     CsvPreviewResponse,
     EuerCategoryTotal,
     EuerReportResponse,
@@ -50,6 +54,8 @@ from app.schemas.ledger import (
     LedgerImportLineBookRequest,
     LedgerImportLineResponse,
     LedgerImportSummary,
+    LedgerTargetPayoutResponse,
+    LedgerTargetUpdate,
     PaperlessDocumentResult,
 )
 from app.services import fints_client, paperless
@@ -182,7 +188,11 @@ def update_account(
     _treasurer: dict = Depends(require_treasurer_user),
     db: Session = Depends(get_db),
 ):
-    """Rename an account or toggle `tracked` (e.g. to permanently ignore a private account)."""
+    """Rename an account, toggle `tracked` (e.g. to permanently ignore a private
+    account), or set/clear `is_cash_clearing_account` — the one shared
+    Kassenbestand counter-account for booking Kassen payouts (#34); setting
+    it true here clears it on every other account first, since only one
+    can hold it at a time."""
     account = db.query(BankAccount).filter(BankAccount.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Bank account not found")
@@ -190,6 +200,12 @@ def update_account(
         account.name = body.name
     if body.tracked is not None:
         account.tracked = body.tracked
+    if body.is_cash_clearing_account is not None:
+        if body.is_cash_clearing_account:
+            db.query(BankAccount).filter(BankAccount.id != account_id).update(
+                {BankAccount.is_cash_clearing_account: False}
+            )
+        account.is_cash_clearing_account = body.is_cash_clearing_account
     db.commit()
     db.refresh(account)
     return account
@@ -419,6 +435,150 @@ def reverse_entry(
     return reversal
 
 
+# --- Kassen bridge (legacy NFC booking_targets -> ledger) ---
+
+@router.get("/targets", response_model=list[BookingTargetResponse])
+def list_ledger_targets(
+    _viewer: dict = Depends(require_ledger_viewer_user),
+    db: Session = Depends(get_db),
+):
+    """Booking targets (Kassen) with their default EÜR-category mapping —
+    read-only mirror of `GET /bankomat/targets` scoped to the ledger's own
+    viewer role (that endpoint requires a device token or admin, which the
+    treasurer/auditor roles don't necessarily have). See #34."""
+    return db.query(BookingTarget).order_by(BookingTarget.name).all()
+
+
+@router.put("/targets/{target_id}", response_model=BookingTargetResponse, responses={**HTTP_404})
+def update_ledger_target(
+    target_id: int,
+    body: LedgerTargetUpdate,
+    _treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    """Set or clear (`null`) a target's default category, e.g. "Kasse
+    Spenden" -> "Spenden" — pre-fills, but never forces, the category when
+    booking one of its payouts (`POST /target-payouts/{id}/book`)."""
+    target = db.query(BookingTarget).filter(BookingTarget.id == target_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Booking target not found")
+    if body.default_category_id is not None and not db.query(LedgerCategory).filter(
+        LedgerCategory.id == body.default_category_id
+    ).first():
+        raise HTTPException(status_code=404, detail=f"Category {body.default_category_id} not found")
+    target.default_category_id = body.default_category_id
+    db.commit()
+    db.refresh(target)
+    return target
+
+
+@router.get("/target-payouts", response_model=list[LedgerTargetPayoutResponse])
+def list_target_payouts(
+    booked: Optional[bool] = Query(default=None),
+    target_id: Optional[int] = Query(default=None),
+    _viewer: dict = Depends(require_ledger_viewer_user),
+    db: Session = Depends(get_db),
+):
+    """Payouts (Auszahlungen) taken from a Kasse, for the treasurer to book
+    into the ledger — a full "Aufstellung" by default (`booked` unset), or
+    filtered to just the open (`booked=false`) or already-booked
+    (`booked=true`) ones. Derived directly from `transactions`/
+    `booking_targets` (the legacy NFC-Kassen domain), joined against
+    `ledger_entries.booking_target_payout_id` to determine booked status —
+    no separate staging table, since `transactions` already is the source
+    of truth and is never mutated by this bridge."""
+    q = (
+        db.query(Transaction, BookingTarget, LedgerEntry.id)
+        .join(BookingTarget, Transaction.target_id == BookingTarget.id)
+        .outerjoin(LedgerEntry, LedgerEntry.booking_target_payout_id == Transaction.id)
+        .filter(Transaction.type == TransactionType.booking_target_payout)
+    )
+    if target_id is not None:
+        q = q.filter(Transaction.target_id == target_id)
+    if booked is True:
+        q = q.filter(LedgerEntry.id.isnot(None))
+    elif booked is False:
+        q = q.filter(LedgerEntry.id.is_(None))
+
+    return [
+        LedgerTargetPayoutResponse(
+            transaction_id=txn.id,
+            target_id=target.id,
+            target_name=target.name,
+            target_slug=target.slug,
+            amount=-txn.amount,
+            note=txn.note,
+            created_at=txn.created_at,
+            booked=entry_id is not None,
+            ledger_entry_id=entry_id,
+        )
+        for txn, target, entry_id in q.order_by(Transaction.created_at.desc()).all()
+    ]
+
+
+@router.post(
+    "/target-payouts/{transaction_id}/book", response_model=LedgerEntryResponse, status_code=201,
+    responses={**HTTP_400, **HTTP_404, **HTTP_409},
+)
+def book_target_payout(
+    transaction_id: int,
+    body: BookTargetPayoutRequest,
+    treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    """Book a Kassen payout as a pure transfer from the one shared
+    Kassenbestand clearing account to whichever real account the treasurer
+    actually deposited the cash into — no category line, since the income
+    was already recognized when the cash arrived in the target (folded into
+    the EÜR at read time, see `_compute_euer_report`). This is the only
+    ledger-side effect of a payout; it does not touch `transactions`/
+    `booking_targets` at all (that domain stays untouched, per Key Design
+    Decision #18 — this bridge only reads it). Each target's own payouts can
+    each be booked to a different destination account — e.g. cash physically
+    deposited into a private account, later transferred on to the real
+    Vereinskonto via an ordinary manual entry (`POST /entries`), independent
+    of this bridge."""
+    txn = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if not txn or txn.type != TransactionType.booking_target_payout:
+        raise HTTPException(status_code=404, detail="Booking target payout not found")
+
+    already_booked = db.query(LedgerEntry).filter(
+        LedgerEntry.booking_target_payout_id == transaction_id
+    ).first()
+    if already_booked:
+        raise HTTPException(status_code=409, detail=f"Already booked as entry {already_booked.id}")
+
+    clearing_account = db.query(BankAccount).filter(BankAccount.is_cash_clearing_account.is_(True)).first()
+    if not clearing_account:
+        raise HTTPException(
+            status_code=400,
+            detail="No Kassenbestand clearing account configured — mark one bank account as such first",
+        )
+    destination = db.query(BankAccount).filter(BankAccount.id == body.bank_account_id).first()
+    if not destination:
+        raise HTTPException(status_code=404, detail=f"Bank account {body.bank_account_id} not found")
+    if destination.id == clearing_account.id:
+        raise HTTPException(status_code=400, detail="Destination account cannot be the clearing account itself")
+
+    target = db.query(BookingTarget).filter(BookingTarget.id == txn.target_id).first()
+    amount = -txn.amount  # payout transactions are stored negative; the booking is the positive cash inflow
+    entry = LedgerEntry(
+        entry_date=body.entry_date or txn.created_at.date(),
+        description=body.description or f"Kassenauszahlung: {target.name if target else txn.target_id}",
+        booking_target_payout_id=transaction_id,
+        created_by=treasurer.get("sub", "unknown"),
+        created_at=datetime.now(UTC).replace(tzinfo=None),
+    )
+    entry.lines = [
+        LedgerEntryLine(bank_account_id=destination.id, amount=amount),
+        LedgerEntryLine(bank_account_id=clearing_account.id, amount=-amount),
+    ]
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+
 # --- EÜR report ---
 
 def _compute_euer_report(db: Session, year: int) -> EuerReportResponse:
@@ -432,7 +592,21 @@ def _compute_euer_report(db: Session, year: int) -> EuerReportResponse:
     bank line (e.g. a 50€ topup is bank +50 / income-category -50). Income
     category raw totals are therefore negative and are flipped here so both
     `total_income` and `total_expense` come out non-negative, matching how an
-    EÜR is normally read (net_result = total_income - total_expense)."""
+    EÜR is normally read (net_result = total_income - total_expense).
+
+    Also folds in cash that arrived in a Kassen booking target this year
+    (`topup`/`booking_target_topup`/`booking_target_adjustment` transactions
+    whose target has a `default_category_id`) — see Key Design Decision #34.
+    That cash is never written as its own `ledger_entries` row (it's the same
+    money `booking_targets`/`transactions` already track in full, and
+    duplicating it into a second ledger table would just be a second figure
+    that can drift out of sync); it's folded in here, at read time, exactly
+    like a category line would be. `contribution = -transaction.amount`
+    mirrors the same sign convention as a real category line for both
+    directions: a topup/positive adjustment (amount > 0, more cash in)
+    contributes negative (more income, same as any other deposit); a
+    shortfall (a negative `booking_target_adjustment` amount) contributes
+    positive (less income, i.e. a write-off)."""
     lines = (
         db.query(LedgerEntryLine)
         .join(LedgerEntry)
@@ -451,6 +625,29 @@ def _compute_euer_report(db: Session, year: int) -> EuerReportResponse:
     for line in lines:
         raw_totals[line.category_id] = raw_totals.get(line.category_id, Decimal("0.00")) + line.amount
         categories[line.category_id] = line.category
+
+    target_events = (
+        db.query(Transaction.amount, BookingTarget.default_category_id)
+        .join(BookingTarget, Transaction.target_id == BookingTarget.id)
+        .filter(
+            Transaction.created_at >= f"{year}-01-01",
+            Transaction.created_at < f"{year + 1}-01-01",
+            Transaction.type.in_([
+                TransactionType.topup,
+                TransactionType.booking_target_topup,
+                TransactionType.booking_target_adjustment,
+            ]),
+            BookingTarget.default_category_id.isnot(None),
+        )
+        .all()
+    )
+    for amount, category_id in target_events:
+        if category_id not in categories:
+            category = db.query(LedgerCategory).filter(LedgerCategory.id == category_id).first()
+            if not category:
+                continue  # defensive only — default_category_id always resolves in practice
+            categories[category_id] = category
+        raw_totals[category_id] = raw_totals.get(category_id, Decimal("0.00")) - amount
 
     category_totals = []
     for cat_id, raw_total in raw_totals.items():
@@ -807,6 +1004,7 @@ def list_import_lines(
     response: Response,
     status: Optional[LedgerImportStatus] = Query(default=LedgerImportStatus.new),
     bank_account_id: Optional[int] = Query(default=None),
+    amount: Optional[Decimal] = Query(default=None),
     limit: int = Query(default=200, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     _viewer: dict = Depends(require_ledger_viewer_user),
@@ -814,12 +1012,18 @@ def list_import_lines(
 ):
     """`X-Total-Count` on the response tells the frontend whether more pages
     exist beyond this `limit`/`offset` window — the list itself stays a bare
-    JSON array (not an envelope) so existing callers are unaffected."""
+    JSON array (not an envelope) so existing callers are unaffected.
+
+    `amount` (exact match) is used by the transfer-booking UI to find a
+    counter-account's candidate matching line — a plain transfer moves the
+    full amount, so no tolerance/range filtering is needed."""
     q = db.query(LedgerImportLine)
     if status is not None:
         q = q.filter(LedgerImportLine.status == status)
     if bank_account_id is not None:
         q = q.filter(LedgerImportLine.bank_account_id == bank_account_id)
+    if amount is not None:
+        q = q.filter(LedgerImportLine.amount == amount)
     response.headers["X-Total-Count"] = str(q.count())
     return (
         q.order_by(LedgerImportLine.booking_date.desc(), LedgerImportLine.id.desc())
@@ -839,7 +1043,12 @@ def book_import_line(
 ):
     """Book a staging line: the bank leg is taken from the staging line itself
     (fixed amount), `category_lines` supply the rest of the split — same
-    balance-to-zero rule as `POST /entries`, just with the bank side implied."""
+    balance-to-zero rule as `POST /entries`, just with the bank side implied.
+    A split line may reference another bank account instead of a category
+    (booking a transfer); at most one may, and `matched_import_line_id` can
+    then link the other account's own staged line for the same transfer so
+    it's booked in the same step instead of being reviewed (and risking a
+    double-booking) separately later."""
     staging = db.query(LedgerImportLine).filter(LedgerImportLine.id == line_id).first()
     if not staging:
         raise HTTPException(status_code=404, detail="Import line not found")
@@ -855,9 +1064,55 @@ def book_import_line(
                 f"bank amount of {staging.amount} (got {category_total})"
             ),
         )
+
+    transfer_lines = []
     for line in body.category_lines:
-        if not db.query(LedgerCategory).filter(LedgerCategory.id == line.category_id).first():
-            raise HTTPException(status_code=404, detail=f"Category {line.category_id} not found")
+        has_category = line.category_id is not None
+        has_account = line.bank_account_id is not None
+        if has_category == has_account:
+            raise HTTPException(
+                status_code=400,
+                detail="Each split line needs exactly one of category_id or bank_account_id",
+            )
+        if has_category:
+            if not db.query(LedgerCategory).filter(LedgerCategory.id == line.category_id).first():
+                raise HTTPException(status_code=404, detail=f"Category {line.category_id} not found")
+        else:
+            if not db.query(BankAccount).filter(BankAccount.id == line.bank_account_id).first():
+                raise HTTPException(status_code=404, detail=f"Bank account {line.bank_account_id} not found")
+            transfer_lines.append(line)
+
+    if len(transfer_lines) > 1:
+        raise HTTPException(status_code=400, detail="At most one split line may be a transfer (bank_account_id)")
+    if body.matched_import_line_id is not None and not transfer_lines:
+        raise HTTPException(
+            status_code=400,
+            detail="matched_import_line_id requires a transfer split line (bank_account_id)",
+        )
+
+    matched_line = None
+    if body.matched_import_line_id is not None:
+        transfer_line = transfer_lines[0]
+        matched_line = (
+            db.query(LedgerImportLine).filter(LedgerImportLine.id == body.matched_import_line_id).first()
+        )
+        if not matched_line:
+            raise HTTPException(status_code=404, detail="Matched import line not found")
+        if matched_line.status == LedgerImportStatus.booked:
+            raise HTTPException(status_code=400, detail="Matched import line is already booked")
+        if matched_line.bank_account_id != transfer_line.bank_account_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Matched import line must belong to the selected counter-account",
+            )
+        if matched_line.amount != transfer_line.amount:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Matched import line's amount ({matched_line.amount}) doesn't match "
+                    f"the transfer amount ({transfer_line.amount}) — a transfer moves the full amount"
+                ),
+            )
 
     entry = LedgerEntry(
         entry_date=staging.booking_date,
@@ -869,7 +1124,9 @@ def book_import_line(
     entry.lines = [
         LedgerEntryLine(bank_account_id=staging.bank_account_id, amount=staging.amount, note=staging.purpose_text),
     ] + [
-        LedgerEntryLine(category_id=line.category_id, amount=line.amount, note=line.note)
+        LedgerEntryLine(
+            category_id=line.category_id, bank_account_id=line.bank_account_id, amount=line.amount, note=line.note,
+        )
         for line in body.category_lines
     ]
     db.add(entry)
@@ -877,6 +1134,9 @@ def book_import_line(
 
     staging.status = LedgerImportStatus.booked
     staging.matched_entry_id = entry.id
+    if matched_line:
+        matched_line.status = LedgerImportStatus.booked
+        matched_line.matched_entry_id = entry.id
     db.commit()
     db.refresh(entry)
     return entry

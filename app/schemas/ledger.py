@@ -20,8 +20,13 @@ class BankAccountCreate(BaseModel):
 
 
 class BankAccountUpdate(BaseModel):
+    """`is_cash_clearing_account: true` marks this account as the one shared
+    "Kassenbestand" counter-account for booking Kassen payouts — setting it
+    clears the flag on every other account (checked in the endpoint), since
+    there's only ever one."""
     name: Optional[str] = None
     tracked: Optional[bool] = None
+    is_cash_clearing_account: Optional[bool] = None
 
 
 class BankAccountResponse(BaseModel):
@@ -32,6 +37,7 @@ class BankAccountResponse(BaseModel):
     tracked: bool
     opening_balance: Decimal = Field(examples=[Decimal("0.00")])
     csv_mapping: Optional[dict] = None
+    is_cash_clearing_account: bool = False
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -140,11 +146,47 @@ class LedgerEntryResponse(BaseModel):
     description: str
     paperless_document_id: Optional[str]
     reverses_entry_id: Optional[int]
+    booking_target_payout_id: Optional[int] = None
     created_by: str
     created_at: datetime
     lines: list[LedgerEntryLineResponse]
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class LedgerTargetUpdate(BaseModel):
+    """Set (or clear, with `null`) a booking target's default EÜR category —
+    used to pre-fill (not force) the category when booking one of its
+    payouts. See Key Design Decision #34."""
+    default_category_id: Optional[int] = None
+
+
+class LedgerTargetPayoutResponse(BaseModel):
+    """A `booking_target_payout` transaction from the legacy NFC-Kassen
+    system, shown here so the treasurer can book it into the ledger (or see
+    that it already has been). No category here — the income was already
+    recognized when the cash arrived in the target (see Key Design Decision
+    #34); booking a payout is a pure transfer."""
+    transaction_id: int
+    target_id: int
+    target_name: str
+    target_slug: str
+    amount: Decimal = Field(examples=[Decimal("20.00")])
+    note: Optional[str] = None
+    created_at: datetime
+    booked: bool
+    ledger_entry_id: Optional[int] = None
+
+
+class BookTargetPayoutRequest(BaseModel):
+    """A pure transfer from the shared Kassenbestand clearing account to
+    `bank_account_id` (whichever real account the cash was actually
+    deposited into) — no category, since the income was already recognized
+    when the cash arrived in the target. `entry_date`/`description` default
+    to the payout's own date/a generated label."""
+    bank_account_id: int
+    entry_date: Optional[date] = None
+    description: Optional[str] = None
 
 
 class EuerCategoryTotal(BaseModel):
@@ -191,7 +233,12 @@ class LedgerImportSummary(BaseModel):
 
 
 class LedgerImportLineCategorySplit(BaseModel):
-    category_id: int
+    """Exactly one of category_id/bank_account_id must be set (checked in the
+    endpoint). bank_account_id books a transfer leg to another account
+    instead of a category — at most one split line may use it (a booking is
+    either a transfer or a category split, not a mix)."""
+    category_id: Optional[int] = None
+    bank_account_id: Optional[int] = None
     amount: Decimal = Field(examples=[Decimal("50.00")])
     note: Optional[str] = None
 
@@ -200,10 +247,19 @@ class LedgerImportLineBookRequest(BaseModel):
     """Books a staging line: the bank leg is taken from the staging line itself
     (amount fixed), `category_lines` supply the rest — their amounts must sum
     to the negative of the staging line's amount so the resulting entry
-    balances to zero, exactly like a manually created LedgerEntryCreate."""
+    balances to zero, exactly like a manually created LedgerEntryCreate.
+
+    `matched_import_line_id`: for a transfer (one split line has
+    bank_account_id set), optionally the id of the *other* account's own
+    staged import line representing the same real-world movement — found via
+    `GET /ledger/import/lines?bank_account_id=&amount=`, filtered to an exact
+    amount match (a plain transfer moves the full amount, no partial). That
+    line is booked too, linked to the same entry, instead of being left to
+    show up again (and get double-booked) once reviewed on its own."""
     description: str = Field(examples=["Mitgliedsbeitrag Max Mustermann"])
     paperless_document_id: Optional[str] = None
     category_lines: list[LedgerImportLineCategorySplit] = Field(min_length=1)
+    matched_import_line_id: Optional[int] = None
 
 
 class PaperlessDocumentResult(BaseModel):

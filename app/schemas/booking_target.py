@@ -15,6 +15,7 @@ class BookingTargetResponse(BaseModel):
     name: str
     slug: str
     balance: Decimal = Field(examples=[Decimal("42.00")])
+    default_category_id: Optional[int] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
