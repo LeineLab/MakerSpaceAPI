@@ -95,43 +95,66 @@ def checkout_token(db):
     return token, machine
 
 
+def _role_client(db, sub, groups):
+    """Build a TestClient authenticated as a real (signed) admin JWT cookie
+    carrying the given OIDC groups — not a dependency_overrides fake identity.
+
+    Only `get_db` is overridden (intentionally shared across every client
+    fixture used in a test, so they all see the same in-memory DB). Auth goes
+    through the real verify_admin_jwt/is_admin/is_* checks. This matters
+    because dependency_overrides lives on the shared `app` object: if two
+    `_client`-style fixtures were both auth-overridden and combined as
+    parameters in one test, whichever fixture set up last would silently win
+    for *every* request in that test regardless of which client variable
+    made the call — invisible until a test asserts a restricted (401/403)
+    outcome. A real per-cookie identity is genuinely isolated per TestClient
+    (each has its own cookie jar), so multiple role fixtures can safely
+    coexist in the same test now.
+    """
+    from app.auth.jwt import create_admin_jwt
+
+    def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+    token = create_admin_jwt({"sub": sub, "groups": groups})
+    with TestClient(app) as c:
+        c.cookies.set("auth_token", token)
+        yield c
+    app.dependency_overrides.clear()
+
+
 @pytest.fixture
 def admin_client(db):
-    """TestClient with require_admin_user, require_product_manager_user and require_device_or_admin overridden."""
-    from app.auth.deps import require_admin_user, require_device_or_admin, require_product_manager_user
+    """TestClient authenticated as an admin (real JWT, OIDC_ADMIN_GROUP membership)."""
+    from app.config import settings
 
-    fake_admin = {"sub": "test-admin-sub", "name": "Test Admin"}
-
-    def override_get_db():
-        yield db
-
-    def override_admin():
-        return fake_admin
-
-    app.dependency_overrides[get_db] = override_get_db
-    app.dependency_overrides[require_admin_user] = override_admin
-    app.dependency_overrides[require_product_manager_user] = override_admin
-    app.dependency_overrides[require_device_or_admin] = override_admin
-    with TestClient(app) as c:
-        yield c
-    app.dependency_overrides.clear()
+    yield from _role_client(db, "test-admin-sub", [settings.OIDC_ADMIN_GROUP])
 
 
 @pytest.fixture
-def product_manager_client(db):
-    """TestClient with only require_product_manager_user overridden (not admin)."""
-    from app.auth.deps import require_product_manager_user
+def product_manager_client(db, monkeypatch):
+    """TestClient authenticated as a product manager who is NOT an admin."""
+    from app.config import settings
 
-    fake_pm = {"sub": "test-pm-sub", "name": "Test Product Manager"}
+    monkeypatch.setattr(settings, "OIDC_PRODUCT_MANAGER_GROUP", "test-product-managers")
+    yield from _role_client(db, "test-pm-sub", ["test-product-managers"])
 
-    def override_get_db():
-        yield db
 
-    def override_pm():
-        return fake_pm
+@pytest.fixture
+def treasurer_client(db, monkeypatch):
+    """TestClient authenticated as a treasurer (Kassenwart) who is NOT an admin."""
+    from app.config import settings
 
-    app.dependency_overrides[get_db] = override_get_db
-    app.dependency_overrides[require_product_manager_user] = override_pm
-    with TestClient(app) as c:
-        yield c
-    app.dependency_overrides.clear()
+    monkeypatch.setattr(settings, "OIDC_TREASURER_GROUP", "test-treasurers")
+    yield from _role_client(db, "test-treasurer-sub", ["test-treasurers"])
+
+
+@pytest.fixture
+def auditor_client(db, monkeypatch):
+    """TestClient authenticated as a read-only auditor (Kassenprüfer) who is
+    NOT a treasurer or admin."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "OIDC_AUDITOR_GROUP", "test-auditors")
+    yield from _role_client(db, "test-auditor-sub", ["test-auditors"])

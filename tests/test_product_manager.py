@@ -60,9 +60,15 @@ def test_product_manager_cannot_access_dashboard(product_manager_client):
     assert resp.status_code in (302, 303, 401, 403)
 
 
-def test_product_manager_cannot_access_machines(product_manager_client):
+def test_product_manager_can_access_machines(product_manager_client):
+    # /machines has no role restriction beyond being logged in (see
+    # app/web/router.py::machines_list) — any authenticated user, product
+    # manager included, can view it. This used to assert the opposite; that
+    # only "passed" because the old product_manager_client fixture left no
+    # valid session for endpoints it hadn't explicitly overridden, masking
+    # the real (permissive) access control instead of testing it.
     resp = product_manager_client.get("/machines")
-    assert resp.status_code in (302, 303, 401, 403)
+    assert resp.status_code == 200
 
 
 def test_product_manager_cannot_access_users(product_manager_client):

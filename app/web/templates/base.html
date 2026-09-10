@@ -151,6 +151,9 @@
           {% if is_product_manager(user) %}
             <a href="/products/manage" class="hover:text-gray-300 text-sm">{{ _('nav.manage_products') }}</a>
           {% endif %}
+          {% if is_auditor(user) %}
+            <a href="/ledger" class="hover:text-gray-300 text-sm">{{ _('nav.ledger') }}</a>
+          {% endif %}
         {% endif %}
       </div>
 
@@ -211,6 +214,9 @@
         {% endif %}
         {% if is_product_manager(user) %}
           <a href="/products/manage" class="hover:text-gray-300 text-sm py-2">{{ _('nav.manage_products') }}</a>
+        {% endif %}
+        {% if is_auditor(user) %}
+          <a href="/ledger" class="hover:text-gray-300 text-sm py-2">{{ _('nav.ledger') }}</a>
         {% endif %}
         <div class="border-t border-gray-700 mt-2 pt-3 flex items-center justify-between">
           <span class="text-xs text-gray-400">{{ user.get('name') or user.get('sub') }}</span>

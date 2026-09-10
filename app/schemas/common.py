@@ -21,3 +21,4 @@ HTTP_402 = {402: {**_ERR, "description": "Insufficient balance"}}
 HTTP_403 = {403: {**_ERR, "description": "Forbidden"}}
 HTTP_404 = {404: {**_ERR, "description": "Not found"}}
 HTTP_409 = {409: {**_ERR, "description": "Conflict"}}
+HTTP_502 = {502: {**_ERR, "description": "Upstream (bank) error"}}

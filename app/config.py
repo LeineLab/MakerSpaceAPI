@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     OIDC_DISCOVERY_URL: str = ""
     OIDC_ADMIN_GROUP: str = "makerspace-admins"
     OIDC_PRODUCT_MANAGER_GROUP: str = ""
+    OIDC_TREASURER_GROUP: str = ""
+    OIDC_AUDITOR_GROUP: str = ""
     OIDC_GROUP_CLAIM: str = "groups"
     OIDC_REDIRECT_URI: str = "http://localhost:8000/auth/callback"
 
@@ -36,6 +38,25 @@ class Settings(BaseSettings):
 
     # Currency symbol appended to all monetary amounts (API messages and PDF statements)
     CURRENCY: str = "€"
+
+    # Require an EÜR-Sphäre (ideell/Vermögensverwaltung/Zweckbetrieb/wirtschaftlicher
+    # Geschäftsbetrieb) on every ledger category. Only relevant for gemeinnützige
+    # Vereine — disable for commercial installations (e.g. a for-profit FabLab)
+    # that don't need Sphärentrennung.
+    LEDGER_SPHERES_ENABLED: bool = True
+
+    # Paperless-ngx document linking for ledger entries. Empty = disabled (search
+    # UI hides itself; POST/GET a paperless_document_id still works as a plain
+    # opaque string either way).
+    PAPERLESS_URL: str = ""
+    PAPERLESS_API_TOKEN: str = ""
+
+    # Manual FinTS bank statement live-pull (Phase 3). Empty = disabled — no
+    # scheduled automation regardless, this only gates whether the UI/API
+    # accept a manual pull at all. python-fints requires a registered product
+    # ID (see the Deutsche Kreditwirtschaft's FinTS registration process);
+    # there's no bundled test ID to fall back to.
+    FINTS_PRODUCT_ID: str = ""
 
     # IANA timezone for timestamp display in the web frontend (e.g. Europe/Berlin, UTC)
     TIMEZONE: str = "Europe/Berlin"

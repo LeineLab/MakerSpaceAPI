@@ -1,0 +1,1473 @@
+{% extends "base.html" %}
+{% block title %}{{ _('ledger.title') }} – MakerSpaceAPI{% endblock %}
+{% block content %}
+
+<div x-data="ledgerApp({{ user_is_treasurer | tojson }})" x-cloak>
+  <h1 class="text-2xl font-bold mb-4">{{ _('ledger.title') }}</h1>
+
+  <!-- Tabs -->
+  <div class="flex flex-wrap gap-1 border-b border-gray-200 dark:border-gray-700 mb-6">
+    <button @click="switchTab('entries')"
+            class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
+            :class="activeTab === 'entries' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+      {{ _('ledger.tab_entries') }}
+    </button>
+    <button @click="switchTab('accounts')"
+            class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
+            :class="activeTab === 'accounts' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+      {{ _('ledger.tab_accounts') }}
+    </button>
+    <button @click="switchTab('categories')"
+            class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
+            :class="activeTab === 'categories' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+      {{ _('ledger.tab_categories') }}
+    </button>
+    <button @click="switchTab('report')"
+            class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
+            :class="activeTab === 'report' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+      {{ _('ledger.tab_report') }}
+    </button>
+    <button @click="switchTab('import')"
+            class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
+            :class="activeTab === 'import' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+      {{ _('ledger.tab_import') }}
+    </button>
+  </div>
+
+  <!-- ================= Entries ================= -->
+  <div x-show="activeTab === 'entries'">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+      <div class="flex items-center gap-2">
+        <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.filter_year') }}</label>
+        <select x-model.number="filterYear" @change="loadEntries()"
+                class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+          <template x-for="y in yearOptions" :key="y">
+            <option :value="y" x-text="y"></option>
+          </template>
+        </select>
+      </div>
+      <button x-show="userIsTreasurer" @click="openEntryModal()"
+              class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+        {{ _('ledger.btn_new_entry') }}
+      </button>
+    </div>
+
+    <div x-show="entriesError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="entriesError"></div>
+
+    <template x-if="loadingEntries">
+      <div class="text-gray-400 dark:text-gray-500 text-sm">Loading…</div>
+    </template>
+    <template x-if="!loadingEntries && entries.length === 0">
+      <p class="text-gray-400 dark:text-gray-500">{{ _('ledger.entries_empty') }}</p>
+    </template>
+    <template x-if="!loadingEntries && entries.length > 0">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
+            <tr>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_date') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_description') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_lines') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_paperless') }}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+            <template x-for="e in entries" :key="e.id">
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 align-top">
+                <td class="px-4 py-3 whitespace-nowrap" x-text="e.entry_date"></td>
+                <td class="px-4 py-3" x-text="e.description"></td>
+                <td class="px-4 py-3 text-xs">
+                  <template x-for="l in e.lines" :key="l.id">
+                    <div class="whitespace-nowrap">
+                      <span x-text="lineTargetName(l)"></span>:
+                      <span :class="parseFloat(l.amount) < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'"
+                            x-text="fmtSigned(l.amount)"></span>
+                    </div>
+                  </template>
+                </td>
+                <td class="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400" x-text="e.paperless_document_id || '—'"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- ================= Accounts ================= -->
+  <div x-show="activeTab === 'accounts'">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+      <h2 class="text-xl font-semibold">{{ _('ledger.accounts_title') }}</h2>
+      <button x-show="userIsTreasurer" @click="openAccountModal()"
+              class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+        {{ _('ledger.btn_new_account') }}
+      </button>
+    </div>
+
+    <div x-show="accountsError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="accountsError"></div>
+
+    <template x-if="loadingAccounts">
+      <div class="text-gray-400 dark:text-gray-500 text-sm">Loading…</div>
+    </template>
+    <template x-if="!loadingAccounts && accounts.length === 0">
+      <p class="text-gray-400 dark:text-gray-500">{{ _('ledger.accounts_empty') }}</p>
+    </template>
+    <template x-if="!loadingAccounts && accounts.length > 0">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
+            <tr>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_iban') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_name') }}</th>
+              <th class="px-4 py-3 text-right">{{ _('ledger.col_opening_balance') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_tracked') }}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+            <template x-for="a in accounts" :key="a.id">
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                <td class="px-4 py-3 font-mono text-xs" x-text="a.iban || '—'"></td>
+                <td class="px-4 py-3 font-medium">
+                  <span x-text="a.name"></span>
+                  <span x-show="a.is_offline" class="ml-2 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                    {{ _('ledger.offline_badge') }}
+                  </span>
+                </td>
+                <td class="px-4 py-3 text-right font-mono" x-text="fmt(a.opening_balance)"></td>
+                <td class="px-4 py-3">
+                  <label class="inline-flex items-center gap-2" :class="userIsTreasurer ? 'cursor-pointer' : 'opacity-60'">
+                    <input type="checkbox" :checked="a.tracked" :disabled="!userIsTreasurer"
+                           @change="toggleTracked(a)"
+                           class="rounded border-gray-300 dark:border-gray-600">
+                    <span class="text-xs text-gray-500 dark:text-gray-400" x-text="a.tracked ? YES_NO_L.yes : YES_NO_L.no"></span>
+                  </label>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- ================= Categories ================= -->
+  <div x-show="activeTab === 'categories'">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+      <h2 class="text-xl font-semibold">{{ _('ledger.categories_title') }}</h2>
+      <button x-show="userIsTreasurer" @click="openCategoryModal()"
+              class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+        {{ _('ledger.btn_new_category') }}
+      </button>
+    </div>
+
+    <div x-show="categoriesError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="categoriesError"></div>
+
+    <template x-if="loadingCategories">
+      <div class="text-gray-400 dark:text-gray-500 text-sm">Loading…</div>
+    </template>
+    <template x-if="!loadingCategories && categories.length === 0">
+      <p class="text-gray-400 dark:text-gray-500">{{ _('ledger.categories_empty') }}</p>
+    </template>
+    <template x-if="!loadingCategories && categories.length > 0">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
+            <tr>
+              <th class="px-4 py-3 text-left">{{ _('common.name') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('common.slug') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_kind') }}</th>
+              <th class="px-4 py-3 text-left" x-show="config.spheres_enabled">{{ _('ledger.col_sphere') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_active') }}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+            <template x-for="c in categories" :key="c.id">
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                <td class="px-4 py-3 font-medium" x-text="c.name"></td>
+                <td class="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400" x-text="c.slug"></td>
+                <td class="px-4 py-3">
+                  <span class="px-2 py-0.5 rounded text-xs font-medium"
+                        :class="c.kind === 'income' ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'"
+                        x-text="c.kind === 'income' ? KIND_L.income : KIND_L.expense"></span>
+                </td>
+                <td class="px-4 py-3 text-xs" x-show="config.spheres_enabled" x-text="sphereLabel(c.sphere)"></td>
+                <td class="px-4 py-3">
+                  <label class="inline-flex items-center gap-2" :class="userIsTreasurer ? 'cursor-pointer' : 'opacity-60'">
+                    <input type="checkbox" :checked="c.active" :disabled="!userIsTreasurer"
+                           @change="toggleActive(c)"
+                           class="rounded border-gray-300 dark:border-gray-600">
+                    <span class="text-xs text-gray-500 dark:text-gray-400" x-text="c.active ? ACTIVE_L.active : ACTIVE_L.inactive"></span>
+                  </label>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- ================= Report ================= -->
+  <div x-show="activeTab === 'report'">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+      <h2 class="text-xl font-semibold">{{ _('ledger.report_title') }}</h2>
+      <div class="flex items-center gap-2">
+        <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.report_year') }}</label>
+        <select x-model.number="reportYear" @change="loadReport()"
+                class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+          <template x-for="y in yearOptions" :key="y">
+            <option :value="y" x-text="y"></option>
+          </template>
+        </select>
+        <button @click="exportEuerPdf()" :disabled="pdfExporting"
+                class="bg-gray-600 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-700 disabled:opacity-50">
+          <span x-show="!pdfExporting">{{ _('ledger.btn_export_pdf') }}</span>
+          <span x-show="pdfExporting">…</span>
+        </button>
+      </div>
+    </div>
+
+    <div x-show="pdfExportError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="pdfExportError"></div>
+
+    <div x-show="reportError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="reportError"></div>
+
+    <template x-if="loadingReport">
+      <div class="text-gray-400 dark:text-gray-500 text-sm">Loading…</div>
+    </template>
+    <template x-if="!loadingReport && report && report.categories.length === 0">
+      <p class="text-gray-400 dark:text-gray-500">{{ _('ledger.report_empty') }}</p>
+    </template>
+    <template x-if="!loadingReport && report && report.categories.length > 0">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden mb-6">
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
+            <tr>
+              <th class="px-4 py-3 text-left">{{ _('common.name') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_kind') }}</th>
+              <th class="px-4 py-3 text-left" x-show="config.spheres_enabled">{{ _('ledger.col_sphere') }}</th>
+              <th class="px-4 py-3 text-right">{{ _('ledger.col_total') }}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+            <template x-for="c in report.categories" :key="c.category_id">
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                <td class="px-4 py-3 font-medium" x-text="c.name"></td>
+                <td class="px-4 py-3">
+                  <span class="px-2 py-0.5 rounded text-xs font-medium"
+                        :class="c.kind === 'income' ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'"
+                        x-text="c.kind === 'income' ? KIND_L.income : KIND_L.expense"></span>
+                </td>
+                <td class="px-4 py-3 text-xs" x-show="config.spheres_enabled" x-text="sphereLabel(c.sphere)"></td>
+                <td class="px-4 py-3 text-right font-mono" x-text="fmt(c.total)"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </template>
+
+    <template x-if="!loadingReport && report">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+          <div class="text-xs text-gray-400 dark:text-gray-500 uppercase">{{ _('ledger.report_total_income') }}</div>
+          <div class="text-xl font-bold text-green-600 dark:text-green-400" x-text="fmt(report.total_income)"></div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+          <div class="text-xs text-gray-400 dark:text-gray-500 uppercase">{{ _('ledger.report_total_expense') }}</div>
+          <div class="text-xl font-bold text-red-600 dark:text-red-400" x-text="fmt(report.total_expense)"></div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+          <div class="text-xs text-gray-400 dark:text-gray-500 uppercase">{{ _('ledger.report_net_result') }}</div>
+          <div class="text-xl font-bold" :class="report.net_result >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'" x-text="fmt(report.net_result)"></div>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- ================= Import ================= -->
+  <div x-show="activeTab === 'import'">
+    <h2 class="text-xl font-semibold mb-4">{{ _('ledger.import_upload_title') }}</h2>
+
+    <div x-show="importError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="importError"></div>
+    <div x-show="importSummary" class="mb-3 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 p-2 rounded text-sm" x-text="importSummaryText"></div>
+
+    <div x-show="userIsTreasurer" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-6 flex flex-wrap items-end gap-3">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.import_label_account') }}</label>
+        <select x-model.number="importAccountId"
+                class="border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <option value="">{{ _('ledger.import_select_account') }}</option>
+          <template x-for="a in importableAccounts" :key="a.id">
+            <option :value="a.id" x-text="a.name"></option>
+          </template>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.import_label_file') }}</label>
+        <input type="file" @change="onImportFileChange($event)" accept=".sta,.txt,.xml"
+               class="text-sm">
+      </div>
+      <button @click="uploadImportFile()" :disabled="!importAccountId || !importFile || importUploading"
+              class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50">
+        <span x-show="!importUploading">{{ _('ledger.import_btn_upload') }}</span>
+        <span x-show="importUploading">…</span>
+      </button>
+    </div>
+
+    <!-- FinTS live-pull: hidden entirely when FINTS_PRODUCT_ID isn't configured -->
+    <template x-if="config.fints_enabled">
+      <div x-show="userIsTreasurer" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-6">
+        <h3 class="font-semibold mb-3">{{ _('ledger.fints_title') }}</h3>
+
+        <div x-show="fintsError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="fintsError"></div>
+        <div x-show="fintsSummary" class="mb-3 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 p-2 rounded text-sm" x-text="fintsSummary"></div>
+
+        <!-- Step 1: connection form -->
+        <template x-if="!fintsSessionId">
+          <form @submit.prevent="fintsStart()" class="flex flex-wrap gap-3 items-end">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.fints_label_server') }}</label>
+              <input type="text" x-model="fintsForm.server" required placeholder="{{ _('ledger.fints_placeholder_server') }}"
+                     class="border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.fints_label_blz') }}</label>
+              <input type="text" x-model="fintsForm.bank_identifier" required
+                     class="w-28 border dark:border-gray-700 rounded px-3 py-2 text-sm font-mono bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.fints_label_login') }}</label>
+              <input type="text" x-model="fintsForm.login" required
+                     class="border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.fints_label_pin') }}</label>
+              <input type="password" x-model="fintsForm.pin" required
+                     class="border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+            <button type="submit" :disabled="fintsBusy"
+                    class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50">
+              <span x-show="!fintsBusy">{{ _('ledger.fints_btn_connect') }}</span>
+              <span x-show="fintsBusy">…</span>
+            </button>
+          </form>
+        </template>
+
+        <!-- Step 2a: typed TAN -->
+        <template x-if="fintsStatus === 'tan_required'">
+          <form @submit.prevent="fintsSubmitTan()" class="space-y-3">
+            <p class="text-sm text-gray-600 dark:text-gray-400" x-text="fintsChallenge"></p>
+            <div class="flex gap-3 items-end">
+              <input type="text" x-model="fintsTan" required placeholder="{{ _('ledger.fints_placeholder_tan') }}"
+                     class="border dark:border-gray-700 rounded px-3 py-2 text-sm font-mono bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+              <button type="submit" :disabled="fintsBusy"
+                      class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50">
+                {{ _('ledger.fints_btn_submit_tan') }}
+              </button>
+              <button type="button" @click="fintsReset()" class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">
+                {{ _('common.cancel') }}
+              </button>
+            </div>
+          </form>
+        </template>
+
+        <!-- Step 2b: decoupled (pushTAN-app) — poll automatically -->
+        <template x-if="fintsStatus === 'decoupled'">
+          <div class="flex items-center gap-3">
+            <p class="text-sm text-gray-600 dark:text-gray-400" x-text="fintsChallenge || FINTS_DECOUPLED_HINT"></p>
+            <button @click="fintsReset()" class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">
+              {{ _('common.cancel') }}
+            </button>
+          </div>
+        </template>
+
+        <!-- Step 3: accounts found -->
+        <template x-if="fintsStatus === 'accounts'">
+          <div>
+            <div class="overflow-x-auto mb-3">
+              <table class="min-w-full text-sm">
+                <thead class="text-gray-500 dark:text-gray-400 uppercase text-xs">
+                  <tr>
+                    <th class="px-2 py-2 text-left">{{ _('ledger.col_iban') }}</th>
+                    <th class="px-2 py-2 text-left">{{ _('ledger.fints_col_status') }}</th>
+                    <th class="px-2 py-2 text-left">{{ _('ledger.fints_col_from') }}</th>
+                    <th class="px-2 py-2 text-left">{{ _('ledger.fints_col_to') }}</th>
+                    <th class="px-2 py-2 text-left"></th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                  <template x-for="a in fintsAccounts" :key="a.iban">
+                    <tr>
+                      <td class="px-2 py-2 font-mono text-xs" x-text="a.iban"></td>
+                      <td class="px-2 py-2 text-xs">
+                        <span x-show="a.tracked === true">{{ _('ledger.fints_status_tracked') }}</span>
+                        <span x-show="a.tracked === false">{{ _('ledger.fints_status_ignored') }}</span>
+                        <span x-show="a.tracked === null">{{ _('ledger.fints_status_unknown') }}</span>
+                      </td>
+                      <td class="px-2 py-2">
+                        <input type="date" x-model="a.date_from"
+                               class="border dark:border-gray-700 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800">
+                      </td>
+                      <td class="px-2 py-2">
+                        <input type="date" x-model="a.date_to"
+                               class="border dark:border-gray-700 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800">
+                      </td>
+                      <td class="px-2 py-2">
+                        <button @click="fintsImportAccount(a)" :disabled="fintsBusy || a.tracked !== true"
+                                class="text-blue-600 dark:text-blue-400 hover:underline text-xs disabled:opacity-40 disabled:no-underline">
+                          {{ _('ledger.fints_btn_import') }}
+                        </button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mb-3">{{ _('ledger.fints_unknown_hint') }}</p>
+            <button @click="fintsReset()" class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">
+              {{ _('common.close') }}
+            </button>
+          </div>
+        </template>
+      </div>
+    </template>
+
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+      <h2 class="text-xl font-semibold">{{ _('ledger.import_queue_title') }}</h2>
+      <div class="flex items-center gap-2">
+        <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.import_filter_status') }}</label>
+        <select x-model="importStatus" @change="loadImportLines()"
+                class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+          <option value="new" x-text="IMPORT_STATUS_L.new"></option>
+          <option value="duplicate" x-text="IMPORT_STATUS_L.duplicate"></option>
+          <option value="booked" x-text="IMPORT_STATUS_L.booked"></option>
+          <option value="ignored" x-text="IMPORT_STATUS_L.ignored"></option>
+        </select>
+      </div>
+    </div>
+
+    <div x-show="importLinesError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="importLinesError"></div>
+
+    <template x-if="loadingImportLines">
+      <div class="text-gray-400 dark:text-gray-500 text-sm">Loading…</div>
+    </template>
+    <template x-if="!loadingImportLines && importLines.length === 0">
+      <p class="text-gray-400 dark:text-gray-500">{{ _('ledger.import_empty') }}</p>
+    </template>
+    <template x-if="!loadingImportLines && importLines.length > 0">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
+            <tr>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_date') }}</th>
+              <th class="px-4 py-3 text-right">{{ _('ledger.label_amount') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_purpose') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_counterparty') }}</th>
+              <th class="px-4 py-3 text-left" x-show="userIsTreasurer">{{ _('ledger.col_actions') }}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+            <template x-for="l in importLines" :key="l.id">
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                <td class="px-4 py-3 whitespace-nowrap" x-text="l.booking_date"></td>
+                <td class="px-4 py-3 text-right font-mono"
+                    :class="parseFloat(l.amount) < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'"
+                    x-text="fmtSigned(l.amount)"></td>
+                <td class="px-4 py-3 text-xs" x-text="l.purpose_text || '—'"></td>
+                <td class="px-4 py-3 text-xs" x-text="l.counterparty_name || '—'"></td>
+                <td class="px-4 py-3" x-show="userIsTreasurer">
+                  <template x-if="l.status === 'new'">
+                    <div class="flex gap-2">
+                      <button @click="openBookModal(l)" class="text-blue-600 dark:text-blue-400 hover:underline text-xs">
+                        {{ _('ledger.btn_book') }}
+                      </button>
+                      <button @click="ignoreImportLine(l)" class="text-red-600 dark:text-red-400 hover:underline text-xs">
+                        {{ _('ledger.btn_ignore') }}
+                      </button>
+                    </div>
+                  </template>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- ============ Book Import Line Modal ============ -->
+  <div x-show="showBookModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl p-6" style="max-height: 90vh; overflow-y: auto;" @click.outside="showBookModal = false">
+      <h2 class="text-lg font-bold mb-4">{{ _('ledger.book_modal_title') }}</h2>
+      <div x-show="bookError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="bookError"></div>
+      <form @submit.prevent="submitBooking()" class="space-y-4" x-show="bookingLine">
+        <div class="flex justify-between text-sm bg-gray-50 dark:bg-gray-900 rounded p-3">
+          <span class="text-gray-500 dark:text-gray-400">{{ _('ledger.book_label_bank_amount') }}</span>
+          <span class="font-mono font-semibold" x-text="bookingLine && fmtSigned(bookingLine.amount)"></span>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.book_label_description') }}</label>
+          <input type="text" x-model="bookForm.description" required
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+
+        <div class="relative">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.paperless_search_label') }}</label>
+          <input type="text" x-model="paperlessQuery" @input.debounce.400ms="searchPaperless()"
+                 placeholder="{{ _('ledger.paperless_search_placeholder') }}"
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <template x-if="paperlessResults.length > 0">
+            <div class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border dark:border-gray-700 rounded shadow max-h-40 overflow-y-auto">
+              <template x-for="doc in paperlessResults" :key="doc.id">
+                <div @click="pickPaperlessDoc(doc)"
+                     class="px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer" x-text="doc.title"></div>
+              </template>
+            </div>
+          </template>
+          <p class="text-xs text-gray-400 dark:text-gray-500 mt-1" x-show="bookForm.paperless_document_id">
+            <span x-text="'ID: ' + bookForm.paperless_document_id"></span>
+          </p>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ _('ledger.lines_title') }}</label>
+          <div class="space-y-2">
+            <template x-for="(line, idx) in bookForm.category_lines" :key="idx">
+              <div class="flex gap-2 items-center">
+                <select x-model="line.category_id" required
+                        class="flex-1 border dark:border-gray-700 rounded px-2 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                  <option value="">{{ _('ledger.select_target') }}</option>
+                  <template x-for="c in activeCategories" :key="c.id">
+                    <option :value="c.id" x-text="c.name"></option>
+                  </template>
+                </select>
+                <input type="number" step="0.01" x-model="line.amount" required placeholder="{{ _('ledger.label_amount') }}"
+                       class="w-32 border dark:border-gray-700 rounded px-2 py-2 text-sm font-mono bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                <button type="button" @click="removeBookLine(idx)" x-show="bookForm.category_lines.length > 1"
+                        class="text-red-600 dark:text-red-400 hover:underline text-xs shrink-0">
+                  {{ _('ledger.btn_remove_line') }}
+                </button>
+              </div>
+            </template>
+          </div>
+          <button type="button" @click="addBookLine()" class="mt-2 text-blue-600 dark:text-blue-400 hover:underline text-xs">
+            {{ _('ledger.btn_add_line') }}
+          </button>
+        </div>
+
+        <div class="flex items-center justify-between text-sm border-t dark:border-gray-700 pt-3">
+          <span class="text-gray-500 dark:text-gray-400">{{ _('ledger.sum_label') }}</span>
+          <span class="font-mono font-semibold"
+                :class="bookBalanced ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+                x-text="fmt(bookLineSum) + ' / ' + fmt(bookTargetSum)"></span>
+        </div>
+
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" @click="showBookModal = false"
+                  class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.cancel') }}</button>
+          <button type="submit" :disabled="bookSubmitting || !bookBalanced"
+                  class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
+            <span x-show="!bookSubmitting">{{ _('ledger.btn_submit_booking') }}</span>
+            <span x-show="bookSubmitting">…</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ New Entry Modal ============ -->
+  <div x-show="showEntryModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl p-6" style="max-height: 90vh; overflow-y: auto;" @click.outside="showEntryModal = false">
+      <h2 class="text-lg font-bold mb-4">{{ _('ledger.entry_modal_title') }}</h2>
+      <div x-show="entryError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="entryError"></div>
+      <form @submit.prevent="createEntry()" class="space-y-4">
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_date') }}</label>
+            <input type="date" x-model="entryForm.entry_date" required
+                   class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_paperless_id') }}</label>
+            <input type="text" x-model="entryForm.paperless_document_id" placeholder="{{ _('ledger.placeholder_paperless_id') }}"
+                   class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_description') }}</label>
+          <input type="text" x-model="entryForm.description" required
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ _('ledger.lines_title') }}</label>
+          <div class="space-y-2">
+            <template x-for="(line, idx) in entryForm.lines" :key="idx">
+              <div class="flex gap-2 items-center">
+                <select x-model="line.ref" required
+                        class="flex-1 border dark:border-gray-700 rounded px-2 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                  <option value="">{{ _('ledger.select_target') }}</option>
+                  <optgroup label="{{ _('ledger.optgroup_accounts') }}">
+                    <template x-for="a in trackedAccounts" :key="'a' + a.id">
+                      <option :value="'account:' + a.id" x-text="a.name"></option>
+                    </template>
+                  </optgroup>
+                  <optgroup label="{{ _('ledger.optgroup_categories') }}">
+                    <template x-for="c in activeCategories" :key="'c' + c.id">
+                      <option :value="'category:' + c.id" x-text="c.name"></option>
+                    </template>
+                  </optgroup>
+                </select>
+                <input type="number" step="0.01" x-model="line.amount" required placeholder="{{ _('ledger.label_amount') }}"
+                       class="w-32 border dark:border-gray-700 rounded px-2 py-2 text-sm font-mono bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                <button type="button" @click="removeLine(idx)" x-show="entryForm.lines.length > 2"
+                        class="text-red-600 dark:text-red-400 hover:underline text-xs shrink-0">
+                  {{ _('ledger.btn_remove_line') }}
+                </button>
+              </div>
+            </template>
+          </div>
+          <button type="button" @click="addLine()" class="mt-2 text-blue-600 dark:text-blue-400 hover:underline text-xs">
+            {{ _('ledger.btn_add_line') }}
+          </button>
+        </div>
+
+        <div class="flex items-center justify-between text-sm border-t dark:border-gray-700 pt-3">
+          <span class="text-gray-500 dark:text-gray-400">{{ _('ledger.sum_label') }}</span>
+          <span class="font-mono font-semibold"
+                :class="lineSumBalanced ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+                x-text="fmt(lineSum) + ' (' + (lineSumBalanced ? SUM_L.balanced : SUM_L.unbalanced) + ')'"></span>
+        </div>
+
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" @click="showEntryModal = false"
+                  class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.cancel') }}</button>
+          <button type="submit" :disabled="entrySubmitting || !lineSumBalanced"
+                  class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
+            <span x-show="!entrySubmitting">{{ _('ledger.btn_create_entry') }}</span>
+            <span x-show="entrySubmitting">…</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ New Account Modal ============ -->
+  <div x-show="showAccountModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showAccountModal = false">
+      <h2 class="text-lg font-bold mb-4">{{ _('ledger.account_modal_title') }}</h2>
+      <div x-show="accountError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="accountError"></div>
+      <form @submit.prevent="createAccount()" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_name') }}</label>
+          <input type="text" x-model="accountForm.name" required
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" x-model="accountForm.is_offline"
+                 class="rounded border-gray-300 dark:border-gray-600">
+          <span class="text-sm text-gray-700 dark:text-gray-300">{{ _('ledger.label_offline_account') }}</span>
+        </label>
+        <p class="text-xs text-gray-400 dark:text-gray-500 -mt-2">{{ _('ledger.offline_account_hint') }}</p>
+        <div x-show="!accountForm.is_offline">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_iban') }}</label>
+          <input type="text" x-model="accountForm.iban" :required="!accountForm.is_offline"
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm font-mono bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_opening_balance') }}</label>
+          <input type="number" step="0.01" x-model="accountForm.opening_balance"
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm font-mono bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" @click="showAccountModal = false"
+                  class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.cancel') }}</button>
+          <button type="submit" :disabled="accountSubmitting"
+                  class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
+            <span x-show="!accountSubmitting">{{ _('ledger.btn_create_account') }}</span>
+            <span x-show="accountSubmitting">…</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ New Category Modal ============ -->
+  <div x-show="showCategoryModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showCategoryModal = false">
+      <h2 class="text-lg font-bold mb-4">{{ _('ledger.category_modal_title') }}</h2>
+      <div x-show="categoryError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="categoryError"></div>
+      <form @submit.prevent="createCategory()" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('common.name') }}</label>
+          <input type="text" x-model="categoryForm.name" required
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_slug') }}</label>
+          <input type="text" x-model="categoryForm.slug" required pattern="[a-z0-9_-]+" title="{{ _('common.slug_hint') }}"
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm font-mono bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_kind') }}</label>
+          <select x-model="categoryForm.kind" required
+                  class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="">{{ _('ledger.select_kind') }}</option>
+            <option value="income">{{ _('ledger.kind_income') }}</option>
+            <option value="expense">{{ _('ledger.kind_expense') }}</option>
+          </select>
+        </div>
+        <div x-show="config.spheres_enabled">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_sphere') }}</label>
+          <select x-model="categoryForm.sphere" :required="config.spheres_enabled"
+                  class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="">{{ _('ledger.select_sphere') }}</option>
+            <option value="ideell">{{ _('ledger.sphere_ideell') }}</option>
+            <option value="vermoegensverwaltung">{{ _('ledger.sphere_vermoegensverwaltung') }}</option>
+            <option value="zweckbetrieb">{{ _('ledger.sphere_zweckbetrieb') }}</option>
+            <option value="wirtschaftlicher_geschaeftsbetrieb">{{ _('ledger.sphere_wirtschaftlicher_geschaeftsbetrieb') }}</option>
+          </select>
+        </div>
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" @click="showCategoryModal = false"
+                  class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.cancel') }}</button>
+          <button type="submit" :disabled="categorySubmitting"
+                  class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
+            <span x-show="!categorySubmitting">{{ _('ledger.btn_create_category') }}</span>
+            <span x-show="categorySubmitting">…</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+const SPHERE_L = {
+  ideell: {{ _('ledger.sphere_ideell') | tojson }},
+  vermoegensverwaltung: {{ _('ledger.sphere_vermoegensverwaltung') | tojson }},
+  zweckbetrieb: {{ _('ledger.sphere_zweckbetrieb') | tojson }},
+  wirtschaftlicher_geschaeftsbetrieb: {{ _('ledger.sphere_wirtschaftlicher_geschaeftsbetrieb') | tojson }},
+};
+const SPHERE_NONE = {{ _('ledger.sphere_none') | tojson }};
+// Jinja's `tojson` output can't be embedded inline inside a double-quoted HTML
+// attribute (the JSON string's own quotes terminate the attribute early), so
+// every translated string used inside an x-text expression is predefined here.
+const YES_NO_L = { yes: {{ _('common.yes') | tojson }}, no: {{ _('common.no') | tojson }} };
+const ACTIVE_L = { active: {{ _('common.active') | tojson }}, inactive: {{ _('common.inactive') | tojson }} };
+const KIND_L = { income: {{ _('ledger.kind_income') | tojson }}, expense: {{ _('ledger.kind_expense') | tojson }} };
+const SUM_L = { balanced: {{ _('ledger.sum_balanced') | tojson }}, unbalanced: {{ _('ledger.sum_unbalanced') | tojson }} };
+const IMPORT_STATUS_L = {
+  new: {{ _('ledger.import_status_new') | tojson }},
+  duplicate: {{ _('ledger.import_status_duplicate') | tojson }},
+  booked: {{ _('ledger.import_status_booked') | tojson }},
+  ignored: {{ _('ledger.import_status_ignored') | tojson }},
+};
+const IMPORT_SUMMARY_TMPL = {{ _('ledger.import_summary') | tojson }};
+const FINTS_DECOUPLED_HINT = {{ _('ledger.fints_decoupled_hint') | tojson }};
+
+function ledgerApp(userIsTreasurer) {
+  return {
+    userIsTreasurer,
+    activeTab: 'entries',
+    config: { spheres_enabled: true },
+
+    entries: [],
+    loadingEntries: true,
+    entriesError: null,
+    filterYear: new Date().getFullYear(),
+    showEntryModal: false,
+    entryForm: { entry_date: '', description: '', paperless_document_id: '', lines: [] },
+    entryError: null,
+    entrySubmitting: false,
+
+    accounts: [],
+    loadingAccounts: true,
+    accountsError: null,
+    showAccountModal: false,
+    accountForm: { iban: '', name: '', is_offline: false, opening_balance: '0.00' },
+    accountError: null,
+    accountSubmitting: false,
+
+    categories: [],
+    loadingCategories: true,
+    categoriesError: null,
+    showCategoryModal: false,
+    categoryForm: { name: '', slug: '', kind: '', sphere: '' },
+    categoryError: null,
+    categorySubmitting: false,
+
+    report: null,
+    loadingReport: false,
+    reportError: null,
+    reportYear: new Date().getFullYear(),
+    pdfExporting: false,
+    pdfExportError: null,
+
+    importAccountId: '',
+    importFile: null,
+    importUploading: false,
+    importError: null,
+    importSummary: null,
+
+    importStatus: 'new',
+    importLines: [],
+    loadingImportLines: true,
+    importLinesError: null,
+
+    showBookModal: false,
+    bookingLine: null,
+    bookForm: { description: '', paperless_document_id: '', category_lines: [] },
+    bookError: null,
+    bookSubmitting: false,
+    paperlessQuery: '',
+    paperlessResults: [],
+
+    fintsForm: { server: '', bank_identifier: '', login: '', pin: '' },
+    fintsSessionId: null,
+    fintsStatus: null,  // 'tan_required' | 'decoupled' | 'accounts'
+    fintsChallenge: null,
+    fintsTan: '',
+    fintsAccounts: [],
+    fintsBusy: false,
+    fintsError: null,
+    fintsSummary: null,
+    fintsPollTimer: null,
+
+    get activeCategories() {
+      return this.categories.filter(c => c.active);
+    },
+
+    get trackedAccounts() {
+      // Used for manual-entry line pickers — offline accounts are meant to be
+      // booked against directly (transfers in, invoices out), so they're
+      // included here.
+      return this.accounts.filter(a => a.tracked);
+    },
+
+    get importableAccounts() {
+      // Used for the file-upload account picker — offline accounts have no
+      // bank statement to import, so they're excluded here (unlike trackedAccounts).
+      return this.accounts.filter(a => a.tracked && !a.is_offline);
+    },
+
+    get yearOptions() {
+      const current = new Date().getFullYear();
+      const years = [];
+      for (let y = current; y >= current - 5; y--) years.push(y);
+      return years;
+    },
+
+    async init() {
+      await this.loadConfig();
+      await Promise.all([this.loadAccounts(), this.loadCategories()]);
+      await this.loadEntries();
+    },
+
+    switchTab(tab) {
+      this.activeTab = tab;
+      if (tab === 'report' && !this.report) this.loadReport();
+      if (tab === 'import') this.loadImportLines();
+    },
+
+    get importSummaryText() {
+      if (!this.importSummary) return '';
+      return IMPORT_SUMMARY_TMPL
+        .replace('{new}', this.importSummary.new_count)
+        .replace('{duplicate}', this.importSummary.duplicate_count);
+    },
+
+    async loadConfig() {
+      try {
+        const r = await apiFetch('/api/v1/ledger/config');
+        if (r.ok) this.config = await r.json();
+      } catch (e) {
+        // keep default (spheres_enabled: true) if unreachable
+      }
+    },
+
+    async loadEntries() {
+      this.loadingEntries = true;
+      this.entriesError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/entries?year=${this.filterYear}`);
+        if (!r.ok) throw new Error('Failed to load entries');
+        this.entries = await r.json();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.entriesError = e.message || String(e);
+      } finally {
+        this.loadingEntries = false;
+      }
+    },
+
+    async loadAccounts() {
+      this.loadingAccounts = true;
+      this.accountsError = null;
+      try {
+        const r = await apiFetch('/api/v1/ledger/accounts');
+        if (!r.ok) throw new Error('Failed to load accounts');
+        this.accounts = await r.json();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.accountsError = e.message || String(e);
+      } finally {
+        this.loadingAccounts = false;
+      }
+    },
+
+    async loadCategories() {
+      this.loadingCategories = true;
+      this.categoriesError = null;
+      try {
+        // include_inactive=true so a deactivated category stays visible (and
+        // reactivatable) here; the entry-line dropdowns use activeCategories.
+        const r = await apiFetch('/api/v1/ledger/categories?include_inactive=true');
+        if (!r.ok) throw new Error('Failed to load categories');
+        this.categories = await r.json();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.categoriesError = e.message || String(e);
+      } finally {
+        this.loadingCategories = false;
+      }
+    },
+
+    async loadReport() {
+      this.loadingReport = true;
+      this.reportError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/report/euer?year=${this.reportYear}`);
+        if (!r.ok) throw new Error('Failed to load report');
+        this.report = await r.json();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.reportError = e.message || String(e);
+      } finally {
+        this.loadingReport = false;
+      }
+    },
+
+    async exportEuerPdf() {
+      this.pdfExporting = true;
+      this.pdfExportError = null;
+      try {
+        const lang = document.documentElement.lang || 'de';
+        const r = await apiFetch(`/api/v1/ledger/report/euer/pdf?year=${this.reportYear}&lang=${lang}`);
+        if (!r.ok) {
+          const data = await r.json().catch(() => ({}));
+          throw new Error(data.detail || 'Error generating PDF');
+        }
+        const blob = await r.blob();
+        const cd = r.headers.get('content-disposition') || '';
+        const match = cd.match(/filename="([^"]+)"/);
+        const filename = match ? match[1] : `euer_${this.reportYear}.pdf`;
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+      } catch (e) {
+        if (e !== 'unauthenticated') this.pdfExportError = e.message || String(e);
+      } finally {
+        this.pdfExporting = false;
+      }
+    },
+
+    // --- entries ---
+    openEntryModal() {
+      this.entryForm = {
+        entry_date: new Date().toISOString().slice(0, 10),
+        description: '',
+        paperless_document_id: '',
+        lines: [{ ref: '', amount: '' }, { ref: '', amount: '' }],
+      };
+      this.entryError = null;
+      this.showEntryModal = true;
+    },
+
+    addLine() {
+      this.entryForm.lines.push({ ref: '', amount: '' });
+    },
+
+    removeLine(idx) {
+      if (this.entryForm.lines.length <= 2) return;
+      this.entryForm.lines.splice(idx, 1);
+    },
+
+    get lineSum() {
+      return this.entryForm.lines.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0);
+    },
+
+    get lineSumBalanced() {
+      return Math.abs(this.lineSum) < 0.005;
+    },
+
+    async createEntry() {
+      this.entrySubmitting = true;
+      this.entryError = null;
+      try {
+        const lines = this.entryForm.lines.map(l => {
+          const [kind, idStr] = (l.ref || '').split(':');
+          const id = parseInt(idStr, 10);
+          return {
+            bank_account_id: kind === 'account' ? id : null,
+            category_id: kind === 'category' ? id : null,
+            amount: parseFloat(l.amount),
+          };
+        });
+        const r = await apiFetch('/api/v1/ledger/entries', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            entry_date: this.entryForm.entry_date,
+            description: this.entryForm.description,
+            paperless_document_id: this.entryForm.paperless_document_id || null,
+            lines,
+          }),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          this.entryError = data.detail || 'Error creating entry';
+          return;
+        }
+        this.showEntryModal = false;
+        await this.loadEntries();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.entryError = e.message || String(e);
+      } finally {
+        this.entrySubmitting = false;
+      }
+    },
+
+    lineTargetName(line) {
+      if (line.bank_account) return line.bank_account.name;
+      if (line.category) return line.category.name;
+      return '?';
+    },
+
+    fmtSigned(v) {
+      const n = parseFloat(v);
+      return (n >= 0 ? '+' : '') + n.toFixed(2) + ' €';
+    },
+
+    // --- accounts ---
+    openAccountModal() {
+      this.accountForm = { iban: '', name: '', is_offline: false, opening_balance: '0.00' };
+      this.accountError = null;
+      this.showAccountModal = true;
+    },
+
+    async createAccount() {
+      this.accountSubmitting = true;
+      this.accountError = null;
+      try {
+        const r = await apiFetch('/api/v1/ledger/accounts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            iban: this.accountForm.is_offline ? null : this.accountForm.iban,
+            name: this.accountForm.name,
+            is_offline: this.accountForm.is_offline,
+            opening_balance: parseFloat(this.accountForm.opening_balance || '0'),
+          }),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          this.accountError = data.detail || 'Error creating account';
+          return;
+        }
+        this.showAccountModal = false;
+        await this.loadAccounts();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.accountError = e.message || String(e);
+      } finally {
+        this.accountSubmitting = false;
+      }
+    },
+
+    async toggleTracked(account) {
+      const next = !account.tracked;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/accounts/${account.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tracked: next }),
+        });
+        if (r.ok) account.tracked = next;
+      } catch (e) {
+        // leave checkbox state as-is on failure
+      }
+    },
+
+    // --- categories ---
+    openCategoryModal() {
+      this.categoryForm = { name: '', slug: '', kind: '', sphere: '' };
+      this.categoryError = null;
+      this.showCategoryModal = true;
+    },
+
+    async createCategory() {
+      this.categorySubmitting = true;
+      this.categoryError = null;
+      try {
+        const r = await apiFetch('/api/v1/ledger/categories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: this.categoryForm.name,
+            slug: this.categoryForm.slug,
+            kind: this.categoryForm.kind,
+            sphere: this.config.spheres_enabled ? (this.categoryForm.sphere || null) : null,
+          }),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          this.categoryError = data.detail || 'Error creating category';
+          return;
+        }
+        this.showCategoryModal = false;
+        await this.loadCategories();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.categoryError = e.message || String(e);
+      } finally {
+        this.categorySubmitting = false;
+      }
+    },
+
+    async toggleActive(category) {
+      const next = !category.active;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/categories/${category.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ active: next }),
+        });
+        if (r.ok) category.active = next;
+      } catch (e) {
+        // leave checkbox state as-is on failure
+      }
+    },
+
+    sphereLabel(s) {
+      if (!s) return SPHERE_NONE;
+      return SPHERE_L[s] || s;
+    },
+
+    fmt(v) {
+      return parseFloat(v).toFixed(2) + ' €';
+    },
+
+    // --- import: file upload ---
+    onImportFileChange(event) {
+      this.importFile = event.target.files[0] || null;
+    },
+
+    async uploadImportFile() {
+      if (!this.importAccountId || !this.importFile) return;
+      this.importUploading = true;
+      this.importError = null;
+      this.importSummary = null;
+      try {
+        const url = `/api/v1/ledger/import/file?bank_account_id=${this.importAccountId}`
+          + `&filename=${encodeURIComponent(this.importFile.name)}`;
+        const r = await apiFetch(url, { method: 'POST', body: this.importFile });
+        const data = await r.json();
+        if (!r.ok) {
+          this.importError = data.detail || 'Error importing file';
+          return;
+        }
+        this.importSummary = data;
+        this.importFile = null;
+        await this.loadImportLines();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.importError = e.message || String(e);
+      } finally {
+        this.importUploading = false;
+      }
+    },
+
+    // --- import: staging queue ---
+    async loadImportLines() {
+      this.loadingImportLines = true;
+      this.importLinesError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/import/lines?status=${this.importStatus}`);
+        if (!r.ok) throw new Error('Failed to load import lines');
+        this.importLines = await r.json();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.importLinesError = e.message || String(e);
+      } finally {
+        this.loadingImportLines = false;
+      }
+    },
+
+    async ignoreImportLine(line) {
+      try {
+        const r = await apiFetch(`/api/v1/ledger/import/lines/${line.id}/ignore`, { method: 'POST' });
+        if (r.ok) await this.loadImportLines();
+      } catch (e) {
+        // leave the line in the list on failure
+      }
+    },
+
+    // --- import: booking modal ---
+    openBookModal(line) {
+      this.bookingLine = line;
+      this.bookForm = {
+        description: line.purpose_text || '',
+        paperless_document_id: '',
+        category_lines: [{ category_id: '', amount: '', note: '' }],
+      };
+      this.bookError = null;
+      this.paperlessQuery = '';
+      this.paperlessResults = [];
+      this.showBookModal = true;
+    },
+
+    addBookLine() {
+      this.bookForm.category_lines.push({ category_id: '', amount: '', note: '' });
+    },
+
+    removeBookLine(idx) {
+      if (this.bookForm.category_lines.length <= 1) return;
+      this.bookForm.category_lines.splice(idx, 1);
+    },
+
+    get bookLineSum() {
+      return this.bookForm.category_lines.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0);
+    },
+
+    get bookTargetSum() {
+      return this.bookingLine ? -parseFloat(this.bookingLine.amount) : 0;
+    },
+
+    get bookBalanced() {
+      return !!this.bookingLine && Math.abs(this.bookLineSum - this.bookTargetSum) < 0.005;
+    },
+
+    async submitBooking() {
+      this.bookSubmitting = true;
+      this.bookError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/import/lines/${this.bookingLine.id}/book`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            description: this.bookForm.description,
+            paperless_document_id: this.bookForm.paperless_document_id || null,
+            category_lines: this.bookForm.category_lines.map(l => ({
+              category_id: parseInt(l.category_id, 10),
+              amount: parseFloat(l.amount),
+              note: l.note || null,
+            })),
+          }),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          this.bookError = data.detail || 'Error booking line';
+          return;
+        }
+        this.showBookModal = false;
+        // Booking a staging line also creates a journal entry, so the Buchungen
+        // tab's (already-loaded) list would otherwise silently go stale.
+        await Promise.all([this.loadImportLines(), this.loadEntries()]);
+      } catch (e) {
+        if (e !== 'unauthenticated') this.bookError = e.message || String(e);
+      } finally {
+        this.bookSubmitting = false;
+      }
+    },
+
+    // --- import: Paperless search ---
+    async searchPaperless() {
+      if (!this.paperlessQuery) {
+        this.paperlessResults = [];
+        return;
+      }
+      try {
+        const r = await apiFetch(`/api/v1/ledger/paperless/search?q=${encodeURIComponent(this.paperlessQuery)}`);
+        if (r.ok) this.paperlessResults = await r.json();
+      } catch (e) {
+        // leave previous results on failure
+      }
+    },
+
+    pickPaperlessDoc(doc) {
+      this.bookForm.paperless_document_id = String(doc.id);
+      this.paperlessResults = [];
+      this.paperlessQuery = doc.title;
+    },
+
+    // --- FinTS live-pull (Phase 3) ---
+    fintsDefaultDates() {
+      const to = new Date();
+      const from = new Date();
+      from.setDate(from.getDate() - 3);
+      return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
+    },
+
+    fintsApplyStep(data) {
+      this.fintsSessionId = data.session_id;
+      this.fintsStatus = data.status;
+      this.fintsChallenge = data.challenge || null;
+      if (data.status === 'accounts') {
+        this.fintsStopPolling();
+        const dates = this.fintsDefaultDates();
+        this.fintsAccounts = data.accounts.map(a => ({ ...a, date_from: dates.from, date_to: dates.to }));
+      } else if (data.status === 'decoupled') {
+        this.fintsStartPolling();
+      } else {
+        this.fintsStopPolling();
+      }
+    },
+
+    async fintsStart() {
+      this.fintsBusy = true;
+      this.fintsError = null;
+      this.fintsSummary = null;
+      try {
+        const r = await apiFetch('/api/v1/ledger/fints/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.fintsForm),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          this.fintsError = data.detail || 'Error connecting';
+          return;
+        }
+        this.fintsForm.pin = '';
+        this.fintsApplyStep(data);
+      } catch (e) {
+        if (e !== 'unauthenticated') this.fintsError = e.message || String(e);
+      } finally {
+        this.fintsBusy = false;
+      }
+    },
+
+    async fintsSubmitTan() {
+      this.fintsBusy = true;
+      this.fintsError = null;
+      try {
+        const r = await apiFetch('/api/v1/ledger/fints/tan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: this.fintsSessionId, tan: this.fintsTan }),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          this.fintsError = data.detail || 'Error submitting TAN';
+          return;
+        }
+        this.fintsTan = '';
+        if (data.new_count !== undefined) {
+          this.fintsHandleImportResult(data);
+        } else {
+          this.fintsApplyStep(data);
+        }
+      } catch (e) {
+        if (e !== 'unauthenticated') this.fintsError = e.message || String(e);
+      } finally {
+        this.fintsBusy = false;
+      }
+    },
+
+    fintsStartPolling() {
+      this.fintsStopPolling();
+      this.fintsPollTimer = setInterval(() => this.fintsPoll(), 4000);
+    },
+
+    fintsStopPolling() {
+      if (this.fintsPollTimer) {
+        clearInterval(this.fintsPollTimer);
+        this.fintsPollTimer = null;
+      }
+    },
+
+    async fintsPoll() {
+      try {
+        const r = await apiFetch('/api/v1/ledger/fints/poll', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: this.fintsSessionId }),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          this.fintsStopPolling();
+          this.fintsError = data.detail || 'Error polling';
+          return;
+        }
+        if (data.new_count !== undefined) {
+          this.fintsHandleImportResult(data);
+        } else {
+          this.fintsApplyStep(data);
+        }
+      } catch (e) {
+        this.fintsStopPolling();
+        if (e !== 'unauthenticated') this.fintsError = e.message || String(e);
+      }
+    },
+
+    fintsHandleImportResult(data) {
+      this.fintsSummary = IMPORT_SUMMARY_TMPL
+        .replace('{new}', data.new_count)
+        .replace('{duplicate}', data.duplicate_count);
+      this.loadImportLines();
+    },
+
+    async fintsImportAccount(account) {
+      this.fintsBusy = true;
+      this.fintsError = null;
+      this.fintsSummary = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/fints/accounts/${encodeURIComponent(account.iban)}/import`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: this.fintsSessionId,
+            date_from: account.date_from,
+            date_to: account.date_to,
+          }),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          this.fintsError = data.detail || 'Error importing account';
+          return;
+        }
+        if (data.new_count !== undefined) {
+          this.fintsHandleImportResult(data);
+        } else {
+          // tan_required/decoupled for this specific fetch — resolve via the
+          // same TAN/poll widgets, resuming lands back here through them.
+          this.fintsApplyStep(data);
+        }
+      } catch (e) {
+        if (e !== 'unauthenticated') this.fintsError = e.message || String(e);
+      } finally {
+        this.fintsBusy = false;
+      }
+    },
+
+    fintsReset() {
+      this.fintsStopPolling();
+      this.fintsSessionId = null;
+      this.fintsStatus = null;
+      this.fintsChallenge = null;
+      this.fintsTan = '';
+      this.fintsAccounts = [];
+      this.fintsError = null;
+      this.fintsForm = { server: '', bank_identifier: '', login: '', pin: '' };
+    },
+  };
+}
+</script>
+{% endblock %}

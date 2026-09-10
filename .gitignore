@@ -1,6 +1,7 @@
 .env
 .venv/
 node_modules/
+projects/
 
 # Tailwind output — built fresh in Docker image / CI, not committed
 app/web/static/css/tailwind.css

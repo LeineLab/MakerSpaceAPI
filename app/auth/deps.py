@@ -5,7 +5,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.auth.jwt import verify_admin_jwt
-from app.auth.oidc import is_admin, is_machine_admin, is_product_manager
+from app.auth.oidc import is_admin, is_auditor, is_machine_admin, is_product_manager, is_treasurer
 from app.auth.tokens import verify_api_token
 from app.database import get_db
 from app.models.machine import Machine
@@ -46,6 +46,23 @@ def require_product_manager_user(user: dict = Depends(require_session_user)) -> 
     """Allow global admins and users in the product-manager OIDC group."""
     if not is_product_manager(user):
         raise HTTPException(status_code=403, detail="Product manager access required")
+    return user
+
+
+def require_treasurer_user(user: dict = Depends(require_session_user)) -> dict:
+    """Allow global admins and users in the treasurer (Kassenwart) OIDC group.
+
+    Required for anything that books, imports, or categorizes ledger entries.
+    """
+    if not is_treasurer(user):
+        raise HTTPException(status_code=403, detail="Treasurer access required")
+    return user
+
+
+def require_ledger_viewer_user(user: dict = Depends(require_session_user)) -> dict:
+    """Allow admins, treasurers, and auditors (Kassenprüfer) read-only access to the ledger."""
+    if not is_auditor(user):
+        raise HTTPException(status_code=403, detail="Ledger access required")
     return user
 
 

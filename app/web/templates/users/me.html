@@ -93,7 +93,7 @@
                     <td class="px-4 py-2 text-xs text-gray-400 dark:text-gray-500 text-right"
                         x-text="parseFloat(m.price_per_minute) > 0
                           ? parseFloat(m.price_per_minute).toFixed(2) + ' €/min'
-                          : {{ _('me.free') | tojson }}"></td>
+                          : _FREE_LABEL"></td>
                   </tr>
                 </template>
               </tbody>
@@ -202,6 +202,7 @@
 </div>
 
 <script>
+const _FREE_LABEL = {{ _('me.free') | tojson }};
 const _TX_LABELS = {
   'purchase':              {{ _('me.type_purchase') | tojson }},
   'topup':                 {{ _('me.type_topup') | tojson }},

@@ -40,3 +40,23 @@ def is_product_manager(user_info: dict) -> bool:
 def is_machine_admin(user_info: dict, oidc_subs: list[str]) -> bool:
     """Check whether user's OIDC sub is listed as a machine admin."""
     return user_info.get("sub") in oidc_subs
+
+
+def is_treasurer(user_info: dict) -> bool:
+    """True if user is admin OR belongs to the treasurer (Kassenwart) group (when configured)."""
+    if is_admin(user_info):
+        return True
+    group = settings.OIDC_TREASURER_GROUP
+    return bool(group) and group in get_user_groups(user_info)
+
+
+def is_auditor(user_info: dict) -> bool:
+    """True if user is treasurer/admin OR belongs to the auditor (Kassenprüfer) group.
+
+    Kassenprüfer get read-only access to the ledger; treasurers and admins
+    automatically pass this check since they can already see everything an auditor can.
+    """
+    if is_treasurer(user_info):
+        return True
+    group = settings.OIDC_AUDITOR_GROUP
+    return bool(group) and group in get_user_groups(user_info)

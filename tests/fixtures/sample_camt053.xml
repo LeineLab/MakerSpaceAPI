@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02">
+  <BkToCstmrStmt>
+    <Stmt>
+      <Id>STMT001</Id>
+      <Acct>
+        <Id>
+          <IBAN>DE02120300000000202051</IBAN>
+        </Id>
+      </Acct>
+      <Ntry>
+        <Amt Ccy="EUR">50.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <BookgDt>
+          <Dt>2026-03-01</Dt>
+        </BookgDt>
+        <NtryDtls>
+          <TxDtls>
+            <Refs>
+              <AcctSvcrRef>CAMT-REF-001</AcctSvcrRef>
+            </Refs>
+            <RltdPties>
+              <Dbtr>
+                <Nm>Max Mustermann</Nm>
+              </Dbtr>
+              <DbtrAcct>
+                <Id>
+                  <IBAN>DE89370400440532013000</IBAN>
+                </Id>
+              </DbtrAcct>
+            </RltdPties>
+            <RmtInf>
+              <Ustrd>Mitgliedsbeitrag 2026</Ustrd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">30.00</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <BookgDt>
+          <Dt>2026-03-02</Dt>
+        </BookgDt>
+        <NtryDtls>
+          <TxDtls>
+            <Refs>
+              <AcctSvcrRef>CAMT-REF-002</AcctSvcrRef>
+            </Refs>
+            <RltdPties>
+              <Cdtr>
+                <Nm>Getraenke GmbH</Nm>
+              </Cdtr>
+              <CdtrAcct>
+                <Id>
+                  <IBAN>DE12500105170648489890</IBAN>
+                </Id>
+              </CdtrAcct>
+            </RltdPties>
+            <RmtInf>
+              <Ustrd>Wareneinkauf Getraenke</Ustrd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>

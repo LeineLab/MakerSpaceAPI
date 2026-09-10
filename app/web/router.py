@@ -3,8 +3,14 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from app.auth.deps import get_session_user, require_admin_user, require_product_manager_user, require_session_user
-from app.auth.oidc import is_admin, is_product_manager
+from app.auth.deps import (
+    get_session_user,
+    require_admin_user,
+    require_ledger_viewer_user,
+    require_product_manager_user,
+    require_session_user,
+)
+from app.auth.oidc import is_admin, is_product_manager, is_treasurer
 from app.web.auth import router as auth_router
 from app.web.i18n import detect_language, get_translator
 from app.web.templating import templates
@@ -153,6 +159,21 @@ def rentals_page(
     admin: dict = Depends(require_admin_user),
 ):
     return templates.TemplateResponse(request, "rentals/items.html", _ctx(request, admin))
+
+
+# ---------------------------------------------------------------------------
+# Treasurer / Auditor: Ledger (Vereinsbuchhaltung)
+# ---------------------------------------------------------------------------
+
+@router.get("/ledger", response_class=HTMLResponse)
+def ledger_page(
+    request: Request,
+    user: dict = Depends(require_ledger_viewer_user),
+):
+    return templates.TemplateResponse(
+        request, "ledger/index.html",
+        _ctx(request, user, user_is_treasurer=is_treasurer(user)),
+    )
 
 
 # ---------------------------------------------------------------------------
