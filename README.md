@@ -246,15 +246,14 @@ Use `--dry-run` to preview changes without writing. Use `--only machines product
 
 ## Hardware projects
 
-The `projects/` directory contains updated versions of the three original hardware projects, modified to call the MakerSpaceAPI REST endpoints instead of connecting directly to MySQL.
+- [Bankomat](https://github.com/LeineLab/Bankomat): Cash-acceptor/topup-device
+- [NFCKasse](https://github.com/LeineLab/NFCKasse): Checkout device
+- [MachineUserManager](https://github.com/LeineLab/MachineUserManager): Unlock machines via NFC
+- [nfc32rental](https://github.com/LeineLab/esp32rental): Rent items with UHF tags
+- [nfc32rentalalert](https://github.com/LeineLab/esp32rentalalert): Simple alert device for unrented items
+- [nfcprint](https://github.com/LeineLab/nfcprint): Print labels for users on a QL-570 or similar
 
-| Project | Config | Key change |
-|---|---|---|
-| `MachineUserManager/` | Set `API_URL`, `API_TOKEN` in `user_config.py` | `makerspaceapi.py` connector at project root |
-| `Bankomat/` | Set `API_URL`, `API_TOKEN` in `user_config.py` | `unified_kasse.py`, `nfckasse.py`, `machines.py` use REST API |
-| `NFCKasse/` | Set `api_url`, `api_token`, `uid_hash = False` in `settings.py` | `database.py` uses REST API; raw integer UIDs |
 
-See the `*.example.py` config files in each project directory for the required settings.
 
 ## Project structure
 
@@ -288,7 +287,9 @@ tailwind.config.js   # Tailwind content paths
 ## Tests
 
 ```bash
+pip install -r requirements-test.txt
 pytest
 ```
 
 The test suite uses an in-memory SQLite database and does not require a running MySQL server or OIDC provider.
+`requirements-test.txt` holds test-only packages (pytest, Playwright, httpx for `TestClient`) — never installed in the production image.

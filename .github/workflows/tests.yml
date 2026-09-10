@@ -28,8 +28,30 @@ jobs:
           npm ci
           npm run build:css
 
-      - name: Install dependencies
+      - name: Install production dependencies
         run: pip install -r requirements.txt
+
+      - name: Smoke-test production dependencies (server boots without test-only packages)
+        env:
+          DATABASE_URL: sqlite:///./test.db
+          SECRET_KEY: test-secret-key-for-ci
+          OIDC_CLIENT_ID: test
+          OIDC_CLIENT_SECRET: test
+          OIDC_DISCOVERY_URL: https://example.com/.well-known/openid-configuration
+          OIDC_REDIRECT_URI: http://localhost:8000/auth/callback
+          BASE_URL: http://localhost:8000
+        run: |
+          alembic upgrade head
+          uvicorn app.main:app --port 8000 &
+          for i in $(seq 1 20); do
+            curl -sf http://localhost:8000/api/health && break
+            [ "$i" -eq 20 ] && { echo "server did not become healthy"; exit 1; }
+            sleep 0.5
+          done
+          kill %1
+
+      - name: Install test dependencies
+        run: pip install -r requirements-test.txt
 
       - name: Install Playwright browsers
         run: playwright install --with-deps chromium
