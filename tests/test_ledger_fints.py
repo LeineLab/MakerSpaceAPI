@@ -479,6 +479,27 @@ def test_fints_cross_source_dedup_with_file_import(treasurer_client, bank_accoun
     assert data["duplicate_count"] == 1
 
 
+def test_fints_shared_placeholder_reference_does_not_cross_flag_different_amounts(treasurer_client, bank_account):
+    """Real-world bug (2026-09-11, found via a real FinTS pull): the bank
+    fills in the SEPA placeholder NOTPROVIDED for any transaction without an
+    explicit end-to-end reference, so many distinct transactions share that
+    same "reference" — the dedup pipeline (shared with file import) must not
+    treat them as duplicates of each other just because of that."""
+    lines = _sample_lines(amount="25.00", reference="NOTPROVIDED") + _sample_lines(amount="40.00", reference="NOTPROVIDED")
+    with patch("app.services.fints_client.start_transactions") as mock_fetch:
+        mock_fetch.return_value = {
+            "session_id": "sess-1", "status": "transactions",
+            "iban": bank_account.iban, "lines": lines,
+        }
+        resp = treasurer_client.post(
+            f"/api/v1/ledger/fints/accounts/{bank_account.iban}/import",
+            json={"session_id": "sess-1", "date_from": "2026-01-01", "date_to": "2026-03-31"},
+        )
+    data = resp.json()
+    assert data["new_count"] == 2
+    assert data["duplicate_count"] == 0
+
+
 def test_auditor_cannot_start_fints(auditor_client):
     resp = auditor_client.post("/api/v1/ledger/fints/start", json={
         "server": "https://bank.example/fints", "bank_identifier": "12030000", "login": "u", "pin": "1234",

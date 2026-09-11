@@ -271,6 +271,53 @@ def test_dedup_hash_fallback_distinguishes_genuine_repeats(treasurer_client, ban
     assert data["duplicate_count"] == 2
 
 
+def test_shared_placeholder_reference_does_not_cross_flag_different_amounts(treasurer_client, bank_account):
+    """Real-world bug (2026-09-11): a bank fills in the SEPA placeholder
+    NOTPROVIDED for any payment without an explicit end-to-end reference, so
+    many genuinely distinct transactions share that same "reference". Two
+    different amounts sharing it must both be `new`, not just the first."""
+    statement = (
+        b":20:STARTUMSE\n"
+        b":25:DE02120300000000202051\n"
+        b":28C:1/1\n"
+        b":60F:C260101EUR1000,00\n"
+        b":61:2603010301C25,00NTRFNOTPROVIDED\n"
+        b":86:166?00Spende A\n"
+        b":61:2603020301C40,00NTRFNOTPROVIDED\n"
+        b":86:166?00Spende B\n"
+        b":62F:C260301EUR1065,00\n"
+    )
+    resp = _upload(treasurer_client, bank_account.id, statement)
+    data = resp.json()
+    assert data["new_count"] == 2
+    assert data["duplicate_count"] == 0
+
+
+def test_shared_placeholder_reference_with_same_amount_still_deduped_on_reimport(treasurer_client, bank_account):
+    """The flip side: if two lines really do share both the placeholder
+    reference *and* the same amount, re-importing the same file must still
+    flag both as duplicates via the multiset count — the fix narrows the
+    match key, it doesn't disable reference-based dedup."""
+    statement = (
+        b":20:STARTUMSE\n"
+        b":25:DE02120300000000202051\n"
+        b":28C:1/1\n"
+        b":60F:C260101EUR1000,00\n"
+        b":61:2603010301C25,00NTRFNOTPROVIDED\n"
+        b":86:166?00Spende A\n"
+        b":61:2603020301C25,00NTRFNOTPROVIDED\n"
+        b":86:166?00Spende B\n"
+        b":62F:C260301EUR1050,00\n"
+    )
+    first = _upload(treasurer_client, bank_account.id, statement)
+    assert first.json()["new_count"] == 2
+
+    second = _upload(treasurer_client, bank_account.id, statement)
+    data = second.json()
+    assert data["new_count"] == 0
+    assert data["duplicate_count"] == 2
+
+
 # ---------------------------------------------------------------------------
 # GET /ledger/import/lines
 # ---------------------------------------------------------------------------

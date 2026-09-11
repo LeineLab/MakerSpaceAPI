@@ -826,9 +826,24 @@ def _store_import_lines(db: Session, batch: LedgerImportBatch, account_id: int, 
     Shared by the file-upload import and the FinTS live-pull — both produce
     the same `ParsedStatementLine` shape (see `app/services/bank_statement.py`),
     so this is the single place the dedup rule lives. Every line is stored
-    (even duplicates, for auditability): matched first by bank reference,
-    otherwise by a content hash with a multiset count so two genuinely
-    identical same-day transactions aren't wrongly collapsed into one.
+    (even duplicates, for auditability): matched first by (bank reference,
+    amount), otherwise by a content hash — both with a multiset count so two
+    genuinely identical same-day transactions aren't wrongly collapsed into
+    one.
+
+    The reference match is keyed on (reference, amount), not the reference
+    alone — found against real bank data (2026-09-11): a bank reference
+    (EREF/AcctSvcrRef) isn't always unique per transaction in practice. Banks
+    fill in a placeholder — commonly the SEPA/ISO-20022 constant
+    `NOTPROVIDED`, or MT940's `NONREF` — for any payment that didn't carry an
+    explicit end-to-end reference, and *every* such transaction then shares
+    that same string. Matching on the reference alone flagged the vast
+    majority of a real import as `duplicate` even on the very first import,
+    since the reference by itself said nothing about which transaction it
+    was. Requiring the amount to agree too keeps the reference match's
+    intended role (catching a duplicate whose purpose text drifted slightly
+    between exports, which the pure content hash below wouldn't) without
+    collapsing every same-day `NOTPROVIDED` payment into "already seen."
 
     Two upfront queries (not one per line) establish how many times each
     reference/hash has already been imported *before* this batch, so the
@@ -846,16 +861,21 @@ def _store_import_lines(db: Session, batch: LedgerImportBatch, account_id: int, 
         .all()
     ) if hashes else {}
 
-    references = {line.bank_reference for line in parsed_lines if line.bank_reference}
-    existing_references: set[str] = {
-        row[0] for row in
-        db.query(LedgerImportLine.bank_reference)
-        .filter(LedgerImportLine.bank_account_id == account_id, LedgerImportLine.bank_reference.in_(references))
-        .all()
-    } if references else set()
+    ref_keys = {(line.bank_reference, line.amount) for line in parsed_lines if line.bank_reference}
+    existing_ref_counts: dict[tuple[str, Decimal], int] = {}
+    if ref_keys:
+        references = {ref for ref, _ in ref_keys}
+        existing_ref_counts = {
+            (ref, amount): count
+            for ref, amount, count in
+            db.query(LedgerImportLine.bank_reference, LedgerImportLine.amount, func.count())
+            .filter(LedgerImportLine.bank_account_id == account_id, LedgerImportLine.bank_reference.in_(references))
+            .group_by(LedgerImportLine.bank_reference, LedgerImportLine.amount)
+            .all()
+        }
 
     seen_hash_counts: dict[str, int] = {}
-    seen_references: set[str] = set()
+    seen_ref_counts: dict[tuple[str, Decimal], int] = {}
     new_count = duplicate_count = 0
 
     for line in parsed_lines:
@@ -863,8 +883,10 @@ def _store_import_lines(db: Session, batch: LedgerImportBatch, account_id: int, 
             account_id, line.booking_date, line.amount, line.purpose_text, line.counterparty_iban
         )
         if line.bank_reference:
-            is_duplicate = line.bank_reference in existing_references or line.bank_reference in seen_references
-            seen_references.add(line.bank_reference)
+            ref_key = (line.bank_reference, line.amount)
+            seen_so_far = seen_ref_counts.get(ref_key, 0)
+            is_duplicate = seen_so_far < existing_ref_counts.get(ref_key, 0)
+            seen_ref_counts[ref_key] = seen_so_far + 1
         else:
             seen_so_far = seen_hash_counts.get(dedup_hash, 0)
             is_duplicate = seen_so_far < existing_hash_counts.get(dedup_hash, 0)
