@@ -196,6 +196,54 @@ class BookTargetPayoutRequest(BaseModel):
     matched_import_line_id: Optional[int] = None
 
 
+class LedgerAssetCreate(BaseModel):
+    """Links an already-booked, category-side ledger_entry_line (found via the
+    entries list) as a capital asset. `acquisition_cost` is taken from the
+    line's own amount, not re-typed. `category_id` is the AfA target
+    category (e.g. "Abschreibungen") — may differ from whatever category the
+    purchase itself was originally booked against. `acquisition_date`
+    defaults to the entry's own `entry_date`."""
+    name: str = Field(examples=["Lasercutter Speedy 400"])
+    entry_line_id: int
+    useful_life_years: int = Field(gt=0, examples=[7])
+    category_id: int
+    acquisition_date: Optional[date] = None
+    notes: Optional[str] = None
+
+
+class LedgerAssetUpdate(BaseModel):
+    """`disposed_at` (set or cleared with `null`) stops future AfA after that
+    month — it does not book a write-off of any remaining book value, see
+    the model docstring. Every field may be corrected at any time; since AfA
+    is computed at report time (not stored per-year), a correction here
+    retroactively changes the AfA shown in past EÜR reports too — same as
+    fixing any other historical data."""
+    name: Optional[str] = None
+    useful_life_years: Optional[int] = Field(default=None, gt=0)
+    category_id: Optional[int] = None
+    acquisition_date: Optional[date] = None
+    disposed_at: Optional[date] = None
+    clear_disposed_at: bool = False
+    notes: Optional[str] = None
+
+
+class LedgerAssetResponse(BaseModel):
+    id: int
+    name: str
+    entry_line_id: int
+    acquisition_date: date
+    acquisition_cost: Decimal = Field(examples=[Decimal("3500.00")])
+    useful_life_years: int
+    category_id: int
+    category: Optional[LedgerCategoryResponse] = None
+    disposed_at: Optional[date] = None
+    notes: Optional[str] = None
+    accumulated_depreciation: Decimal = Field(examples=[Decimal("500.00")])
+    book_value: Decimal = Field(examples=[Decimal("3000.00")])
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class EuerCategoryTotal(BaseModel):
     category_id: int
     name: str

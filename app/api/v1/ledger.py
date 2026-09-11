@@ -2,7 +2,7 @@ import hashlib
 import json
 from dataclasses import asdict
 from datetime import UTC, date, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Optional
 
@@ -18,6 +18,7 @@ from app.models.booking_target import BookingTarget
 from app.models.ledger import (
     BankAccount,
     FintsBankPreset,
+    LedgerAsset,
     LedgerCategory,
     LedgerCategoryKind,
     LedgerEntry,
@@ -45,6 +46,9 @@ from app.schemas.ledger import (
     FinTSTanRequest,
     FintsBankPresetCreate,
     FintsBankPresetResponse,
+    LedgerAssetCreate,
+    LedgerAssetResponse,
+    LedgerAssetUpdate,
     LedgerCategoryCreate,
     LedgerCategoryResponse,
     LedgerCategoryUpdate,
@@ -267,7 +271,10 @@ def update_category(
 
     reclassifying = body.slug is not None or body.kind is not None or body.sphere is not None
     if reclassifying:
-        in_use = db.query(LedgerEntryLine).filter(LedgerEntryLine.category_id == category_id).first()
+        in_use = (
+            db.query(LedgerEntryLine).filter(LedgerEntryLine.category_id == category_id).first()
+            or db.query(LedgerAsset).filter(LedgerAsset.category_id == category_id).first()
+        )
         if in_use:
             raise HTTPException(
                 status_code=409,
@@ -641,6 +648,190 @@ def book_target_payout(
     return entry
 
 
+# --- Anlagevermögen (capital assets / AfA) ---
+
+def _asset_months_elapsed(asset: LedgerAsset, through_year: int, through_month: int) -> int:
+    """Number of whole depreciation months from `acquisition_date` (inclusive)
+    through the end of `through_month`/`through_year` (inclusive), capped at
+    the asset's total useful-life months and at its disposal month (if any).
+    Monatsgenau per §7 Abs. 1 EStG: the acquisition month itself already
+    counts as a full depreciation month."""
+    start = asset.acquisition_date
+    total_months = asset.useful_life_years * 12
+    elapsed = (through_year - start.year) * 12 + (through_month - start.month) + 1
+    if asset.disposed_at is not None:
+        disposal_elapsed = (
+            (asset.disposed_at.year - start.year) * 12 + (asset.disposed_at.month - start.month) + 1
+        )
+        elapsed = min(elapsed, disposal_elapsed)
+    return max(0, min(elapsed, total_months))
+
+
+def _asset_cumulative_depreciation(asset: LedgerAsset, through_year: int, through_month: int) -> Decimal:
+    """Total AfA recognized from acquisition through the end of `through_month`/
+    `through_year`. Computed from monthly_rate * elapsed_months (not summed
+    year-by-year) and capped at `acquisition_cost`, so rounding never drifts
+    across years — any remainder is simply absorbed in the final period."""
+    months = _asset_months_elapsed(asset, through_year, through_month)
+    monthly_rate = asset.acquisition_cost / (asset.useful_life_years * 12)
+    cumulative = (monthly_rate * months).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return min(cumulative, asset.acquisition_cost)
+
+
+def _asset_depreciation_for_year(asset: LedgerAsset, year: int) -> Decimal:
+    """This year's linear, monatsgenau AfA contribution — 0 before acquisition
+    or after the useful life (or disposal) has run out."""
+    return (
+        _asset_cumulative_depreciation(asset, year, 12)
+        - _asset_cumulative_depreciation(asset, year - 1, 12)
+    )
+
+
+def _asset_book_value(asset: LedgerAsset, as_of: date) -> Decimal:
+    return asset.acquisition_cost - _asset_cumulative_depreciation(asset, as_of.year, as_of.month)
+
+
+def _asset_response(asset: LedgerAsset, as_of: date) -> LedgerAssetResponse:
+    return LedgerAssetResponse(
+        id=asset.id,
+        name=asset.name,
+        entry_line_id=asset.entry_line_id,
+        acquisition_date=asset.acquisition_date,
+        acquisition_cost=asset.acquisition_cost,
+        useful_life_years=asset.useful_life_years,
+        category_id=asset.category_id,
+        category=asset.category,
+        disposed_at=asset.disposed_at,
+        notes=asset.notes,
+        accumulated_depreciation=asset.acquisition_cost - _asset_book_value(asset, as_of),
+        book_value=_asset_book_value(asset, as_of),
+    )
+
+
+@router.get("/assets", response_model=list[LedgerAssetResponse])
+def list_assets(
+    as_of: Optional[date] = Query(default=None),
+    _viewer: dict = Depends(require_ledger_viewer_user),
+    db: Session = Depends(get_db),
+):
+    as_of = as_of or datetime.now(UTC).date()
+    assets = (
+        db.query(LedgerAsset).options(joinedload(LedgerAsset.category))
+        .order_by(LedgerAsset.acquisition_date.desc()).all()
+    )
+    return [_asset_response(a, as_of) for a in assets]
+
+
+@router.post("/assets", response_model=LedgerAssetResponse, status_code=201, responses={**HTTP_400, **HTTP_404, **HTTP_409})
+def create_asset(
+    body: LedgerAssetCreate,
+    _treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    """Capitalize an already-booked purchase: links its category-side
+    `ledger_entry_lines` row as a depreciable asset instead of a one-off
+    expense. From the next EÜR report onward, that line's full amount is
+    excluded and replaced by the computed AfA schedule against `category_id`
+    (see Key Design Decision #35). Whether a given purchase is even required
+    to be capitalized (GWG threshold, currently 800€ net — and itself not
+    enforced here since it changes yearly and, without Vorsteuerabzug, the
+    threshold applies to the gross amount) is left to the treasurer's/
+    Kassenprüfer's judgment."""
+    line = (
+        db.query(LedgerEntryLine).options(joinedload(LedgerEntryLine.entry), joinedload(LedgerEntryLine.category))
+        .filter(LedgerEntryLine.id == body.entry_line_id).first()
+    )
+    if not line:
+        raise HTTPException(status_code=404, detail="Entry line not found")
+    if line.category_id is None:
+        raise HTTPException(status_code=400, detail="Entry line must be a category line, not a bank account line")
+    if line.category.kind != LedgerCategoryKind.expense:
+        raise HTTPException(status_code=400, detail="Entry line's category must be an expense category")
+    if line.amount <= 0:
+        raise HTTPException(status_code=400, detail="Entry line amount must be positive (a cost)")
+    if db.query(LedgerAsset).filter(LedgerAsset.entry_line_id == body.entry_line_id).first():
+        raise HTTPException(status_code=409, detail="This entry line is already capitalized as an asset")
+
+    category = db.query(LedgerCategory).filter(LedgerCategory.id == body.category_id).first()
+    if not category:
+        raise HTTPException(status_code=404, detail=f"Category {body.category_id} not found")
+    if category.kind != LedgerCategoryKind.expense:
+        raise HTTPException(status_code=400, detail="AfA target category must be an expense category")
+
+    asset = LedgerAsset(
+        name=body.name,
+        entry_line_id=body.entry_line_id,
+        acquisition_date=body.acquisition_date or line.entry.entry_date,
+        acquisition_cost=line.amount,
+        useful_life_years=body.useful_life_years,
+        category_id=body.category_id,
+        notes=body.notes,
+    )
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    return _asset_response(asset, datetime.now(UTC).date())
+
+
+@router.put("/assets/{asset_id}", response_model=LedgerAssetResponse, responses={**HTTP_400, **HTTP_404})
+def update_asset(
+    asset_id: int,
+    body: LedgerAssetUpdate,
+    _treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    """Every field is correctable at any time — since AfA is computed at
+    report time rather than stored per-year, a correction here (e.g. a wrong
+    useful life) retroactively changes past EÜR reports too, same as fixing
+    any other historical data."""
+    asset = db.query(LedgerAsset).filter(LedgerAsset.id == asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    if body.category_id is not None:
+        category = db.query(LedgerCategory).filter(LedgerCategory.id == body.category_id).first()
+        if not category:
+            raise HTTPException(status_code=404, detail=f"Category {body.category_id} not found")
+        if category.kind != LedgerCategoryKind.expense:
+            raise HTTPException(status_code=400, detail="AfA target category must be an expense category")
+        asset.category_id = body.category_id
+    if body.name is not None:
+        asset.name = body.name
+    if body.useful_life_years is not None:
+        asset.useful_life_years = body.useful_life_years
+    if body.acquisition_date is not None:
+        asset.acquisition_date = body.acquisition_date
+    if body.clear_disposed_at:
+        asset.disposed_at = None
+    elif body.disposed_at is not None:
+        if body.disposed_at < asset.acquisition_date:
+            raise HTTPException(status_code=400, detail="disposed_at cannot be before acquisition_date")
+        asset.disposed_at = body.disposed_at
+    if body.notes is not None:
+        asset.notes = body.notes
+
+    db.commit()
+    db.refresh(asset)
+    return _asset_response(asset, datetime.now(UTC).date())
+
+
+@router.delete("/assets/{asset_id}", status_code=204, responses={**HTTP_404})
+def delete_asset(
+    asset_id: int,
+    _treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    """Removing the capitalization is not itself a financial event (the
+    underlying `ledger_entries`/`ledger_entry_lines` row is untouched) — it
+    just reverts that line to being counted as a normal one-off expense in
+    the EÜR again, in whichever year it was originally booked."""
+    asset = db.query(LedgerAsset).filter(LedgerAsset.id == asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    db.delete(asset)
+    db.commit()
+
+
 # --- EÜR report ---
 
 def _compute_euer_report(db: Session, year: int) -> EuerReportResponse:
@@ -668,7 +859,17 @@ def _compute_euer_report(db: Session, year: int) -> EuerReportResponse:
     directions: a topup/positive adjustment (amount > 0, more cash in)
     contributes negative (more income, same as any other deposit); a
     shortfall (a negative `booking_target_adjustment` amount) contributes
-    positive (less income, i.e. a write-off)."""
+    positive (less income, i.e. a write-off).
+
+    Also excludes any line capitalized as an Anlagevermögen (`ledger_assets.
+    entry_line_id`, see Key Design Decision #35) from this normal per-line
+    aggregation — in every year, not just the purchase year, though it can
+    only ever appear in the one year it was booked. Its full cost is instead
+    replaced by the linear, monatsgenau AfA amount computed for `year` against
+    the asset's own target category, which may differ from whatever category
+    the purchase itself was originally booked against."""
+    asset_entry_line_ids = {row[0] for row in db.query(LedgerAsset.entry_line_id).all()}
+
     lines = (
         db.query(LedgerEntryLine)
         .join(LedgerEntry)
@@ -685,8 +886,18 @@ def _compute_euer_report(db: Session, year: int) -> EuerReportResponse:
     raw_totals: dict[int, Decimal] = {}
     categories: dict[int, LedgerCategory] = {}
     for line in lines:
+        if line.id in asset_entry_line_ids:
+            continue
         raw_totals[line.category_id] = raw_totals.get(line.category_id, Decimal("0.00")) + line.amount
         categories[line.category_id] = line.category
+
+    assets = db.query(LedgerAsset).options(joinedload(LedgerAsset.category)).all()
+    for asset in assets:
+        depreciation = _asset_depreciation_for_year(asset, year)
+        if depreciation == 0:
+            continue
+        categories[asset.category_id] = asset.category
+        raw_totals[asset.category_id] = raw_totals.get(asset.category_id, Decimal("0.00")) + depreciation
 
     target_events = (
         db.query(Transaction.amount, BookingTarget.default_category_id)

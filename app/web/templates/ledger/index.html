@@ -37,6 +37,11 @@
             :class="activeTab === 'targets' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
       {{ _('ledger.tab_targets') }}
     </button>
+    <button @click="switchTab('assets')"
+            class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
+            :class="activeTab === 'assets' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+      {{ _('ledger.tab_assets') }}
+    </button>
   </div>
 
   <!-- ================= Entries ================= -->
@@ -96,6 +101,10 @@
                       <span x-text="lineTargetName(l)"></span>:
                       <span :class="parseFloat(l.amount) < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'"
                             x-text="fmtSigned(l.amount)"></span>
+                      <button x-show="userIsTreasurer && isCapitalizableLine(l) && !assetLineIds.has(l.id)"
+                              @click="openCapitalizeModal(l, e)" :title="CAPITALIZE_L"
+                              class="ml-1 text-blue-600 dark:text-blue-400 hover:underline">🏷</button>
+                      <span x-show="assetLineIds.has(l.id)" :title="CAPITALIZE_L" class="ml-1">🏷</span>
                     </div>
                   </template>
                 </td>
@@ -801,6 +810,65 @@
     </template>
   </div>
 
+  <!-- ================= Anlagevermögen (assets) ================= -->
+  <div x-show="activeTab === 'assets'">
+    <h2 class="text-xl font-semibold mb-1">{{ _('ledger.assets_title') }}</h2>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">{{ _('ledger.assets_hint') }}</p>
+    <p class="text-xs text-gray-400 dark:text-gray-500 mb-4">{{ _('ledger.asset_gwg_hint') }}</p>
+
+    <div x-show="assetsError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="assetsError"></div>
+
+    <template x-if="loadingAssets">
+      <div class="text-gray-400 dark:text-gray-500 text-sm">Loading…</div>
+    </template>
+    <template x-if="!loadingAssets && assets.length === 0">
+      <p class="text-gray-400 dark:text-gray-500">{{ _('ledger.assets_empty') }}</p>
+    </template>
+    <template x-if="!loadingAssets && assets.length > 0">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
+            <tr>
+              <th class="px-4 py-3 text-left">{{ _('common.name') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_acquisition_date') }}</th>
+              <th class="px-4 py-3 text-right">{{ _('ledger.col_acquisition_cost') }}</th>
+              <th class="px-4 py-3 text-right">{{ _('ledger.col_useful_life') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.label_afa_category') }}</th>
+              <th class="px-4 py-3 text-right">{{ _('ledger.col_accumulated_depreciation') }}</th>
+              <th class="px-4 py-3 text-right">{{ _('ledger.col_book_value') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_disposed') }}</th>
+              <th class="px-4 py-3 text-left" x-show="userIsTreasurer">{{ _('ledger.col_actions') }}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+            <template x-for="a in assets" :key="a.id">
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                <td class="px-4 py-3 font-medium" x-text="a.name"></td>
+                <td class="px-4 py-3 whitespace-nowrap" x-text="a.acquisition_date"></td>
+                <td class="px-4 py-3 text-right font-mono" x-text="fmt(a.acquisition_cost)"></td>
+                <td class="px-4 py-3 text-right" x-text="a.useful_life_years"></td>
+                <td class="px-4 py-3" x-text="a.category ? a.category.name : '—'"></td>
+                <td class="px-4 py-3 text-right font-mono" x-text="fmt(a.accumulated_depreciation)"></td>
+                <td class="px-4 py-3 text-right font-mono" x-text="fmt(a.book_value)"></td>
+                <td class="px-4 py-3 whitespace-nowrap" x-text="a.disposed_at || '—'"></td>
+                <td class="px-4 py-3 whitespace-nowrap" x-show="userIsTreasurer">
+                  <button @click="openEditAssetModal(a)" class="text-blue-600 dark:text-blue-400 hover:underline text-xs mr-2">
+                    {{ _('common.edit') }}
+                  </button>
+                  <button @click="deleteAsset(a)" class="text-red-600 dark:text-red-400 hover:underline text-xs">
+                    {{ _('common.remove') }}
+                  </button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </template>
+  </div>
+
   <!-- ============ Book Target Payout Modal ============ -->
   <div x-show="showTargetPayoutModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
        @mousedown.self="modalMousedownOutside = true">
@@ -1180,6 +1248,72 @@
       </form>
     </div>
   </div>
+
+  <!-- ============ Asset (Anlagevermögen) Modal ============ -->
+  <div x-show="showAssetModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+       @mousedown.self="modalMousedownOutside = true">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6"
+         @mousedown="modalMousedownOutside = false" @click.outside="if (modalMousedownOutside) showAssetModal = false">
+      <h2 class="text-lg font-bold mb-4" x-text="editingAssetId ? ASSET_MODAL_TITLE_EDIT_L : ASSET_MODAL_TITLE_CREATE_L"></h2>
+      <p x-show="assetSourceLabel" class="text-xs text-gray-500 dark:text-gray-400 mb-3 font-mono" x-text="assetSourceLabel"></p>
+      <div x-show="assetError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="assetError"></div>
+      <form @submit.prevent="submitAsset()" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('common.name') }}</label>
+          <input type="text" x-model="assetForm.name" required
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_acquisition_date') }}</label>
+            <input type="date" x-model="assetForm.acquisition_date" required
+                   class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_useful_life_years') }}</label>
+            <input type="number" min="1" step="1" x-model.number="assetForm.useful_life_years" required
+                   class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_afa_category') }}</label>
+          <select x-model.number="assetForm.category_id" required
+                  class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="">{{ _('ledger.select_afa_category') }}</option>
+            <template x-for="c in afaCategories" :key="c.id">
+              <option :value="c.id" x-text="c.name"></option>
+            </template>
+          </select>
+        </div>
+        <div x-show="editingAssetId">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_disposed_at') }}</label>
+          <div class="flex gap-2">
+            <input type="date" x-model="assetForm.disposed_at"
+                   class="flex-1 border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <button type="button" x-show="assetForm.disposed_at" @click="assetForm.disposed_at = ''"
+                    class="px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200">
+              {{ _('ledger.btn_clear_disposed') }}
+            </button>
+          </div>
+          <p x-show="assetForm.disposed_at" class="text-xs text-gray-400 dark:text-gray-500 mt-1">{{ _('ledger.asset_disposed_hint') }}</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_notes') }}</label>
+          <input type="text" x-model="assetForm.notes"
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" @click="showAssetModal = false"
+                  class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.cancel') }}</button>
+          <button type="submit" :disabled="assetSubmitting"
+                  class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
+            <span x-show="!assetSubmitting" x-text="editingAssetId ? SAVE_L : ASSET_MODAL_TITLE_CREATE_L"></span>
+            <span x-show="assetSubmitting">…</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -1223,6 +1357,11 @@ const TARGET_PAYOUT_BOOKED_TMPL = {{ _('ledger.target_payout_booked_badge') | to
 const NO_STATEMENT_BALANCE_L = {{ _('ledger.no_statement_balance') | tojson }};
 const RECONCILIATION_MATCH_TMPL = {{ _('ledger.reconciliation_match') | tojson }};
 const RECONCILIATION_MISMATCH_TMPL = {{ _('ledger.reconciliation_mismatch') | tojson }};
+const CAPITALIZE_L = {{ _('ledger.btn_capitalize') | tojson }};
+const ASSET_MODAL_TITLE_CREATE_L = {{ _('ledger.asset_modal_title_create') | tojson }};
+const ASSET_MODAL_TITLE_EDIT_L = {{ _('ledger.asset_modal_title_edit') | tojson }};
+const ASSET_REMOVE_CONFIRM_L = {{ _('ledger.asset_remove_confirm') | tojson }};
+const SAVE_L = {{ _('common.save') | tojson }};
 const CSV_FIELDS = [
   { key: 'booking_date_column', required: true, label: {{ _('ledger.csv_field_booking_date') | tojson }} },
   { key: 'amount_column', required: true, label: {{ _('ledger.csv_field_amount') | tojson }} },
@@ -1346,8 +1485,26 @@ function ledgerApp(userIsTreasurer) {
     targetPayoutCandidates: [],
     loadingTargetPayoutCandidates: false,
 
+    assets: [],
+    loadingAssets: true,
+    assetsError: null,
+    showAssetModal: false,
+    editingAssetId: null,
+    assetSourceLabel: '',
+    assetForm: { name: '', entry_line_id: '', useful_life_years: '', category_id: '', acquisition_date: '', disposed_at: '', notes: '' },
+    assetError: null,
+    assetSubmitting: false,
+
     get activeCategories() {
       return this.categories.filter(c => c.active);
+    },
+
+    get afaCategories() {
+      return this.activeCategories.filter(c => c.kind === 'expense');
+    },
+
+    get assetLineIds() {
+      return new Set(this.assets.map(a => a.entry_line_id));
     },
 
     get trackedAccounts() {
@@ -1394,7 +1551,7 @@ function ledgerApp(userIsTreasurer) {
 
     async init() {
       await this.loadConfig();
-      await Promise.all([this.loadAccounts(), this.loadCategories()]);
+      await Promise.all([this.loadAccounts(), this.loadCategories(), this.loadAssets()]);
       await this.loadEntries();
     },
 
@@ -1405,6 +1562,7 @@ function ledgerApp(userIsTreasurer) {
         this.loadImportLines();
         if (this.config.fints_enabled) this.loadFintsPresets();
       }
+      if (tab === 'assets') this.loadAssets();
       if (tab === 'targets') {
         this.loadTargets();
         this.loadTargetPayouts();
@@ -1753,6 +1911,10 @@ function ledgerApp(userIsTreasurer) {
       if (line.bank_account) return line.bank_account.name;
       if (line.category) return line.category.name;
       return '?';
+    },
+
+    isCapitalizableLine(l) {
+      return !!l.category_id && l.category && l.category.kind === 'expense' && parseFloat(l.amount) > 0;
     },
 
     fmtSigned(v) {
@@ -2427,6 +2589,103 @@ function ledgerApp(userIsTreasurer) {
         await this.loadFintsPresets();
       } catch (e) {
         if (e !== 'unauthenticated') this.fintsError = e.message || String(e);
+      }
+    },
+
+    // --- assets (Anlagevermögen / AfA) ---
+    async loadAssets() {
+      this.loadingAssets = true;
+      this.assetsError = null;
+      try {
+        const r = await apiFetch('/api/v1/ledger/assets');
+        if (!r.ok) throw new Error('Failed to load assets');
+        this.assets = await r.json();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.assetsError = e.message || String(e);
+      } finally {
+        this.loadingAssets = false;
+      }
+    },
+
+    openCapitalizeModal(line, entry) {
+      this.editingAssetId = null;
+      this.assetSourceLabel = `${entry.description}: ${this.fmtSigned(line.amount)}`;
+      this.assetForm = {
+        name: entry.description, entry_line_id: line.id, useful_life_years: '',
+        category_id: '', acquisition_date: entry.entry_date, disposed_at: '', notes: '',
+      };
+      this.assetError = null;
+      this.showAssetModal = true;
+    },
+
+    openEditAssetModal(asset) {
+      this.editingAssetId = asset.id;
+      this.assetSourceLabel = '';
+      this.assetForm = {
+        name: asset.name, entry_line_id: asset.entry_line_id, useful_life_years: asset.useful_life_years,
+        category_id: asset.category_id, acquisition_date: asset.acquisition_date,
+        disposed_at: asset.disposed_at || '', notes: asset.notes || '',
+      };
+      this.assetError = null;
+      this.showAssetModal = true;
+    },
+
+    async submitAsset() {
+      this.assetSubmitting = true;
+      this.assetError = null;
+      try {
+        const common = {
+          name: this.assetForm.name,
+          useful_life_years: Number(this.assetForm.useful_life_years),
+          category_id: Number(this.assetForm.category_id),
+          acquisition_date: this.assetForm.acquisition_date,
+          notes: this.assetForm.notes || null,
+        };
+        let r;
+        if (this.editingAssetId) {
+          r = await apiFetch(`/api/v1/ledger/assets/${this.editingAssetId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...common,
+              disposed_at: this.assetForm.disposed_at || null,
+              clear_disposed_at: !this.assetForm.disposed_at,
+            }),
+          });
+        } else {
+          r = await apiFetch('/api/v1/ledger/assets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...common, entry_line_id: this.assetForm.entry_line_id }),
+          });
+        }
+        const data = await r.json();
+        if (!r.ok) {
+          this.assetError = data.detail || 'Error saving asset';
+          return;
+        }
+        this.showAssetModal = false;
+        await this.loadAssets();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.assetError = e.message || String(e);
+      } finally {
+        this.assetSubmitting = false;
+      }
+    },
+
+    async deleteAsset(asset) {
+      if (!confirm(ASSET_REMOVE_CONFIRM_L)) return;
+      this.assetsError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/assets/${asset.id}`, { method: 'DELETE' });
+        if (!r.ok && r.status !== 404) {
+          const data = await r.json();
+          this.assetsError = data.detail || 'Error removing asset';
+          return;
+        }
+        await this.loadAssets();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.assetsError = e.message || String(e);
       }
     },
   };

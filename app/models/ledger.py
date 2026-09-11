@@ -172,6 +172,44 @@ class LedgerEntryLine(Base):
     category: Mapped[Optional["LedgerCategory"]] = relationship("LedgerCategory")
 
 
+class LedgerAsset(Base):
+    """Anlagevermögen: links an already-booked, category-side
+    `ledger_entry_lines` row (the real cash outflow at purchase) to a
+    depreciation schedule. `entry_line_id` (UNIQUE) is the line whose full
+    amount is excluded from the EÜR in its booking year once linked — see Key
+    Design Decision #35 — and replaced, at report-computation time, by the
+    linear/monatsgenau AfA amount computed from `acquisition_cost`/
+    `useful_life_years`/`acquisition_date` for each year of the asset's
+    useful life. No yearly booking rows are ever created for this (same
+    read-time-aggregation approach as the Kassen bridge, #34) — deleting a
+    `LedgerAsset` simply reverts its line to being counted normally again.
+    `category_id` is the AfA target category (e.g. "Abschreibungen"), which
+    may differ from whatever category the original purchase was booked
+    against. `disposed_at` stops future AfA from the month after disposal;
+    it does NOT auto-book a write-off of any remaining book value — that's
+    left to the treasurer via a normal entry (see docstring on the API
+    endpoint), same as the deliberately-manual sale-proceeds handling in the
+    Kassen bridge (#34)."""
+    __tablename__ = "ledger_assets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    entry_line_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("ledger_entry_lines.id", ondelete="RESTRICT"), nullable=False, unique=True
+    )
+    acquisition_date: Mapped[date] = mapped_column(Date, nullable=False)
+    acquisition_cost: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    useful_life_years: Mapped[int] = mapped_column(Integer, nullable=False)
+    category_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("ledger_categories.id", ondelete="RESTRICT"), nullable=False
+    )
+    disposed_at: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    entry_line: Mapped["LedgerEntryLine"] = relationship("LedgerEntryLine")
+    category: Mapped["LedgerCategory"] = relationship("LedgerCategory")
+
+
 class LedgerImportBatch(Base):
     __tablename__ = "ledger_import_batches"
 
