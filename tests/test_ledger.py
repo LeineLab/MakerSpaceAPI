@@ -576,6 +576,20 @@ def test_reverse_unknown_entry_404(treasurer_client):
     assert resp.status_code == 404
 
 
+def test_cannot_reverse_a_reversal(treasurer_client, bank_account, income_category):
+    """A Storno's booking_target_payout_id/matched_entry_id link only ever
+    lives on the original entry and is cleared once reversed — reversing the
+    reversal would re-instate the original's financial effect without
+    re-establishing that link, risking a double-booking down the line. The
+    correct way to "undo an accidental reversal" is to re-book normally
+    (the original booking/staging line is already reopened for that)."""
+    original = _create_entry(treasurer_client, bank_account, income_category)
+    reversal = treasurer_client.post(f"/api/v1/ledger/entries/{original['id']}/reverse").json()
+
+    resp = treasurer_client.post(f"/api/v1/ledger/entries/{reversal['id']}/reverse")
+    assert resp.status_code == 400
+
+
 def test_auditor_cannot_reverse_entry(auditor_client, treasurer_client, bank_account, income_category):
     original = _create_entry(treasurer_client, bank_account, income_category)
     resp = auditor_client.post(f"/api/v1/ledger/entries/{original['id']}/reverse")

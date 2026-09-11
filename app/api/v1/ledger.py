@@ -390,7 +390,7 @@ def create_entry(
 
 @router.post(
     "/entries/{entry_id}/reverse", response_model=LedgerEntryResponse, status_code=201,
-    responses={**HTTP_404, **HTTP_409},
+    responses={**HTTP_400, **HTTP_404, **HTTP_409},
 )
 def reverse_entry(
     entry_id: int,
@@ -406,13 +406,28 @@ def reverse_entry(
     the original entry came from booking a Kassen payout (#34), its
     `booking_target_payout_id` link is cleared on the *original* so the
     payout shows as open again and can be re-booked — the reversal itself
-    keeps no such link (it isn't a payout booking, just its undo)."""
+    keeps no such link (it isn't a payout booking, just its undo).
+
+    A reversal entry can't itself be reversed: that link (`matched_entry_id`
+    on a staging line, `booking_target_payout_id` on a payout booking) only
+    ever lives on the *original* entry, and gets cleared once it's reversed
+    — a reversal-of-a-reversal would financially re-instate the original
+    booking without re-establishing that link, leaving the door open to
+    double-booking the same import line or payout later. Re-booking the now
+    reopened staging line / payout normally is the correct way to "undo an
+    accidental reversal", not chaining a second one on top."""
     original = (
         db.query(LedgerEntry).options(joinedload(LedgerEntry.lines))
         .filter(LedgerEntry.id == entry_id).first()
     )
     if not original:
         raise HTTPException(status_code=404, detail="Entry not found")
+
+    if original.reverses_entry_id is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot reverse a reversal entry — book a fresh entry instead",
+        )
 
     already_reversed = db.query(LedgerEntry).filter(LedgerEntry.reverses_entry_id == entry_id).first()
     if already_reversed:

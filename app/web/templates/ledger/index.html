@@ -106,7 +106,11 @@
                   <span x-show="!e.paperless_document_id">—</span>
                 </td>
                 <td class="px-4 py-3" x-show="userIsTreasurer">
-                  <button x-show="!reversedByMap[e.id]" @click="reverseEntry(e)"
+                  <!-- A Storno (e.reverses_entry_id set) can't itself be reversed
+                       — that link only ever lives on the original entry, so
+                       chaining a second reversal on top would risk double-
+                       booking once re-instated (see #28). -->
+                  <button x-show="!reversedByMap[e.id] && !e.reverses_entry_id" @click="reverseEntry(e)"
                           class="text-xs text-red-600 dark:text-red-400 hover:underline">
                     {{ _('ledger.btn_reverse_entry') }}
                   </button>
