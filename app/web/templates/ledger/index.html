@@ -837,22 +837,27 @@
         <div x-show="!loadingTargetPayoutCandidates && targetPayoutCandidates.length > 0" class="space-y-1">
           <template x-for="c in targetPayoutCandidates" :key="c.id">
             <label class="flex items-center gap-2 text-sm px-2 py-1 rounded hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
-              <input type="radio" name="targetPayoutCandidate" :value="c.id" x-model="targetPayoutForm.matched_import_line_id">
+              <input type="radio" name="targetPayoutCandidate" :value="c.id" x-model="targetPayoutForm.matched_import_line_id"
+                     @change="onTargetPayoutCandidateChange()">
               <span x-text="c.booking_date"></span>
               <span class="text-gray-500 dark:text-gray-400" x-text="c.purpose_text || c.counterparty_name || '—'"></span>
             </label>
           </template>
           <label class="flex items-center gap-2 text-sm px-2 py-1 rounded hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
-            <input type="radio" name="targetPayoutCandidate" value="" x-model="targetPayoutForm.matched_import_line_id">
+            <input type="radio" name="targetPayoutCandidate" value="" x-model="targetPayoutForm.matched_import_line_id"
+                   @change="onTargetPayoutCandidateChange()">
             <span class="text-gray-500 dark:text-gray-400">{{ _('ledger.book_transfer_no_link') }}</span>
           </label>
         </div>
       </div>
 
       <div class="mb-3">
-        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.target_payout_label_date') }}</label>
-        <input type="date" x-model="targetPayoutForm.entry_date"
-               class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800">
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          {{ _('ledger.target_payout_label_date') }}
+          <span x-show="targetPayoutForm.matched_import_line_id" class="font-normal text-gray-400 dark:text-gray-500">— {{ _('ledger.target_payout_date_from_match_hint') }}</span>
+        </label>
+        <input type="date" x-model="targetPayoutForm.entry_date" :disabled="!!targetPayoutForm.matched_import_line_id"
+               class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 disabled:opacity-60">
       </div>
 
       <div class="mb-4">
@@ -1571,6 +1576,7 @@ function ledgerApp(userIsTreasurer) {
 
     async onTargetPayoutAccountChange() {
       this.targetPayoutForm.matched_import_line_id = '';
+      this.targetPayoutForm.entry_date = this.bookingTargetPayout.created_at.slice(0, 10);
       this.targetPayoutCandidates = [];
       if (!this.targetPayoutForm.bank_account_id || !this.bookingTargetPayout) return;
       this.loadingTargetPayoutCandidates = true;
@@ -1583,6 +1589,21 @@ function ledgerApp(userIsTreasurer) {
         // non-critical — booking still works without a matched candidate
       } finally {
         this.loadingTargetPayoutCandidates = false;
+      }
+    },
+
+    onTargetPayoutCandidateChange() {
+      // Once a payout is matched to an already-imported statement line, its
+      // date is objective (the bank's own booking date) — entering one
+      // manually alongside it would be redundant and could disagree with
+      // the transaction actually being linked.
+      if (this.targetPayoutForm.matched_import_line_id) {
+        const candidate = this.targetPayoutCandidates.find(
+          c => String(c.id) === String(this.targetPayoutForm.matched_import_line_id)
+        );
+        if (candidate) this.targetPayoutForm.entry_date = candidate.booking_date;
+      } else {
+        this.targetPayoutForm.entry_date = this.bookingTargetPayout.created_at.slice(0, 10);
       }
     },
 

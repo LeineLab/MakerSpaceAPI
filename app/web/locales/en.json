@@ -528,6 +528,7 @@
   "ledger.target_payout_modal_title": "Book target payout",
   "ledger.target_payout_label_bank_account": "Bank account (where the cash was actually deposited)",
   "ledger.target_payout_label_date": "Date",
+  "ledger.target_payout_date_from_match_hint": "taken from the linked transaction",
   "ledger.target_payout_no_clearing_account_hint": "No Kassenbestand clearing account configured — mark one under \"Bank Accounts\" first.",
   "ledger.btn_submit_target_payout": "Book payout"
 }

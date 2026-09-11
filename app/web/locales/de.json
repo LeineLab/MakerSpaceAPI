@@ -528,6 +528,7 @@
   "ledger.target_payout_modal_title": "Kassenauszahlung verbuchen",
   "ledger.target_payout_label_bank_account": "Bankkonto (wohin das Bargeld tatsächlich eingezahlt wurde)",
   "ledger.target_payout_label_date": "Datum",
+  "ledger.target_payout_date_from_match_hint": "aus verknüpfter Buchung übernommen",
   "ledger.target_payout_no_clearing_account_hint": "Kein Kassenbestand-Sammelkonto konfiguriert — bitte zuerst unter „Bankkonten“ ein Konto entsprechend markieren.",
   "ledger.btn_submit_target_payout": "Auszahlung verbuchen"
 }
