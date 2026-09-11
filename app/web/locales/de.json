@@ -461,6 +461,8 @@
   "ledger.col_actions":         "Aktionen",
   "ledger.btn_book":            "Buchen",
   "ledger.btn_ignore":          "Ignorieren",
+  "ledger.btn_not_duplicate":   "Kein Duplikat",
+  "ledger.btn_restore":         "Wiederherstellen",
   "ledger.book_modal_title":    "Buchung erfassen",
   "ledger.book_label_bank_amount": "Bankbetrag",
   "ledger.book_label_description": "Beschreibung",

@@ -1,10 +1,19 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
 
 from app.models.booking_target import BookingTarget
-from app.models.ledger import BankAccount, LedgerCategory, LedgerCategoryKind, LedgerSphere
+from app.models.ledger import (
+    BankAccount,
+    LedgerCategory,
+    LedgerCategoryKind,
+    LedgerImportBatch,
+    LedgerImportLine,
+    LedgerImportSource,
+    LedgerImportStatus,
+    LedgerSphere,
+)
 from app.models.transaction import Transaction, TransactionType
 
 # ---------------------------------------------------------------------------
@@ -83,6 +92,22 @@ def _make_cash_in(db, target, type_, amount, when=None):
     return txn
 
 
+def _stage_import_line(db, account, amount, booking_date=date(2026, 5, 2), status=LedgerImportStatus.new):
+    """Simulate the destination account's own bank statement having already
+    been imported and containing the Gutschrift for this same payout."""
+    batch = LedgerImportBatch(bank_account_id=account.id, source=LedgerImportSource.file, imported_by="test")
+    db.add(batch)
+    db.flush()
+    line = LedgerImportLine(
+        batch_id=batch.id, bank_account_id=account.id, booking_date=booking_date,
+        amount=amount, purpose_text="Bareinzahlung", dedup_hash=f"stage-{account.id}-{amount}-{booking_date}",
+        status=status,
+    )
+    db.add(line)
+    db.commit()
+    return line
+
+
 # ---------------------------------------------------------------------------
 # GET/PUT /ledger/targets
 # ---------------------------------------------------------------------------
@@ -150,26 +175,34 @@ def test_set_mapping_unknown_target_404(treasurer_client, donation_category):
 # PUT /ledger/accounts/{id} — is_cash_clearing_account exclusivity
 # ---------------------------------------------------------------------------
 
-def test_set_cash_clearing_account(treasurer_client, bank_account):
+def test_set_cash_clearing_account(treasurer_client, clearing_account):
     resp = treasurer_client.put(
-        f"/api/v1/ledger/accounts/{bank_account.id}",
+        f"/api/v1/ledger/accounts/{clearing_account.id}",
         json={"is_cash_clearing_account": True},
     )
     assert resp.status_code == 200
     assert resp.json()["is_cash_clearing_account"] is True
 
 
-def test_setting_cash_clearing_account_clears_others(treasurer_client, db, bank_account):
-    other = BankAccount(name="Privatkonto", is_offline=True, opening_balance=Decimal("0.00"))
+def test_set_cash_clearing_account_rejects_non_offline_account(treasurer_client, bank_account):
+    resp = treasurer_client.put(
+        f"/api/v1/ledger/accounts/{bank_account.id}",
+        json={"is_cash_clearing_account": True},
+    )
+    assert resp.status_code == 400
+
+
+def test_setting_cash_clearing_account_clears_others(treasurer_client, db, clearing_account):
+    other = BankAccount(name="Anderes Kassenkonto", is_offline=True, opening_balance=Decimal("0.00"))
     db.add(other)
     db.commit()
 
-    treasurer_client.put(f"/api/v1/ledger/accounts/{bank_account.id}", json={"is_cash_clearing_account": True})
+    treasurer_client.put(f"/api/v1/ledger/accounts/{clearing_account.id}", json={"is_cash_clearing_account": True})
     resp = treasurer_client.put(f"/api/v1/ledger/accounts/{other.id}", json={"is_cash_clearing_account": True})
     assert resp.status_code == 200
 
     accounts = {a["id"]: a["is_cash_clearing_account"] for a in treasurer_client.get("/api/v1/ledger/accounts").json()}
-    assert accounts[bank_account.id] is False
+    assert accounts[clearing_account.id] is False
     assert accounts[other.id] is True
 
 
@@ -437,3 +470,119 @@ def test_euer_report_combines_manual_and_target_income(
 
     resp = treasurer_client.get("/api/v1/ledger/report/euer", params={"year": 2026})
     assert resp.json()["total_income"] == "130.00"
+
+
+# ---------------------------------------------------------------------------
+# Booking a payout matched against an already-imported staged line
+# ---------------------------------------------------------------------------
+
+def test_book_payout_matched_to_staged_line(treasurer_client, db, donation_target, bank_account, clearing_account):
+    txn = _make_payout(db, donation_target, amount="30.00")
+    staged = _stage_import_line(db, bank_account, Decimal("30.00"))
+
+    resp = treasurer_client.post(
+        f"/api/v1/ledger/target-payouts/{txn.id}/book",
+        json={"bank_account_id": bank_account.id, "matched_import_line_id": staged.id},
+    )
+    assert resp.status_code == 201
+
+    updated = treasurer_client.get(f"/api/v1/ledger/import/lines?bank_account_id={bank_account.id}&status=new").json()
+    assert updated == []
+    booked = treasurer_client.get(
+        f"/api/v1/ledger/import/lines?bank_account_id={bank_account.id}&status=booked"
+    ).json()
+    assert booked[0]["id"] == staged.id
+    assert booked[0]["matched_entry_id"] == resp.json()["id"]
+
+
+def test_book_payout_matches_duplicate_status_staged_line(treasurer_client, db, donation_target, bank_account, clearing_account):
+    txn = _make_payout(db, donation_target, amount="30.00")
+    staged = _stage_import_line(db, bank_account, Decimal("30.00"), status=LedgerImportStatus.duplicate)
+
+    resp = treasurer_client.post(
+        f"/api/v1/ledger/target-payouts/{txn.id}/book",
+        json={"bank_account_id": bank_account.id, "matched_import_line_id": staged.id},
+    )
+    assert resp.status_code == 201
+
+
+def test_book_payout_matched_line_wrong_account_rejected(treasurer_client, db, donation_target, bank_account, clearing_account):
+    other = BankAccount(iban="DE00999999990000000000", name="Sparkonto")
+    db.add(other)
+    db.commit()
+    txn = _make_payout(db, donation_target, amount="30.00")
+    staged = _stage_import_line(db, other, Decimal("30.00"))
+
+    resp = treasurer_client.post(
+        f"/api/v1/ledger/target-payouts/{txn.id}/book",
+        json={"bank_account_id": bank_account.id, "matched_import_line_id": staged.id},
+    )
+    assert resp.status_code == 400
+
+
+def test_book_payout_matched_line_wrong_amount_rejected(treasurer_client, db, donation_target, bank_account, clearing_account):
+    txn = _make_payout(db, donation_target, amount="30.00")
+    staged = _stage_import_line(db, bank_account, Decimal("25.00"))
+
+    resp = treasurer_client.post(
+        f"/api/v1/ledger/target-payouts/{txn.id}/book",
+        json={"bank_account_id": bank_account.id, "matched_import_line_id": staged.id},
+    )
+    assert resp.status_code == 400
+
+
+def test_book_payout_matched_line_already_booked_rejected(treasurer_client, db, donation_target, bank_account, clearing_account):
+    txn = _make_payout(db, donation_target, amount="30.00")
+    staged = _stage_import_line(db, bank_account, Decimal("30.00"), status=LedgerImportStatus.booked)
+
+    resp = treasurer_client.post(
+        f"/api/v1/ledger/target-payouts/{txn.id}/book",
+        json={"bank_account_id": bank_account.id, "matched_import_line_id": staged.id},
+    )
+    assert resp.status_code == 400
+
+
+def test_book_payout_matched_line_not_found_404(treasurer_client, db, donation_target, bank_account, clearing_account):
+    txn = _make_payout(db, donation_target, amount="30.00")
+
+    resp = treasurer_client.post(
+        f"/api/v1/ledger/target-payouts/{txn.id}/book",
+        json={"bank_account_id": bank_account.id, "matched_import_line_id": 9999},
+    )
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Reversing a booked payout frees it up to be re-booked
+# ---------------------------------------------------------------------------
+
+def test_reversing_payout_entry_reopens_it_for_rebooking(treasurer_client, db, donation_target, bank_account, clearing_account):
+    txn = _make_payout(db, donation_target, amount="30.00")
+    booked = treasurer_client.post(
+        f"/api/v1/ledger/target-payouts/{txn.id}/book",
+        json={"bank_account_id": bank_account.id},
+    ).json()
+
+    # still shows as booked, and can't be booked again while the original stands
+    payouts = treasurer_client.get("/api/v1/ledger/target-payouts", params={"booked": "true"}).json()
+    assert payouts[0]["ledger_entry_id"] == booked["id"]
+    assert treasurer_client.post(
+        f"/api/v1/ledger/target-payouts/{txn.id}/book", json={"bank_account_id": bank_account.id}
+    ).status_code == 409
+
+    reverse_resp = treasurer_client.post(f"/api/v1/ledger/entries/{booked['id']}/reverse")
+    assert reverse_resp.status_code == 201
+    assert reverse_resp.json()["booking_target_payout_id"] is None
+
+    # original entry keeps its own link cleared, payout shows as open again
+    payouts = treasurer_client.get("/api/v1/ledger/target-payouts", params={"booked": "false"}).json()
+    assert len(payouts) == 1
+    assert payouts[0]["transaction_id"] == txn.id
+
+    # and can now be booked cleanly again
+    rebooked = treasurer_client.post(
+        f"/api/v1/ledger/target-payouts/{txn.id}/book",
+        json={"bank_account_id": bank_account.id, "description": "Korrekt gebucht"},
+    )
+    assert rebooked.status_code == 201
+    assert rebooked.json()["id"] != booked["id"]

@@ -183,10 +183,17 @@ class BookTargetPayoutRequest(BaseModel):
     `bank_account_id` (whichever real account the cash was actually
     deposited into) — no category, since the income was already recognized
     when the cash arrived in the target. `entry_date`/`description` default
-    to the payout's own date/a generated label."""
+    to the payout's own date/a generated label. `matched_import_line_id`
+    links the destination account's own not-yet-booked staged line for this
+    same deposit (found via `GET /ledger/import/lines?bank_account_id=&
+    amount=&status=new&status=duplicate`) — same "explicitly matched, not
+    guessed" pattern as transfer-booking an import line (#32) — so a
+    later-imported bank statement doesn't leave a dangling, separately-
+    bookable duplicate of a transaction this endpoint already recorded."""
     bank_account_id: int
     entry_date: Optional[date] = None
     description: Optional[str] = None
+    matched_import_line_id: Optional[int] = None
 
 
 class EuerCategoryTotal(BaseModel):

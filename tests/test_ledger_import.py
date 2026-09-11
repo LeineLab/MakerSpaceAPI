@@ -565,6 +565,88 @@ def test_auditor_cannot_ignore(auditor_client, treasurer_client, bank_account):
 
 
 # ---------------------------------------------------------------------------
+# Transfer candidates also include duplicate-flagged lines, and
+# POST /import/lines/{id}/reset ("Kein Duplikat" / restore from ignored)
+# ---------------------------------------------------------------------------
+
+def test_transfer_candidates_include_duplicate_status_line(treasurer_client, bank_account, db):
+    other = BankAccount(iban="DE00999999990000000000", name="Sparkonto")
+    db.add(other)
+    db.commit()
+    counter = _stage_counter_line(db, other, Decimal("30.00"))
+    counter.status = LedgerImportStatus.duplicate
+    db.commit()
+
+    candidates = treasurer_client.get(
+        f"/api/v1/ledger/import/lines?bank_account_id={other.id}&amount=30.00&status=new&status=duplicate"
+    ).json()
+    assert len(candidates) == 1
+    assert candidates[0]["id"] == counter.id
+
+    # the plain default-status search (used by the main staging queue) still
+    # excludes it, unaffected by this change
+    default_view = treasurer_client.get(f"/api/v1/ledger/import/lines?bank_account_id={other.id}").json()
+    assert default_view == []
+
+
+def test_reset_duplicate_to_new(treasurer_client, bank_account, db):
+    other = BankAccount(iban="DE00999999990000000000", name="Sparkonto")
+    db.add(other)
+    db.commit()
+    counter = _stage_counter_line(db, other, Decimal("30.00"))
+    counter.status = LedgerImportStatus.duplicate
+    db.commit()
+
+    resp = treasurer_client.post(f"/api/v1/ledger/import/lines/{counter.id}/reset")
+    assert resp.status_code == 200
+    assert treasurer_client.get(f"/api/v1/ledger/import/lines?bank_account_id={other.id}").json()[0]["status"] == "new"
+
+
+def test_reset_ignored_to_new(treasurer_client, bank_account):
+    _upload(treasurer_client, bank_account.id, _MT940_SAMPLE)
+    line_id = treasurer_client.get("/api/v1/ledger/import/lines").json()[0]["id"]
+    treasurer_client.post(f"/api/v1/ledger/import/lines/{line_id}/ignore")
+
+    resp = treasurer_client.post(f"/api/v1/ledger/import/lines/{line_id}/reset")
+    assert resp.status_code == 200
+    restored = treasurer_client.get("/api/v1/ledger/import/lines?status=new").json()
+    assert any(l["id"] == line_id for l in restored)
+
+
+def test_reset_new_line_rejected_400(treasurer_client, bank_account):
+    _upload(treasurer_client, bank_account.id, _MT940_SAMPLE)
+    line_id = treasurer_client.get("/api/v1/ledger/import/lines").json()[0]["id"]
+
+    resp = treasurer_client.post(f"/api/v1/ledger/import/lines/{line_id}/reset")
+    assert resp.status_code == 400
+
+
+def test_reset_booked_line_rejected_400(treasurer_client, bank_account, income_category):
+    _upload(treasurer_client, bank_account.id, _MT940_SAMPLE)
+    lines = treasurer_client.get("/api/v1/ledger/import/lines").json()
+    credit_line = next(l for l in lines if Decimal(str(l["amount"])) > 0)
+    treasurer_client.post(
+        f"/api/v1/ledger/import/lines/{credit_line['id']}/book",
+        json={
+            "description": "Mitgliedsbeitrag",
+            "category_lines": [{"category_id": income_category.id, "amount": str(-Decimal(str(credit_line["amount"])))}],
+        },
+    )
+
+    resp = treasurer_client.post(f"/api/v1/ledger/import/lines/{credit_line['id']}/reset")
+    assert resp.status_code == 400
+
+
+def test_auditor_cannot_reset(auditor_client, treasurer_client, bank_account):
+    _upload(treasurer_client, bank_account.id, _MT940_SAMPLE)
+    line_id = treasurer_client.get("/api/v1/ledger/import/lines").json()[0]["id"]
+    treasurer_client.post(f"/api/v1/ledger/import/lines/{line_id}/ignore")
+
+    resp = auditor_client.post(f"/api/v1/ledger/import/lines/{line_id}/reset")
+    assert resp.status_code in (401, 403)
+
+
+# ---------------------------------------------------------------------------
 # Paperless search + config flag
 # ---------------------------------------------------------------------------
 

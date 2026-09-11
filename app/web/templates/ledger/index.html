@@ -188,13 +188,17 @@
                 </td>
                 <td class="px-4 py-3">
                   <!-- Radio, not checkbox — only one account can be the shared
-                       Kassenbestand clearing account at a time (see #34). -->
-                  <label class="inline-flex items-center gap-2" :class="userIsTreasurer ? 'cursor-pointer' : 'opacity-60'"
+                       Kassenbestand clearing account at a time (see #34).
+                       Only offline accounts are eligible — a real bank
+                       account already has its own IBAN/statement and is
+                       never "cash in hand" (enforced server-side too). -->
+                  <label x-show="a.is_offline" class="inline-flex items-center gap-2" :class="userIsTreasurer ? 'cursor-pointer' : 'opacity-60'"
                          :title="CASH_CLEARING_HINT_L">
                     <input type="radio" name="cash_clearing_account" :checked="a.is_cash_clearing_account" :disabled="!userIsTreasurer"
                            @change="setCashClearingAccount(a)"
                            class="border-gray-300 dark:border-gray-600">
                   </label>
+                  <span x-show="!a.is_offline" class="text-gray-300 dark:text-gray-600">—</span>
                 </td>
               </tr>
             </template>
@@ -655,10 +659,18 @@
                       <button @click="openBookModal(l)" class="text-blue-600 dark:text-blue-400 hover:underline text-xs">
                         {{ _('ledger.btn_book') }}
                       </button>
+                      <button x-show="l.status === 'duplicate'" @click="resetImportLine(l)" class="text-amber-600 dark:text-amber-400 hover:underline text-xs">
+                        {{ _('ledger.btn_not_duplicate') }}
+                      </button>
                       <button @click="ignoreImportLine(l)" class="text-red-600 dark:text-red-400 hover:underline text-xs">
                         {{ _('ledger.btn_ignore') }}
                       </button>
                     </div>
+                  </template>
+                  <template x-if="l.status === 'ignored'">
+                    <button @click="resetImportLine(l)" class="text-blue-600 dark:text-blue-400 hover:underline text-xs">
+                      {{ _('ledger.btn_restore') }}
+                    </button>
                   </template>
                 </td>
               </tr>
@@ -807,13 +819,34 @@
 
       <div class="mb-3">
         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.target_payout_label_bank_account') }}</label>
-        <select x-model.number="targetPayoutForm.bank_account_id"
+        <select x-model.number="targetPayoutForm.bank_account_id" @change="onTargetPayoutAccountChange()"
                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800">
           <option value="">{{ _('ledger.import_select_account') }}</option>
           <template x-for="a in payoutDestinationAccounts" :key="a.id">
             <option :value="a.id" x-text="a.name"></option>
           </template>
         </select>
+      </div>
+
+      <div x-show="targetPayoutForm.bank_account_id" class="mb-3">
+        <p class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.book_transfer_candidates_title') }}</p>
+        <p x-show="loadingTargetPayoutCandidates" class="text-xs text-gray-400 dark:text-gray-500">…</p>
+        <div x-show="!loadingTargetPayoutCandidates && targetPayoutCandidates.length === 0" class="text-xs text-gray-400 dark:text-gray-500">
+          {{ _('ledger.book_transfer_no_candidates') }}
+        </div>
+        <div x-show="!loadingTargetPayoutCandidates && targetPayoutCandidates.length > 0" class="space-y-1">
+          <template x-for="c in targetPayoutCandidates" :key="c.id">
+            <label class="flex items-center gap-2 text-sm px-2 py-1 rounded hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
+              <input type="radio" name="targetPayoutCandidate" :value="c.id" x-model="targetPayoutForm.matched_import_line_id">
+              <span x-text="c.booking_date"></span>
+              <span class="text-gray-500 dark:text-gray-400" x-text="c.purpose_text || c.counterparty_name || '—'"></span>
+            </label>
+          </template>
+          <label class="flex items-center gap-2 text-sm px-2 py-1 rounded hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
+            <input type="radio" name="targetPayoutCandidate" value="" x-model="targetPayoutForm.matched_import_line_id">
+            <span class="text-gray-500 dark:text-gray-400">{{ _('ledger.book_transfer_no_link') }}</span>
+          </label>
+        </div>
       </div>
 
       <div class="mb-3">
@@ -1298,9 +1331,11 @@ function ledgerApp(userIsTreasurer) {
 
     showTargetPayoutModal: false,
     bookingTargetPayout: null,
-    targetPayoutForm: { bank_account_id: '', category_id: '', entry_date: '', description: '' },
+    targetPayoutForm: { bank_account_id: '', entry_date: '', description: '', matched_import_line_id: '' },
     targetPayoutBookError: null,
     targetPayoutBookSubmitting: false,
+    targetPayoutCandidates: [],
+    loadingTargetPayoutCandidates: false,
 
     get activeCategories() {
       return this.categories.filter(c => c.active);
@@ -1527,9 +1562,28 @@ function ledgerApp(userIsTreasurer) {
         bank_account_id: '',
         entry_date: payout.created_at.slice(0, 10),
         description: '',
+        matched_import_line_id: '',
       };
+      this.targetPayoutCandidates = [];
       this.targetPayoutBookError = null;
       this.showTargetPayoutModal = true;
+    },
+
+    async onTargetPayoutAccountChange() {
+      this.targetPayoutForm.matched_import_line_id = '';
+      this.targetPayoutCandidates = [];
+      if (!this.targetPayoutForm.bank_account_id || !this.bookingTargetPayout) return;
+      this.loadingTargetPayoutCandidates = true;
+      try {
+        const r = await apiFetch(
+          `/api/v1/ledger/import/lines?bank_account_id=${this.targetPayoutForm.bank_account_id}&amount=${this.bookingTargetPayout.amount}&status=new&status=duplicate`
+        );
+        if (r.ok) this.targetPayoutCandidates = await r.json();
+      } catch (e) {
+        // non-critical — booking still works without a matched candidate
+      } finally {
+        this.loadingTargetPayoutCandidates = false;
+      }
     },
 
     async submitTargetPayoutBook() {
@@ -1541,6 +1595,7 @@ function ledgerApp(userIsTreasurer) {
         };
         if (this.targetPayoutForm.entry_date) body.entry_date = this.targetPayoutForm.entry_date;
         if (this.targetPayoutForm.description) body.description = this.targetPayoutForm.description;
+        if (this.targetPayoutForm.matched_import_line_id) body.matched_import_line_id = this.targetPayoutForm.matched_import_line_id;
         const r = await apiFetch(`/api/v1/ledger/target-payouts/${this.bookingTargetPayout.transaction_id}/book`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1977,6 +2032,15 @@ function ledgerApp(userIsTreasurer) {
       }
     },
 
+    async resetImportLine(line) {
+      try {
+        const r = await apiFetch(`/api/v1/ledger/import/lines/${line.id}/reset`, { method: 'POST' });
+        if (r.ok) await this.loadImportLines();
+      } catch (e) {
+        // leave the line in the list on failure
+      }
+    },
+
     // --- import: booking modal ---
     openBookModal(line) {
       this.bookingLine = line;
@@ -2009,8 +2073,11 @@ function ledgerApp(userIsTreasurer) {
       this.loadingTransferCandidates = true;
       try {
         const targetAmount = (-parseFloat(this.bookingLine.amount)).toFixed(2);
+        // status=new&status=duplicate — a duplicate-flagged line (a heuristic
+        // dedup false positive is possible, see #19) is still a valid transfer
+        // candidate, not just a fresh one.
         const r = await apiFetch(
-          `/api/v1/ledger/import/lines?bank_account_id=${this.bookForm.transferAccountId}&amount=${targetAmount}&status=new`
+          `/api/v1/ledger/import/lines?bank_account_id=${this.bookForm.transferAccountId}&amount=${targetAmount}&status=new&status=duplicate`
         );
         if (r.ok) this.transferCandidates = await r.json();
       } catch (e) {

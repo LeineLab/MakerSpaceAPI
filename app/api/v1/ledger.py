@@ -181,7 +181,7 @@ def get_account_balance(
     )
 
 
-@router.put("/accounts/{account_id}", response_model=BankAccountResponse, responses={**HTTP_404})
+@router.put("/accounts/{account_id}", response_model=BankAccountResponse, responses={**HTTP_400, **HTTP_404})
 def update_account(
     account_id: int,
     body: BankAccountUpdate,
@@ -192,7 +192,9 @@ def update_account(
     account), or set/clear `is_cash_clearing_account` — the one shared
     Kassenbestand counter-account for booking Kassen payouts (#34); setting
     it true here clears it on every other account first, since only one
-    can hold it at a time."""
+    can hold it at a time. Only an offline account can hold the flag — a
+    real bank account already has its own statement/IBAN and is never
+    "cash in hand"."""
     account = db.query(BankAccount).filter(BankAccount.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Bank account not found")
@@ -202,6 +204,11 @@ def update_account(
         account.tracked = body.tracked
     if body.is_cash_clearing_account is not None:
         if body.is_cash_clearing_account:
+            if not account.is_offline:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Only an offline account can be the Kassenbestand clearing account",
+                )
             db.query(BankAccount).filter(BankAccount.id != account_id).update(
                 {BankAccount.is_cash_clearing_account: False}
             )
@@ -395,7 +402,11 @@ def reverse_entry(
     `transactions`. Posts a new entry with every line's amount negated,
     linked back via `reverses_entry_id`. If the original entry came from
     booking an import staging line, that line is reopened (status back to
-    `new`, `matched_entry_id` cleared) so it can be re-booked correctly."""
+    `new`, `matched_entry_id` cleared) so it can be re-booked correctly. If
+    the original entry came from booking a Kassen payout (#34), its
+    `booking_target_payout_id` link is cleared on the *original* so the
+    payout shows as open again and can be re-booked — the reversal itself
+    keeps no such link (it isn't a payout booking, just its undo)."""
     original = (
         db.query(LedgerEntry).options(joinedload(LedgerEntry.lines))
         .filter(LedgerEntry.id == entry_id).first()
@@ -429,6 +440,9 @@ def reverse_entry(
     if import_line:
         import_line.status = LedgerImportStatus.new
         import_line.matched_entry_id = None
+
+    if original.booking_target_payout_id is not None:
+        original.booking_target_payout_id = None
 
     db.commit()
     db.refresh(reversal)
@@ -537,7 +551,10 @@ def book_target_payout(
     each be booked to a different destination account — e.g. cash physically
     deposited into a private account, later transferred on to the real
     Vereinskonto via an ordinary manual entry (`POST /entries`), independent
-    of this bridge."""
+    of this bridge. If the destination account's own bank statement for this
+    deposit has already been imported, `matched_import_line_id` links that
+    staged line so it's marked booked here too, instead of sitting there as
+    a separately-bookable duplicate of the same real-world transaction."""
     txn = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not txn or txn.type != TransactionType.booking_target_payout:
         raise HTTPException(status_code=404, detail="Booking target payout not found")
@@ -562,6 +579,30 @@ def book_target_payout(
 
     target = db.query(BookingTarget).filter(BookingTarget.id == txn.target_id).first()
     amount = -txn.amount  # payout transactions are stored negative; the booking is the positive cash inflow
+
+    matched_line = None
+    if body.matched_import_line_id is not None:
+        matched_line = db.query(LedgerImportLine).filter(
+            LedgerImportLine.id == body.matched_import_line_id
+        ).first()
+        if not matched_line:
+            raise HTTPException(status_code=404, detail="Matched import line not found")
+        if matched_line.status == LedgerImportStatus.booked:
+            raise HTTPException(status_code=400, detail="Matched import line is already booked")
+        if matched_line.bank_account_id != destination.id:
+            raise HTTPException(
+                status_code=400,
+                detail="Matched import line must belong to the selected destination account",
+            )
+        if matched_line.amount != amount:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Matched import line's amount ({matched_line.amount}) doesn't match "
+                    f"the payout amount ({amount})"
+                ),
+            )
+
     entry = LedgerEntry(
         entry_date=body.entry_date or txn.created_at.date(),
         description=body.description or f"Kassenauszahlung: {target.name if target else txn.target_id}",
@@ -574,6 +615,12 @@ def book_target_payout(
         LedgerEntryLine(bank_account_id=clearing_account.id, amount=-amount),
     ]
     db.add(entry)
+    db.flush()
+
+    if matched_line:
+        matched_line.status = LedgerImportStatus.booked
+        matched_line.matched_entry_id = entry.id
+
     db.commit()
     db.refresh(entry)
     return entry
@@ -1002,7 +1049,7 @@ async def import_csv_statement(
 @router.get("/import/lines", response_model=list[LedgerImportLineResponse])
 def list_import_lines(
     response: Response,
-    status: Optional[LedgerImportStatus] = Query(default=LedgerImportStatus.new),
+    status: list[LedgerImportStatus] = Query(default=[LedgerImportStatus.new]),
     bank_account_id: Optional[int] = Query(default=None),
     amount: Optional[Decimal] = Query(default=None),
     limit: int = Query(default=200, ge=1, le=1000),
@@ -1016,10 +1063,15 @@ def list_import_lines(
 
     `amount` (exact match) is used by the transfer-booking UI to find a
     counter-account's candidate matching line — a plain transfer moves the
-    full amount, so no tolerance/range filtering is needed."""
+    full amount, so no tolerance/range filtering is needed. That search
+    passes `status=new&status=duplicate` (repeat the query param for each
+    value): a line flagged `duplicate` by the (heuristic, false-positive-
+    prone — see #19) dedup check is still perfectly bookable, so excluding
+    it from transfer candidates would make a real transfer unmatchable
+    whenever either side happened to get flagged."""
     q = db.query(LedgerImportLine)
-    if status is not None:
-        q = q.filter(LedgerImportLine.status == status)
+    if status:
+        q = q.filter(LedgerImportLine.status.in_(status))
     if bank_account_id is not None:
         q = q.filter(LedgerImportLine.bank_account_id == bank_account_id)
     if amount is not None:
@@ -1156,6 +1208,27 @@ def ignore_import_line(
     staging.status = LedgerImportStatus.ignored
     db.commit()
     return {"detail": "Import line ignored"}
+
+
+@router.post("/import/lines/{line_id}/reset", response_model=MessageResponse, responses={**HTTP_400, **HTTP_404})
+def reset_import_line(
+    line_id: int,
+    _treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    """Move a `duplicate` or `ignored` line back to `new` — "Kein Duplikat"
+    (a dedup false positive, see #19) or restoring an ignored line. `booked`
+    is rejected (use `POST /entries/{id}/reverse` on its entry instead — that
+    path also reopens the staging line automatically, see #28); a line
+    already `new` is a no-op 400 rather than silently succeeding."""
+    staging = db.query(LedgerImportLine).filter(LedgerImportLine.id == line_id).first()
+    if not staging:
+        raise HTTPException(status_code=404, detail="Import line not found")
+    if staging.status not in (LedgerImportStatus.duplicate, LedgerImportStatus.ignored):
+        raise HTTPException(status_code=400, detail=f"Cannot reset a line with status '{staging.status.value}'")
+    staging.status = LedgerImportStatus.new
+    db.commit()
+    return {"detail": "Import line reset to new"}
 
 
 # --- Paperless-ngx document search (proxy, read-only) ---
