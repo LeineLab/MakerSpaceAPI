@@ -135,6 +135,12 @@ def downgrade() -> None:
         """
     )
 
-    op.drop_index("ix_ledger_target_payout_entries_entry_id", table_name="ledger_target_payout_entries")
-    op.drop_index("ix_ledger_target_payout_entries_transaction_id", table_name="ledger_target_payout_entries")
+    # No explicit op.drop_index() first: both indexes cover a foreign key
+    # (transaction_id, entry_id), and MariaDB/InnoDB requires an index
+    # covering an FK's referencing column to exist at all times — dropping
+    # one as its own statement while the FK constraint is still attached
+    # fails with errno 1553 ("needed in a foreign key constraint"), exactly
+    # the same class of bug as the upgrade()'s drop-order fix above.
+    # op.drop_table() removes the table's indexes and constraints together
+    # in one statement, so it never hits this.
     op.drop_table("ledger_target_payout_entries")

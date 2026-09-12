@@ -28,5 +28,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_user_card_aliases_user_id", table_name="user_card_aliases")
+    # No explicit op.drop_index() first: user_id has a foreign key, and
+    # MariaDB/InnoDB requires an index covering it to exist at all times —
+    # dropping the index as its own statement while the FK constraint is
+    # still attached fails with errno 1553 ("needed in a foreign key
+    # constraint"). op.drop_table() removes the table's indexes and
+    # constraints together in one statement, so it never hits this.
     op.drop_table("user_card_aliases")

@@ -49,7 +49,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_ledger_reserve_movements_reserve_id", table_name="ledger_reserve_movements")
+    # No explicit op.drop_index() first: reserve_id has a foreign key, and
+    # MariaDB/InnoDB requires an index covering it to exist at all times —
+    # dropping the index as its own statement while the FK constraint is
+    # still attached fails with errno 1553 ("needed in a foreign key
+    # constraint"). op.drop_table() removes the table's indexes and
+    # constraints together in one statement, so it never hits this.
     op.drop_table("ledger_reserve_movements")
     op.drop_table("ledger_reserves")
     # MariaDB creates ENUMs inline (no separate type to drop); PostgreSQL would

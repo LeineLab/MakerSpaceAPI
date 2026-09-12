@@ -132,19 +132,18 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_ledger_import_lines_account_reference", table_name="ledger_import_lines")
-    op.drop_index("ix_ledger_import_lines_status", table_name="ledger_import_lines")
-    op.drop_index("ix_ledger_import_lines_dedup_hash", table_name="ledger_import_lines")
-    op.drop_index("ix_ledger_import_lines_bank_account_id", table_name="ledger_import_lines")
-    op.drop_index("ix_ledger_import_lines_batch_id", table_name="ledger_import_lines")
+    # No explicit op.drop_index() calls: several of these indexes (e.g.
+    # bank_account_id, batch_id, entry_id) cover a foreign key, and
+    # MariaDB/InnoDB requires an index covering an FK's referencing column to
+    # exist at all times — dropping such an index as its own statement while
+    # the FK constraint is still attached fails with errno 1553 ("needed in
+    # a foreign key constraint"). op.drop_table() removes a table's indexes
+    # and constraints together in one statement, so it never hits this —
+    # simplest to rely on it for every index here, not just the FK-covering
+    # ones.
     op.drop_table("ledger_import_lines")
-    op.drop_index("ix_ledger_import_batches_bank_account_id", table_name="ledger_import_batches")
     op.drop_table("ledger_import_batches")
-    op.drop_index("ix_ledger_entry_lines_entry_id", table_name="ledger_entry_lines")
     op.drop_table("ledger_entry_lines")
-    op.drop_index("ix_ledger_entries_entry_date", table_name="ledger_entries")
     op.drop_table("ledger_entries")
-    op.drop_index("ix_ledger_categories_slug", table_name="ledger_categories")
     op.drop_table("ledger_categories")
-    op.drop_index("ix_bank_accounts_iban", table_name="bank_accounts")
     op.drop_table("bank_accounts")
