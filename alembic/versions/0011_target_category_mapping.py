@@ -77,8 +77,15 @@ def downgrade() -> None:
             batch_op.drop_constraint("fk_booking_targets_default_category_id", type_="foreignkey")
             batch_op.drop_column("default_category_id")
     else:
-        op.drop_constraint("uq_ledger_entries_booking_target_payout_id", "ledger_entries", type_="unique")
+        # MySQL/MariaDB (InnoDB) requires an index covering a foreign key's
+        # referencing column(s) to exist at all times — the unique
+        # constraint's own index is the only one covering
+        # booking_target_payout_id, so it must be dropped only after the FK
+        # that depends on it, or this fails with errno 1553 ("needed in a
+        # foreign key constraint"). See the same fix/explanation in 0015's
+        # upgrade(), which hit this for real in production.
         op.drop_constraint("fk_ledger_entries_booking_target_payout_id", "ledger_entries", type_="foreignkey")
+        op.drop_constraint("uq_ledger_entries_booking_target_payout_id", "ledger_entries", type_="unique")
         op.drop_column("ledger_entries", "booking_target_payout_id")
         op.drop_constraint("fk_booking_targets_default_category_id", "booking_targets", type_="foreignkey")
         op.drop_column("booking_targets", "default_category_id")

@@ -29,19 +29,35 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "ledger_target_payout_entries",
-        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("transaction_id", sa.Integer(), nullable=False),
-        sa.Column("entry_id", sa.Integer(), nullable=False),
-        sa.Column("amount", sa.Numeric(10, 2), nullable=False),
-        sa.PrimaryKeyConstraint("id"),
-        sa.ForeignKeyConstraint(["transaction_id"], ["transactions.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(["entry_id"], ["ledger_entries.id"], ondelete="CASCADE"),
-    )
-    op.create_index("ix_ledger_target_payout_entries_transaction_id", "ledger_target_payout_entries", ["transaction_id"])
-    op.create_index("ix_ledger_target_payout_entries_entry_id", "ledger_target_payout_entries", ["entry_id"])
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
 
+    # Idempotent/resumable: MySQL/MariaDB DDL auto-commits per statement (no
+    # rollback on a later failure within this same migration), so a prior
+    # failed attempt at this exact migration can leave the table/indexes/data
+    # already in place while alembic_version is still stuck at the previous
+    # revision. Every step below checks current state first so a retry after
+    # a partial failure is safe, instead of dying on "already exists".
+    if not inspector.has_table("ledger_target_payout_entries"):
+        op.create_table(
+            "ledger_target_payout_entries",
+            sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+            sa.Column("transaction_id", sa.Integer(), nullable=False),
+            sa.Column("entry_id", sa.Integer(), nullable=False),
+            sa.Column("amount", sa.Numeric(10, 2), nullable=False),
+            sa.PrimaryKeyConstraint("id"),
+            sa.ForeignKeyConstraint(["transaction_id"], ["transactions.id"], ondelete="RESTRICT"),
+            sa.ForeignKeyConstraint(["entry_id"], ["ledger_entries.id"], ondelete="CASCADE"),
+        )
+
+    existing_indexes = {ix["name"] for ix in inspector.get_indexes("ledger_target_payout_entries")}
+    if "ix_ledger_target_payout_entries_transaction_id" not in existing_indexes:
+        op.create_index("ix_ledger_target_payout_entries_transaction_id", "ledger_target_payout_entries", ["transaction_id"])
+    if "ix_ledger_target_payout_entries_entry_id" not in existing_indexes:
+        op.create_index("ix_ledger_target_payout_entries_entry_id", "ledger_target_payout_entries", ["entry_id"])
+
+    # NOT EXISTS guard so a retry never double-inserts rows a prior, partially
+    # failed attempt already migrated.
     op.execute(
         """
         INSERT INTO ledger_target_payout_entries (transaction_id, entry_id, amount)
@@ -49,17 +65,32 @@ def upgrade() -> None:
         FROM ledger_entries le
         JOIN transactions t ON t.id = le.booking_target_payout_id
         WHERE le.booking_target_payout_id IS NOT NULL
+        AND NOT EXISTS (
+            SELECT 1 FROM ledger_target_payout_entries ltpe WHERE ltpe.entry_id = le.id
+        )
         """
     )
 
-    if op.get_bind().dialect.name == "sqlite":
+    columns = {c["name"] for c in inspector.get_columns("ledger_entries")}
+    if "booking_target_payout_id" not in columns:
+        return
+
+    if bind.dialect.name == "sqlite":
         with op.batch_alter_table("ledger_entries") as batch_op:
             batch_op.drop_constraint("uq_ledger_entries_booking_target_payout_id", type_="unique")
             batch_op.drop_constraint("fk_ledger_entries_booking_target_payout_id", type_="foreignkey")
             batch_op.drop_column("booking_target_payout_id")
     else:
-        op.drop_constraint("uq_ledger_entries_booking_target_payout_id", "ledger_entries", type_="unique")
+        # MySQL/MariaDB (InnoDB) always requires an index covering a foreign
+        # key's referencing column(s) to exist — the unique constraint's own
+        # index is the only one covering booking_target_payout_id here, so
+        # dropping it *before* the FK constraint that depends on it fails
+        # with errno 1553 ("needed in a foreign key constraint"). The FK
+        # must go first. (This is what actually broke the first deploy of
+        # this migration: the table/indexes/data above had already committed
+        # — MySQL DDL isn't transactional — before this step died.)
         op.drop_constraint("fk_ledger_entries_booking_target_payout_id", "ledger_entries", type_="foreignkey")
+        op.drop_constraint("uq_ledger_entries_booking_target_payout_id", "ledger_entries", type_="unique")
         op.drop_column("ledger_entries", "booking_target_payout_id")
 
 
