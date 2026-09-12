@@ -700,7 +700,7 @@
 
     <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
       <h2 class="text-xl font-semibold">{{ _('ledger.import_queue_title') }}</h2>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.import_filter_status') }}</label>
         <select x-model="importStatus" @change="importLinesPage = 1; loadImportLines()"
                 class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
@@ -709,6 +709,17 @@
           <option value="booked" x-text="IMPORT_STATUS_L.booked"></option>
           <option value="ignored" x-text="IMPORT_STATUS_L.ignored"></option>
         </select>
+        <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.filter_account') }}</label>
+        <select x-model.number="importFilterAccountId" @change="importLinesPage = 1; loadImportLines()"
+                class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+          <option value="">{{ _('ledger.filter_account_all') }}</option>
+          <template x-for="a in accounts" :key="a.id">
+            <option :value="a.id" x-text="a.name"></option>
+          </template>
+        </select>
+        <input type="text" x-model="importSearchQuery" @input.debounce.400ms="importLinesPage = 1; loadImportLines()"
+               placeholder="{{ _('ledger.placeholder_search_import_lines') }}"
+               class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
       </div>
     </div>
 
@@ -2027,6 +2038,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     csvMappingError: null,
 
     importStatus: 'new',
+    importFilterAccountId: '',
+    importSearchQuery: '',
     importLines: [],
     importLinesTotal: 0,
     importLinesPage: 1,
@@ -3033,12 +3046,19 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       return Math.max(1, Math.ceil(this.importLinesTotal / PAGE_SIZE));
     },
 
+    importLinesQueryParams() {
+      let params = `status=${this.importStatus}`;
+      if (this.importFilterAccountId) params += `&bank_account_id=${this.importFilterAccountId}`;
+      if (this.importSearchQuery) params += `&q=${encodeURIComponent(this.importSearchQuery)}`;
+      return params;
+    },
+
     async loadImportLines() {
       this.loadingImportLines = true;
       this.importLinesError = null;
       try {
         const offset = (this.importLinesPage - 1) * PAGE_SIZE;
-        const r = await apiFetch(`/api/v1/ledger/import/lines?status=${this.importStatus}&limit=${PAGE_SIZE}&offset=${offset}`);
+        const r = await apiFetch(`/api/v1/ledger/import/lines?${this.importLinesQueryParams()}&limit=${PAGE_SIZE}&offset=${offset}`);
         if (!r.ok) throw new Error('Failed to load import lines');
         this.importLines = await r.json();
         this.importLinesTotal = Number(r.headers.get('X-Total-Count')) || this.importLines.length;
