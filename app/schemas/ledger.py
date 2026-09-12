@@ -212,15 +212,17 @@ class BookTargetPayoutsRequest(BaseModel):
     """Books one or more Kassen payouts as a single pure-transfer leg from
     the shared Kassenbestand clearing account to `bank_account_id` — no
     category, since the income was already recognized when the cash arrived
-    in the target(s). See Key Design Decision #38 for the split/bundle
-    rules this enforces:
-
-    - A single `payout_transaction_ids` entry may be booked for less than
-      its full remaining amount, to support splitting one payout across
-      several real transfers (e.g. a bank transfer-amount limit).
-    - Multiple `payout_transaction_ids` bundle several payouts into one
-      transfer — `amount` must equal the exact sum of their (so-far
-      entirely unbooked) amounts; no partial bundling.
+    in the target(s). See Key Design Decision #38 for the allocation rule:
+    `amount` is distributed over the selected payouts smallest-remaining-
+    first, filling each one's own remaining amount before moving to the
+    next-larger one, regardless of the order given in `payout_transaction_
+    ids` — a single id with a partial amount is a split (that payout can be
+    booked again later for the rest); several ids covering their full
+    combined remaining is a bundle; an amount that lines up with neither
+    still books cleanly, leaving a partial remainder on the largest-
+    remaining payout the allocation didn't fully reach, to be finished off
+    later. 400 if `amount` exceeds the selected payouts' combined remaining
+    amount, or doesn't reach every payout selected.
 
     `entry_date`/`description` default to a generated label (the single
     payout's own date, or today for a bundle of several). `matched_import_

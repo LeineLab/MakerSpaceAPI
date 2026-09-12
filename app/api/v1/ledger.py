@@ -622,17 +622,21 @@ def book_target_payouts(
     Does not touch `transactions`/`booking_targets` at all (Key Design
     Decision #18 — this bridge only reads that domain).
 
-    See Key Design Decision #38 for the split/bundle rules: a single payout
-    may be booked for less than its remaining amount (a split, tracked via
-    `ledger_target_payout_entries` — the same payout can be booked again
-    later for the rest); multiple payouts in one call must be entirely
-    unbooked so far and `body.amount` must equal the exact sum of their
-    amounts (a bundle — no partial bundling, no mixing a bundle with a
-    split in the same call). If the destination account's own bank
-    statement for this deposit has already been imported,
-    `matched_import_line_id` links that staged line so it's marked booked
-    here too, instead of sitting there as a separately-bookable duplicate
-    of the same real-world transaction."""
+    See Key Design Decision #38 for the allocation rule: `body.amount` is
+    distributed over the selected payouts smallest-remaining-first, filling
+    each one's own remaining amount before moving to the next-larger one,
+    tracked per (payout, entry) pair via `ledger_target_payout_entries` — 400
+    if the amount exceeds the selected payouts' combined remaining, or
+    doesn't reach every selected payout. A single id with a partial amount is
+    a split (the same payout can be booked again later for the rest); several
+    ids covering their full combined remaining is a bundle; anything in
+    between — several payouts, an amount that lines up with neither — is
+    exactly the same call, just with a partial slice landing on the
+    largest-remaining payout(s) reached, which can then be finished off in a
+    later booking. If the destination account's own bank statement for this
+    deposit has already been imported, `matched_import_line_id` links that staged line
+    so it's marked booked here too, instead of sitting there as a
+    separately-bookable duplicate of the same real-world transaction."""
     txns = (
         db.query(Transaction)
         .filter(
@@ -668,34 +672,50 @@ def book_target_payouts(
             raise HTTPException(status_code=409, detail=f"Payout {txn.id} is already fully booked")
         remaining_by_txn[txn.id] = remaining
 
-    if len(txns) == 1:
-        if body.amount > remaining_by_txn[txns[0].id]:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Amount ({body.amount}) exceeds the remaining unbooked amount "
-                    f"for this payout ({remaining_by_txn[txns[0].id]})"
-                ),
-            )
-    else:
-        for txn in txns:
-            if remaining_by_txn[txn.id] != -txn.amount:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"Payout {txn.id} is already partially booked — bundling requires "
-                        "payouts that haven't been booked at all yet"
-                    ),
-                )
-        total = sum(remaining_by_txn.values(), Decimal("0.00"))
-        if body.amount != total:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Amount ({body.amount}) must equal the sum of the selected payouts' "
-                    f"amounts ({total}) for a bundled booking"
-                ),
-            )
+    total_remaining = sum(remaining_by_txn.values(), Decimal("0.00"))
+    if body.amount > total_remaining:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Amount ({body.amount}) exceeds the combined remaining amount of the "
+                f"selected payouts ({total_remaining})"
+            ),
+        )
+
+    # Sequential allocation, smallest remaining amount first: fill each
+    # selected payout's remaining amount before moving to the next-larger
+    # one. This is a strict generalization of both the old "split" (one
+    # payout, partial amount) and "bundle" (several payouts, amount == exact
+    # full sum) cases — and additionally supports a real transfer amount that
+    # lines up with neither: e.g. payouts of 250/750 wired out as two
+    # transfers of 500/500 each (transfer 1 = all of the 250 payout + 250 of
+    # the 750 one; transfer 2 = the remaining 500 of the 750 payout, a plain
+    # single-payout split). Smallest-first (rather than submission order) is
+    # what makes that example actually work regardless of the order the
+    # payouts happen to be selected or listed in — "fill the small ones
+    # first" is both the intuitive real-world default and independent of
+    # anything the client controls. Unlike the old bundle rule, a selected
+    # payout no longer has to be entirely unbooked — the second transfer
+    # above continues one that's already partially booked.
+    attribution: dict[int, Decimal] = {}
+    leftover = body.amount
+    txns_by_id = {t.id: t for t in txns}
+    for txn_id in sorted(txns_by_id, key=lambda tid: remaining_by_txn[tid]):
+        if leftover <= 0:
+            break
+        txn = txns_by_id[txn_id]
+        take = min(leftover, remaining_by_txn[txn.id])
+        attribution[txn.id] = take
+        leftover -= take
+    unreached = [t.id for t in txns if t.id not in attribution]
+    if unreached:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Amount ({body.amount}) isn't enough to allocate anything to payout(s) "
+                f"{sorted(unreached)} — remove them from the selection or increase the amount"
+            ),
+        )
 
     matched_line = None
     if body.matched_import_line_id is not None:
@@ -745,9 +765,8 @@ def book_target_payouts(
     db.add(entry)
     db.flush()
 
-    for txn in txns:
-        attributed = body.amount if len(txns) == 1 else (-txn.amount)
-        db.add(LedgerTargetPayoutEntry(transaction_id=txn.id, entry_id=entry.id, amount=attributed))
+    for txn_id, attributed in attribution.items():
+        db.add(LedgerTargetPayoutEntry(transaction_id=txn_id, entry_id=entry.id, amount=attributed))
 
     if matched_line:
         matched_line.status = LedgerImportStatus.booked

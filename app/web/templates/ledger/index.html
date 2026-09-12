@@ -856,6 +856,7 @@
               <th class="px-4 py-3 text-left">{{ _('ledger.col_target') }}</th>
               <th class="px-4 py-3 text-right">{{ _('ledger.label_amount') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_note') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_status') }}</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -874,8 +875,12 @@
                         x-text="TARGET_PAYOUT_REMAINING_TMPL.replace('{amount}', fmt(p.remaining_amount))"></span>
                 </td>
                 <td class="px-4 py-3 text-xs" x-text="p.note || '—'"></td>
+                <td class="px-4 py-3">
                   <span x-show="p.booked" class="px-2 py-0.5 rounded text-xs font-medium bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
                         x-text="TARGET_PAYOUT_BOOKED_TMPL.replace('{id}', p.entry_ids.join(', #'))"></span>
+                  <span x-show="!p.booked" class="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                    {{ _('ledger.target_payouts_filter_open') }}
+                  </span>
                 </td>
               </tr>
             </template>
@@ -1157,10 +1162,14 @@
 
       <div class="mb-3">
         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_amount_to_book') }}</label>
-        <input type="number" step="0.01" x-model="targetPayoutForm.amount" :disabled="bookingTargetPayouts.length > 1"
+        <input type="number" step="0.01" x-model="targetPayoutForm.amount"
                @input.debounce.400ms="loadTargetPayoutCandidates()"
-               class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 disabled:opacity-60">
-        <p x-show="bookingTargetPayouts.length > 1" class="text-xs text-gray-400 dark:text-gray-500 mt-1">{{ _('ledger.target_payout_bundle_amount_hint') }}</p>
+               class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800">
+        <p x-show="bookingTargetPayouts.length > 1" class="text-xs text-gray-400 dark:text-gray-500 mt-1"
+           x-text="TARGET_PAYOUT_BUNDLE_AMOUNT_TMPL.replace('{amount}', fmt(targetPayoutTotalRemaining()))"></p>
+        <p x-show="parseFloat(targetPayoutForm.amount) > targetPayoutTotalRemaining()" class="text-xs text-red-600 dark:text-red-400 mt-1">
+          {{ _('ledger.target_payout_amount_exceeds_hint') }}
+        </p>
       </div>
 
       <div x-show="targetPayoutForm.bank_account_id" class="mb-3">
@@ -1227,7 +1236,7 @@
         <button type="button" @click="showTargetPayoutModal = false" class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">
           {{ _('common.cancel') }}
         </button>
-        <button @click="submitTargetPayoutBook()" :disabled="!targetPayoutForm.bank_account_id || !targetPayoutForm.amount || !cashClearingAccountConfigured || targetPayoutBookSubmitting"
+        <button @click="submitTargetPayoutBook()" :disabled="!targetPayoutForm.bank_account_id || !targetPayoutForm.amount || parseFloat(targetPayoutForm.amount) > targetPayoutTotalRemaining() || !cashClearingAccountConfigured || targetPayoutBookSubmitting"
                 class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50">
           <span x-show="!targetPayoutBookSubmitting">{{ _('ledger.btn_submit_target_payout') }}</span>
           <span x-show="targetPayoutBookSubmitting">…</span>
@@ -1843,6 +1852,7 @@ const TARGET_PAYOUT_FILTER_L = {
 const TARGET_PAYOUT_BOOKED_TMPL = {{ _('ledger.target_payout_booked_badge') | tojson }};
 const BOOK_SELECTED_TMPL = {{ _('ledger.btn_book_selected') | tojson }};
 const TARGET_PAYOUT_REMAINING_TMPL = {{ _('ledger.target_payout_remaining_hint') | tojson }};
+const TARGET_PAYOUT_BUNDLE_AMOUNT_TMPL = {{ _('ledger.target_payout_bundle_amount_hint') | tojson }};
 const NO_STATEMENT_BALANCE_L = {{ _('ledger.no_statement_balance') | tojson }};
 const RECONCILIATION_MATCH_TMPL = {{ _('ledger.reconciliation_match') | tojson }};
 const RECONCILIATION_MISMATCH_TMPL = {{ _('ledger.reconciliation_mismatch') | tojson }};
@@ -2324,12 +2334,17 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         : new Date().toISOString().slice(0, 10);
     },
 
+    targetPayoutTotalRemaining() {
+      return this.bookingTargetPayouts.reduce((sum, p) => sum + parseFloat(p.remaining_amount), 0);
+    },
+
     openTargetPayoutModal() {
-      this.bookingTargetPayouts = this.targetPayouts.filter(p => this.selectedPayoutIds.includes(p.transaction_id));
-      const totalRemaining = this.bookingTargetPayouts.reduce((sum, p) => sum + parseFloat(p.remaining_amount), 0);
+      this.bookingTargetPayouts = this.targetPayouts
+        .filter(p => this.selectedPayoutIds.includes(p.transaction_id))
+        .sort((a, b) => parseFloat(a.remaining_amount) - parseFloat(b.remaining_amount));
       this.targetPayoutForm = {
         bank_account_id: '',
-        amount: totalRemaining.toFixed(2),
+        amount: this.targetPayoutTotalRemaining().toFixed(2),
         entry_date: this.defaultTargetPayoutEntryDate(),
         description: '',
         matched_import_line_id: '',

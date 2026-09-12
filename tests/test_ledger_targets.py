@@ -421,22 +421,112 @@ def test_bundle_two_payouts_into_one_transfer(treasurer_client, db, donation_tar
     assert payouts[txn2.id]["entry_ids"] == [entry["id"]]
 
 
-def test_bundle_amount_must_equal_exact_sum(treasurer_client, db, donation_target, bank_account, clearing_account):
+def test_bundle_amount_exceeding_combined_total_rejected(treasurer_client, db, donation_target, bank_account, clearing_account):
     txn1 = _make_payout(db, donation_target, amount="20.00")
     txn2 = _make_payout(db, donation_target, amount="30.00")
-    resp = _book(treasurer_client, [txn1.id, txn2.id], bank_account.id, "49.99")
+    resp = _book(treasurer_client, [txn1.id, txn2.id], bank_account.id, "50.01")
     assert resp.status_code == 400
 
 
-def test_bundle_rejects_an_already_partially_booked_payout(
+def test_partial_amount_across_multiple_payouts_fills_sequentially(
     treasurer_client, db, donation_target, bank_account, clearing_account,
 ):
+    """An amount that lines up with neither a single payout nor the exact
+    combined sum of several is no longer rejected — it's allocated in the
+    order the payouts were submitted, filling each one's remaining amount
+    before moving on to the next (see Key Design Decision #38)."""
+    txn1 = _make_payout(db, donation_target, amount="20.00")
+    txn2 = _make_payout(db, donation_target, amount="30.00")
+    resp = _book(treasurer_client, [txn1.id, txn2.id], bank_account.id, "49.99")
+    assert resp.status_code == 201
+
+    payouts = {p["transaction_id"]: p for p in treasurer_client.get("/api/v1/ledger/target-payouts").json()}
+    assert payouts[txn1.id]["booked"] is True
+    assert payouts[txn1.id]["booked_amount"] == "20.00"
+    assert payouts[txn2.id]["booked"] is False
+    assert payouts[txn2.id]["booked_amount"] == "29.99"
+    assert payouts[txn2.id]["remaining_amount"] == "0.01"
+
+
+def test_bundle_allows_an_already_partially_booked_payout(
+    treasurer_client, db, donation_target, bank_account, clearing_account,
+):
+    """A payout no longer has to be entirely unbooked to join a multi-payout
+    booking — its own remaining amount is simply what gets filled first."""
     txn1 = _make_payout(db, donation_target, amount="20.00")
     txn2 = _make_payout(db, donation_target, amount="30.00")
     _book(treasurer_client, [txn1.id], bank_account.id, "10.00")  # partially book txn1 first
 
     resp = _book(treasurer_client, [txn1.id, txn2.id], bank_account.id, "40.00")  # remaining(10) + full(30)
+    assert resp.status_code == 201
+
+    payouts = {p["transaction_id"]: p for p in treasurer_client.get("/api/v1/ledger/target-payouts").json()}
+    assert payouts[txn1.id]["booked"] is True
+    assert payouts[txn2.id]["booked"] is True
+
+
+def test_amount_not_reaching_every_selected_payout_rejected(
+    treasurer_client, db, donation_target, bank_account, clearing_account,
+):
+    """If the amount is fully absorbed by earlier payouts and never reaches a
+    later-selected one at all, that's rejected rather than silently booking
+    only part of the selection — most likely an extra payout left checked by
+    mistake."""
+    txn1 = _make_payout(db, donation_target, amount="20.00")
+    txn2 = _make_payout(db, donation_target, amount="30.00")
+    resp = _book(treasurer_client, [txn1.id, txn2.id], bank_account.id, "20.00")
     assert resp.status_code == 400
+
+
+def test_allocation_order_is_smallest_first_regardless_of_submission_order(
+    treasurer_client, db, donation_target, bank_account, clearing_account,
+):
+    """Found via manual browser testing: `GET /ledger/target-payouts` lists
+    payouts newest-first, so the larger one can easily come *before* the
+    smaller one in `payout_transaction_ids` just because it happened to be
+    created a moment later. Allocation must still fill the smaller payout
+    first regardless — otherwise a transfer sized to clear the smaller one
+    plus part of the larger one gets misallocated the other way round and
+    rejected as "doesn't reach every selected payout"."""
+    txn_large = _make_payout(db, donation_target, amount="750.00")
+    txn_small = _make_payout(db, donation_target, amount="250.00")
+
+    # Large payout's id submitted FIRST — allocation must still go small-first.
+    resp = _book(treasurer_client, [txn_large.id, txn_small.id], bank_account.id, "500.00")
+    assert resp.status_code == 201
+
+    payouts = {p["transaction_id"]: p for p in treasurer_client.get("/api/v1/ledger/target-payouts").json()}
+    assert payouts[txn_small.id]["booked"] is True
+    assert payouts[txn_small.id]["booked_amount"] == "250.00"
+    assert payouts[txn_large.id]["booked"] is False
+    assert payouts[txn_large.id]["booked_amount"] == "250.00"
+    assert payouts[txn_large.id]["remaining_amount"] == "500.00"
+
+
+def test_uneven_payouts_split_across_two_uneven_transfers(
+    treasurer_client, db, donation_target, bank_account, clearing_account,
+):
+    """The real motivating case: two payouts of 250/750 wired out as two
+    transfers of 500/500 each — neither transfer matches either payout's own
+    amount, nor the payouts' combined sum split evenly."""
+    txn1 = _make_payout(db, donation_target, amount="250.00")
+    txn2 = _make_payout(db, donation_target, amount="750.00")
+
+    first = _book(treasurer_client, [txn1.id, txn2.id], bank_account.id, "500.00")
+    assert first.status_code == 201
+    payouts = {p["transaction_id"]: p for p in treasurer_client.get("/api/v1/ledger/target-payouts").json()}
+    assert payouts[txn1.id]["booked"] is True
+    assert payouts[txn2.id]["booked"] is False
+    assert payouts[txn2.id]["booked_amount"] == "250.00"
+    assert payouts[txn2.id]["remaining_amount"] == "500.00"
+
+    second = _book(treasurer_client, [txn2.id], bank_account.id, "500.00")
+    assert second.status_code == 201
+    payouts = {p["transaction_id"]: p for p in treasurer_client.get("/api/v1/ledger/target-payouts").json()}
+    assert payouts[txn1.id]["booked"] is True
+    assert payouts[txn2.id]["booked"] is True
+    assert payouts[txn2.id]["booked_amount"] == "750.00"
+    assert sorted(payouts[txn2.id]["entry_ids"]) == sorted([first.json()["id"], second.json()["id"]])
 
 
 def test_bundle_rejects_an_already_fully_booked_payout(
