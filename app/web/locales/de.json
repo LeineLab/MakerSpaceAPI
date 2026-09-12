@@ -455,7 +455,6 @@
   "ledger.import_status_ignored": "Ignoriert",
   "ledger.import_empty":        "Keine Einträge mit diesem Status.",
   "ledger.import_duplicate_hint": "Als Duplikat erkannt (gleicher Betrag/Datum/Verwendungszweck wie eine bereits vorhandene Zeile). Kann eine Fehlerkennung sein — bei Bedarf trotzdem buchen oder bestätigen und ignorieren.",
-  "ledger.load_more":            "Mehr laden ({shown} von {total})",
   "ledger.col_purpose":         "Verwendungszweck",
   "ledger.col_counterparty":    "Gegenpartei",
   "ledger.col_actions":         "Aktionen",
@@ -618,5 +617,16 @@
   "ledger.filter_account_all": "Alle Konten",
   "ledger.show_bank_purpose_text": "Original-Verwendungszweck der Bank anzeigen",
   "ledger.bank_purpose_text_none": "kein Bank-Text vorhanden",
-  "ledger.assets_howto_hint": "Neu erfassen: im Buchungen-Tab bei einer geeigneten Ausgabe-Zeile auf 🏷 klicken."
+  "ledger.assets_howto_hint": "Neu erfassen: im Buchungen-Tab bei einer geeigneten Ausgabe-Zeile auf 🏷 klicken.",
+  "ledger.pagination_prev": "‹ Zurück",
+  "ledger.pagination_next": "Weiter ›",
+  "ledger.pagination_indicator": "Seite {page} von {pages} ({total} gesamt)",
+  "ledger.detail_id": "ID",
+  "ledger.detail_created_by": "Erstellt von",
+  "ledger.detail_created_at": "Erstellt am",
+  "ledger.detail_bank_transaction_title": "Bank-Transaktion",
+  "ledger.detail_no_bank_transaction": "Keine Bank-Transaktion verknüpft (manuell gebucht).",
+  "ledger.detail_purpose": "Verwendungszweck",
+  "ledger.detail_counterparty": "Gegenpartei",
+  "ledger.detail_bank_reference": "Bankreferenz"
 }

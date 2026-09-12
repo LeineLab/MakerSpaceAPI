@@ -140,6 +140,23 @@ class LedgerEntryCreate(BaseModel):
     lines: list[LedgerEntryLineCreate] = Field(min_length=2)
 
 
+class LedgerImportLineResponse(BaseModel):
+    id: int
+    batch_id: int
+    bank_account_id: int
+    booking_date: date
+    amount: Decimal = Field(examples=[Decimal("-42.00")])
+    purpose_text: Optional[str]
+    counterparty_name: Optional[str]
+    counterparty_iban: Optional[str]
+    bank_reference: Optional[str]
+    status: LedgerImportStatus
+    matched_entry_id: Optional[int]
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class LedgerEntryResponse(BaseModel):
     id: int
     entry_date: date
@@ -149,11 +166,13 @@ class LedgerEntryResponse(BaseModel):
     created_by: str
     created_at: datetime
     lines: list[LedgerEntryLineResponse]
-    # The bank's own purpose_text(s) from whichever staged import line(s) this
-    # entry was booked from (joined with "; " if more than one — a transfer
-    # booking can link both sides' staged lines to the same entry). None if
-    # this entry was booked manually and never linked to a staged line at all.
-    bank_purpose_text: Optional[str] = None
+    # The staged import line(s) this entry was booked from, if any (a
+    # transfer booking can link both sides' staged lines to the same entry)
+    # — empty if this entry was booked manually and never linked to one.
+    # Carries the bank's own booking_date/purpose_text/counterparty/
+    # bank_reference for the entry-detail view and the "show bank text"
+    # toggle (both derive from this one field client-side — see #40).
+    matched_import_lines: list[LedgerImportLineResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -398,23 +417,6 @@ class LedgerAuditReportResponse(BaseModel):
     recommends_discharge: bool
     paperless_document_id: Optional[str]
     created_by: str
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class LedgerImportLineResponse(BaseModel):
-    id: int
-    batch_id: int
-    bank_account_id: int
-    booking_date: date
-    amount: Decimal = Field(examples=[Decimal("-42.00")])
-    purpose_text: Optional[str]
-    counterparty_name: Optional[str]
-    counterparty_iban: Optional[str]
-    bank_reference: Optional[str]
-    status: LedgerImportStatus
-    matched_entry_id: Optional[int]
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

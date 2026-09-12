@@ -362,23 +362,22 @@ def list_entries(
         .all()
     )
 
-    # bank_purpose_text: the bank's own wording, for the treasurer/Kassenprüfer
-    # to compare against the (often reworded) manual description — sourced
-    # from whichever staged import line(s) this entry was booked from
-    # (LedgerImportLine.matched_entry_id), joined with "; " since a transfer
-    # booking can link both sides' staged lines to the same entry.
+    # matched_import_lines: the staged import line(s) (if any) this entry was
+    # booked from — the source of both the "show bank text" toggle and the
+    # entry-detail view's bank data (booking_date, counterparty, bank
+    # reference), so there's only ever one query/field for both, not two
+    # that could drift apart (see Key Design Decision #40).
     entry_ids = [e.id for e in entries]
     if entry_ids:
-        purposes_by_entry: dict[int, list[str]] = {}
-        for matched_entry_id, purpose_text in (
-            db.query(LedgerImportLine.matched_entry_id, LedgerImportLine.purpose_text)
-            .filter(LedgerImportLine.matched_entry_id.in_(entry_ids), LedgerImportLine.purpose_text.isnot(None))
+        lines_by_entry: dict[int, list[LedgerImportLine]] = {}
+        for line in (
+            db.query(LedgerImportLine)
+            .filter(LedgerImportLine.matched_entry_id.in_(entry_ids))
             .all()
         ):
-            purposes_by_entry.setdefault(matched_entry_id, []).append(purpose_text)
+            lines_by_entry.setdefault(line.matched_entry_id, []).append(line)
         for e in entries:
-            texts = purposes_by_entry.get(e.id)
-            e.bank_purpose_text = "; ".join(texts) if texts else None
+            e.matched_import_lines = lines_by_entry.get(e.id, [])
 
     return entries
 

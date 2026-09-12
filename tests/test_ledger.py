@@ -505,7 +505,7 @@ def test_list_entries_filters_by_bank_account_id(treasurer_client, db, bank_acco
     assert entry["description"] == "Auf Zweitkonto"
 
 
-def test_list_entries_bank_purpose_text_none_for_manual_booking(treasurer_client, bank_account, income_category):
+def test_list_entries_matched_import_lines_empty_for_manual_booking(treasurer_client, bank_account, income_category):
     treasurer_client.post(
         "/api/v1/ledger/entries",
         json={
@@ -517,7 +517,7 @@ def test_list_entries_bank_purpose_text_none_for_manual_booking(treasurer_client
         },
     )
     [entry] = treasurer_client.get("/api/v1/ledger/entries").json()
-    assert entry["bank_purpose_text"] is None
+    assert entry["matched_import_lines"] == []
 
 
 def test_auditor_can_list_entries(auditor_client, treasurer_client, bank_account, income_category):

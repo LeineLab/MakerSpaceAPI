@@ -365,7 +365,7 @@ def test_book_import_line_success(treasurer_client, bank_account, income_categor
     assert len(entry["lines"]) == 2
 
 
-def test_booked_entry_exposes_bank_purpose_text(treasurer_client, bank_account, income_category):
+def test_booked_entry_exposes_matched_import_line(treasurer_client, bank_account, income_category):
     _upload(treasurer_client, bank_account.id, _MT940_SAMPLE)
     lines = treasurer_client.get("/api/v1/ledger/import/lines").json()
     credit_line = next(l for l in lines if Decimal(str(l["amount"])) > 0)
@@ -380,7 +380,10 @@ def test_booked_entry_exposes_bank_purpose_text(treasurer_client, bank_account, 
     ).json()
 
     [listed] = [e for e in treasurer_client.get("/api/v1/ledger/entries").json() if e["id"] == entry["id"]]
-    assert listed["bank_purpose_text"] == credit_line["purpose_text"]
+    [matched] = listed["matched_import_lines"]
+    assert matched["id"] == credit_line["id"]
+    assert matched["purpose_text"] == credit_line["purpose_text"]
+    assert matched["booking_date"] == credit_line["booking_date"]
     assert listed["description"] == "Mitgliedsbeitrag Max Mustermann"
 
 

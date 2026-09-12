@@ -59,14 +59,14 @@
     <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
       <div class="flex flex-wrap items-center gap-2">
         <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.filter_year') }}</label>
-        <select x-model.number="filterYear" @change="loadEntries()"
+        <select x-model.number="filterYear" @change="entriesPage = 1; loadEntries()"
                 class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
           <template x-for="y in yearOptions" :key="y">
             <option :value="y" x-text="y"></option>
           </template>
         </select>
         <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.filter_account') }}</label>
-        <select x-model.number="filterAccountId" @change="loadEntries()"
+        <select x-model.number="filterAccountId" @change="entriesPage = 1; loadEntries()"
                 class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
           <option value="">{{ _('ledger.filter_account_all') }}</option>
           <template x-for="a in accounts" :key="a.id">
@@ -107,12 +107,13 @@
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
             <template x-for="e in entries" :key="e.id">
-              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 align-top">
+            <tbody>
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 align-top cursor-pointer" @click="toggleEntryDetail(e.id)">
                 <td class="px-4 py-3 whitespace-nowrap" x-text="e.entry_date"></td>
                 <td class="px-4 py-3">
                   <span x-show="!showBankPurposeText" x-text="e.description"></span>
-                  <span x-show="showBankPurposeText" x-text="e.bank_purpose_text || BANK_PURPOSE_NONE_L"
-                        :class="!e.bank_purpose_text && 'italic text-gray-400 dark:text-gray-500'"></span>
+                  <span x-show="showBankPurposeText" x-text="entryBankPurposeText(e) || BANK_PURPOSE_NONE_L"
+                        :class="!entryBankPurposeText(e) && 'italic text-gray-400 dark:text-gray-500'"></span>
                   <span x-show="e.reverses_entry_id" class="ml-2 px-2 py-0.5 rounded text-xs font-medium bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300"
                         x-text="REVERSES_TMPL.replace('{id}', e.reverses_entry_id)"></span>
                   <span x-show="reversedByMap[e.id]" class="ml-2 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
@@ -126,7 +127,7 @@
                       <span :class="parseFloat(l.amount) < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'"
                             x-text="fmtSigned(l.amount)"></span>
                       <button x-show="userIsTreasurer && isCapitalizableLine(l) && !assetLineIds.has(l.id)"
-                              @click="openCapitalizeModal(l, e)" :title="CAPITALIZE_L"
+                              @click.stop="openCapitalizeModal(l, e)" :title="CAPITALIZE_L"
                               class="ml-1 text-blue-600 dark:text-blue-400 hover:underline">🏷</button>
                       <span x-show="assetLineIds.has(l.id)" :title="CAPITALIZE_L" class="ml-1">🏷</span>
                     </div>
@@ -134,7 +135,7 @@
                 </td>
                 <td class="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">
                   <a x-show="e.paperless_document_id && config.paperless_url" :href="paperlessDocUrl(e.paperless_document_id)"
-                     target="_blank" rel="noopener" class="text-blue-600 dark:text-blue-400 hover:underline" x-text="e.paperless_document_id"></a>
+                     target="_blank" rel="noopener" @click.stop class="text-blue-600 dark:text-blue-400 hover:underline" x-text="e.paperless_document_id"></a>
                   <span x-show="e.paperless_document_id && !config.paperless_url" x-text="e.paperless_document_id"></span>
                   <span x-show="!e.paperless_document_id">—</span>
                 </td>
@@ -143,12 +144,43 @@
                        — that link only ever lives on the original entry, so
                        chaining a second reversal on top would risk double-
                        booking once re-instated (see #28). -->
-                  <button x-show="!reversedByMap[e.id] && !e.reverses_entry_id" @click="reverseEntry(e)"
+                  <button x-show="!reversedByMap[e.id] && !e.reverses_entry_id" @click.stop="reverseEntry(e)"
                           class="text-xs text-red-600 dark:text-red-400 hover:underline">
                     {{ _('ledger.btn_reverse_entry') }}
                   </button>
                 </td>
               </tr>
+              <tr x-show="expandedEntryId === e.id" class="bg-gray-50 dark:bg-gray-900">
+                <td colspan="5" class="px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
+                  <div class="grid sm:grid-cols-2 gap-3">
+                    <div>
+                      <p><span class="text-gray-400 dark:text-gray-500">{{ _('ledger.detail_id') }}:</span> <span x-text="e.id"></span></p>
+                      <p><span class="text-gray-400 dark:text-gray-500">{{ _('ledger.detail_created_by') }}:</span> <span x-text="e.created_by"></span></p>
+                      <p><span class="text-gray-400 dark:text-gray-500">{{ _('ledger.detail_created_at') }}:</span> <span x-text="fmtDateTime(e.created_at)"></span></p>
+                      <template x-for="l in e.lines.filter(l => l.note)" :key="'note' + l.id">
+                        <p><span class="text-gray-400 dark:text-gray-500" x-text="lineTargetName(l) + ':'"></span> <span x-text="l.note"></span></p>
+                      </template>
+                    </div>
+                    <div>
+                      <p class="font-medium text-gray-500 dark:text-gray-400 mb-1">{{ _('ledger.detail_bank_transaction_title') }}</p>
+                      <template x-if="e.matched_import_lines.length === 0">
+                        <p class="text-gray-400 dark:text-gray-500">{{ _('ledger.detail_no_bank_transaction') }}</p>
+                      </template>
+                      <template x-for="m in e.matched_import_lines" :key="m.id">
+                        <div class="mb-2 pb-2 border-b dark:border-gray-700 last:border-0">
+                          <p><span class="text-gray-400 dark:text-gray-500">{{ _('ledger.col_date') }}:</span> <span x-text="m.booking_date"></span>
+                             <span class="font-mono ml-2" x-text="fmtSigned(m.amount)"></span></p>
+                          <p x-show="m.purpose_text"><span class="text-gray-400 dark:text-gray-500">{{ _('ledger.detail_purpose') }}:</span> <span x-text="m.purpose_text"></span></p>
+                          <p x-show="m.counterparty_name"><span class="text-gray-400 dark:text-gray-500">{{ _('ledger.detail_counterparty') }}:</span> <span x-text="m.counterparty_name"></span></p>
+                          <p x-show="m.counterparty_iban"><span class="text-gray-400 dark:text-gray-500">IBAN:</span> <span class="font-mono" x-text="m.counterparty_iban"></span></p>
+                          <p x-show="m.bank_reference"><span class="text-gray-400 dark:text-gray-500">{{ _('ledger.detail_bank_reference') }}:</span> <span class="font-mono" x-text="m.bank_reference"></span></p>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
             </template>
           </tbody>
         </table>
@@ -156,10 +188,16 @@
       </div>
     </template>
 
-    <div x-show="!loadingEntries && entries.length < entriesTotal" class="mt-4 text-center">
-      <button @click="loadMoreEntries()" :disabled="loadingMoreEntries"
-              class="text-sm text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
-              x-text="loadingMoreEntries ? '…' : LOAD_MORE_TMPL.replace('{shown}', entries.length).replace('{total}', entriesTotal)">
+    <div x-show="!loadingEntries && entries.length > 0" class="mt-4 flex items-center justify-center gap-3">
+      <button @click="entriesPrevPage()" :disabled="entriesPage <= 1"
+              class="text-sm text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-40 disabled:no-underline">
+        {{ _('ledger.pagination_prev') }}
+      </button>
+      <span class="text-sm text-gray-500 dark:text-gray-400"
+            x-text="PAGE_INDICATOR_TMPL.replace('{page}', entriesPage).replace('{pages}', entriesPageCount).replace('{total}', entriesTotal)"></span>
+      <button @click="entriesNextPage()" :disabled="entriesPage >= entriesPageCount"
+              class="text-sm text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-40 disabled:no-underline">
+        {{ _('ledger.pagination_next') }}
       </button>
     </div>
   </div>
@@ -644,7 +682,7 @@
       <h2 class="text-xl font-semibold">{{ _('ledger.import_queue_title') }}</h2>
       <div class="flex items-center gap-2">
         <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.import_filter_status') }}</label>
-        <select x-model="importStatus" @change="loadImportLines()"
+        <select x-model="importStatus" @change="importLinesPage = 1; loadImportLines()"
                 class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
           <option value="new" x-text="IMPORT_STATUS_L.new"></option>
           <option value="duplicate" x-text="IMPORT_STATUS_L.duplicate"></option>
@@ -718,10 +756,16 @@
       </div>
     </template>
 
-    <div x-show="!loadingImportLines && importLines.length < importLinesTotal" class="mt-4 text-center">
-      <button @click="loadMoreImportLines()" :disabled="loadingMoreImportLines"
-              class="text-sm text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
-              x-text="loadingMoreImportLines ? '…' : LOAD_MORE_TMPL.replace('{shown}', importLines.length).replace('{total}', importLinesTotal)">
+    <div x-show="!loadingImportLines && importLines.length > 0" class="mt-4 flex items-center justify-center gap-3">
+      <button @click="importLinesPrevPage()" :disabled="importLinesPage <= 1"
+              class="text-sm text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-40 disabled:no-underline">
+        {{ _('ledger.pagination_prev') }}
+      </button>
+      <span class="text-sm text-gray-500 dark:text-gray-400"
+            x-text="PAGE_INDICATOR_TMPL.replace('{page}', importLinesPage).replace('{pages}', importLinesPageCount).replace('{total}', importLinesTotal)"></span>
+      <button @click="importLinesNextPage()" :disabled="importLinesPage >= importLinesPageCount"
+              class="text-sm text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-40 disabled:no-underline">
+        {{ _('ledger.pagination_next') }}
       </button>
     </div>
   </div>
@@ -1794,7 +1838,7 @@ const PAPERLESS_DUPLICATE_TMPL = {{ _('ledger.paperless_duplicate_warning') | to
 const DUPLICATE_HINT_L = {{ _('ledger.import_duplicate_hint') | tojson }};
 const TRANSFER_AMOUNT_HINT_L = {{ _('ledger.book_transfer_amount_hint') | tojson }};
 const PAGE_SIZE = 50;
-const LOAD_MORE_TMPL = {{ _('ledger.load_more') | tojson }};
+const PAGE_INDICATOR_TMPL = {{ _('ledger.pagination_indicator') | tojson }};
 const TARGET_PAYOUT_FILTER_L = {
   open: {{ _('ledger.target_payouts_filter_open') | tojson }},
   booked: {{ _('ledger.target_payouts_filter_booked') | tojson }},
@@ -1852,12 +1896,13 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
 
     entries: [],
     entriesTotal: 0,
+    entriesPage: 1,
     loadingEntries: true,
-    loadingMoreEntries: false,
     entriesError: null,
     filterYear: new Date().getFullYear(),
     filterAccountId: '',
     showBankPurposeText: false,
+    expandedEntryId: null,
     showEntryModal: false,
     entryForm: { entry_date: '', description: '', paperless_document_id: '', lines: [] },
     entryError: null,
@@ -1906,8 +1951,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     importStatus: 'new',
     importLines: [],
     importLinesTotal: 0,
+    importLinesPage: 1,
     loadingImportLines: true,
-    loadingMoreImportLines: false,
     importLinesError: null,
 
     showBookModal: false,
@@ -2100,11 +2145,19 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       return params;
     },
 
+    get entriesPageCount() {
+      return Math.max(1, Math.ceil(this.entriesTotal / PAGE_SIZE));
+    },
+
+    // Real paging (replaces the array each time) rather than "load more"
+    // (which only ever appended) — visiting page 2 fetches and shows only
+    // page 2's rows, not page 1 kept around plus page 2 tacked on.
     async loadEntries() {
       this.loadingEntries = true;
       this.entriesError = null;
       try {
-        const r = await apiFetch(`/api/v1/ledger/entries?${this.entriesQueryParams()}&limit=${PAGE_SIZE}`);
+        const offset = (this.entriesPage - 1) * PAGE_SIZE;
+        const r = await apiFetch(`/api/v1/ledger/entries?${this.entriesQueryParams()}&limit=${PAGE_SIZE}&offset=${offset}`);
         if (!r.ok) throw new Error('Failed to load entries');
         this.entries = await r.json();
         this.entriesTotal = Number(r.headers.get('X-Total-Count')) || this.entries.length;
@@ -2115,20 +2168,44 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
     },
 
-    async loadMoreEntries() {
-      this.loadingMoreEntries = true;
-      try {
-        const r = await apiFetch(
-          `/api/v1/ledger/entries?${this.entriesQueryParams()}&limit=${PAGE_SIZE}&offset=${this.entries.length}`
-        );
-        if (!r.ok) throw new Error('Failed to load entries');
-        this.entries = this.entries.concat(await r.json());
-        this.entriesTotal = Number(r.headers.get('X-Total-Count')) || this.entries.length;
-      } catch (e) {
-        if (e !== 'unauthenticated') this.entriesError = e.message || String(e);
-      } finally {
-        this.loadingMoreEntries = false;
+    entriesPrevPage() {
+      if (this.entriesPage <= 1) return;
+      this.entriesPage--;
+      this.loadEntries();
+    },
+
+    entriesNextPage() {
+      if (this.entriesPage >= this.entriesPageCount) return;
+      this.entriesPage++;
+      this.loadEntries();
+    },
+
+    // Whether a freshly created/returned entry would actually appear under
+    // the currently active year/account filters — used to decide whether a
+    // new entry can be spliced into the local list or needs a real reload.
+    entryMatchesCurrentFilters(entry) {
+      const year = parseInt(entry.entry_date.slice(0, 4), 10);
+      if (year !== this.filterYear) return false;
+      if (this.filterAccountId && !entry.lines.some(l => l.bank_account_id === this.filterAccountId)) return false;
+      return true;
+    },
+
+    // Inserts a newly booked/created/reversed entry into the local list
+    // instead of refetching the whole page from the server. Only attempted
+    // on page 1 (where a new entry — always "now" or close to it — actually
+    // belongs under the default date-desc sort); any other page just reloads,
+    // since backdated creation while browsing an old page is rare enough
+    // not to warrant the extra bookkeeping this would otherwise need.
+    insertEntryLocally(entry) {
+      if (this.entriesPage !== 1) {
+        this.loadEntries();
+        return;
       }
+      if (!this.entryMatchesCurrentFilters(entry)) return;
+      this.entries.unshift(entry);
+      this.entries.sort((a, b) => (a.entry_date === b.entry_date ? b.id - a.id : (a.entry_date < b.entry_date ? 1 : -1)));
+      this.entriesTotal += 1;
+      if (this.entries.length > PAGE_SIZE) this.entries.length = PAGE_SIZE;
     },
 
     async reverseEntry(entry) {
@@ -2141,7 +2218,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
           this.entriesError = data.detail || 'Error reversing entry';
           return;
         }
-        await this.loadEntries();
+        this.insertEntryLocally(data);
       } catch (e) {
         if (e !== 'unauthenticated') this.entriesError = e.message || String(e);
       }
@@ -2488,7 +2565,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
           return;
         }
         this.showEntryModal = false;
-        await this.loadEntries();
+        this.insertEntryLocally(data);
       } catch (e) {
         if (e !== 'unauthenticated') this.entryError = e.message || String(e);
       } finally {
@@ -2633,6 +2710,24 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       return parseFloat(v).toFixed(2) + ' €';
     },
 
+    fmtDateTime(iso) {
+      if (!iso) return '—';
+      return iso.replace('T', ' ').slice(0, 16);
+    },
+
+    toggleEntryDetail(entryId) {
+      this.expandedEntryId = this.expandedEntryId === entryId ? null : entryId;
+    },
+
+    // The bank's own purpose_text(s) for an entry, derived from
+    // matched_import_lines (joined "; " — a transfer can link both sides'
+    // staged lines to the same entry) rather than a separate field, so the
+    // "show bank text" toggle and the entry-detail panel can never disagree.
+    entryBankPurposeText(e) {
+      const texts = (e.matched_import_lines || []).map(l => l.purpose_text).filter(Boolean);
+      return texts.length ? texts.join('; ') : null;
+    },
+
     balanceMismatch(account) {
       const b = this.accountBalances[account.id];
       if (!b || b.balance_as_of_last_statement === null || b.balance_as_of_last_statement === undefined) return false;
@@ -2768,11 +2863,16 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     },
 
     // --- import: staging queue ---
+    get importLinesPageCount() {
+      return Math.max(1, Math.ceil(this.importLinesTotal / PAGE_SIZE));
+    },
+
     async loadImportLines() {
       this.loadingImportLines = true;
       this.importLinesError = null;
       try {
-        const r = await apiFetch(`/api/v1/ledger/import/lines?status=${this.importStatus}&limit=${PAGE_SIZE}`);
+        const offset = (this.importLinesPage - 1) * PAGE_SIZE;
+        const r = await apiFetch(`/api/v1/ledger/import/lines?status=${this.importStatus}&limit=${PAGE_SIZE}&offset=${offset}`);
         if (!r.ok) throw new Error('Failed to load import lines');
         this.importLines = await r.json();
         this.importLinesTotal = Number(r.headers.get('X-Total-Count')) || this.importLines.length;
@@ -2783,26 +2883,37 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
     },
 
-    async loadMoreImportLines() {
-      this.loadingMoreImportLines = true;
-      try {
-        const r = await apiFetch(
-          `/api/v1/ledger/import/lines?status=${this.importStatus}&limit=${PAGE_SIZE}&offset=${this.importLines.length}`
-        );
-        if (!r.ok) throw new Error('Failed to load import lines');
-        this.importLines = this.importLines.concat(await r.json());
-        this.importLinesTotal = Number(r.headers.get('X-Total-Count')) || this.importLines.length;
-      } catch (e) {
-        if (e !== 'unauthenticated') this.importLinesError = e.message || String(e);
-      } finally {
-        this.loadingMoreImportLines = false;
+    importLinesPrevPage() {
+      if (this.importLinesPage <= 1) return;
+      this.importLinesPage--;
+      this.loadImportLines();
+    },
+
+    importLinesNextPage() {
+      if (this.importLinesPage >= this.importLinesPageCount) return;
+      this.importLinesPage++;
+      this.loadImportLines();
+    },
+
+    // The import queue's status filter is single-select, so any action that
+    // changes a line's status (book/ignore/reset) always moves it away from
+    // whatever status is currently being viewed — removing it from the
+    // local array avoids a full-list refetch just to reflect that. Doesn't
+    // backfill from the next page, so a page can end up with fewer than
+    // PAGE_SIZE rows until the next explicit reload — an accepted trade-off
+    // for not re-fetching on every single action.
+    removeImportLineLocally(lineId) {
+      const idx = this.importLines.findIndex(l => l.id === lineId);
+      if (idx !== -1) {
+        this.importLines.splice(idx, 1);
+        this.importLinesTotal = Math.max(0, this.importLinesTotal - 1);
       }
     },
 
     async ignoreImportLine(line) {
       try {
         const r = await apiFetch(`/api/v1/ledger/import/lines/${line.id}/ignore`, { method: 'POST' });
-        if (r.ok) await this.loadImportLines();
+        if (r.ok) this.removeImportLineLocally(line.id);
       } catch (e) {
         // leave the line in the list on failure
       }
@@ -2811,7 +2922,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     async resetImportLine(line) {
       try {
         const r = await apiFetch(`/api/v1/ledger/import/lines/${line.id}/reset`, { method: 'POST' });
-        if (r.ok) await this.loadImportLines();
+        if (r.ok) this.removeImportLineLocally(line.id);
       } catch (e) {
         // leave the line in the list on failure
       }
@@ -2914,9 +3025,16 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
           return;
         }
         this.showBookModal = false;
-        // Booking a staging line also creates a journal entry, so the Buchungen
-        // tab's (already-loaded) list would otherwise silently go stale.
-        await Promise.all([this.loadImportLines(), this.loadEntries()]);
+        // Booking a staging line also creates a journal entry, so the
+        // Buchungen tab's (already-loaded) list would otherwise silently go
+        // stale — insert/refresh locally instead of refetching both lists
+        // wholesale for what is, from the server's point of view, one
+        // small state change.
+        this.removeImportLineLocally(this.bookingLine.id);
+        if (this.bookForm.isTransfer && this.bookForm.matchedImportLineId) {
+          this.removeImportLineLocally(parseInt(this.bookForm.matchedImportLineId, 10));
+        }
+        this.insertEntryLocally(data);
       } catch (e) {
         if (e !== 'unauthenticated') this.bookError = e.message || String(e);
       } finally {

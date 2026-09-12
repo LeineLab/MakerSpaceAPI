@@ -455,7 +455,6 @@
   "ledger.import_status_ignored": "Ignored",
   "ledger.import_empty":        "No entries with this status.",
   "ledger.import_duplicate_hint": "Flagged as a duplicate (same amount/date/purpose as an existing line). This can be a false positive — book it anyway if needed, or confirm and ignore it.",
-  "ledger.load_more":            "Load more ({shown} of {total})",
   "ledger.col_purpose":         "Purpose",
   "ledger.col_counterparty":    "Counterparty",
   "ledger.col_actions":         "Actions",
@@ -618,5 +617,16 @@
   "ledger.filter_account_all": "All accounts",
   "ledger.show_bank_purpose_text": "Show the bank's original purpose text",
   "ledger.bank_purpose_text_none": "no bank text available",
-  "ledger.assets_howto_hint": "To add one: in the Buchungen tab, click 🏷 next to an eligible expense line."
+  "ledger.assets_howto_hint": "To add one: in the Buchungen tab, click 🏷 next to an eligible expense line.",
+  "ledger.pagination_prev": "‹ Previous",
+  "ledger.pagination_next": "Next ›",
+  "ledger.pagination_indicator": "Page {page} of {pages} ({total} total)",
+  "ledger.detail_id": "ID",
+  "ledger.detail_created_by": "Created by",
+  "ledger.detail_created_at": "Created at",
+  "ledger.detail_bank_transaction_title": "Bank transaction",
+  "ledger.detail_no_bank_transaction": "No bank transaction linked (booked manually).",
+  "ledger.detail_purpose": "Purpose",
+  "ledger.detail_counterparty": "Counterparty",
+  "ledger.detail_bank_reference": "Bank reference"
 }
