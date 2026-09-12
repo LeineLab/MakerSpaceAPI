@@ -51,6 +51,12 @@ class Settings(BaseSettings):
     PAPERLESS_URL: str = ""
     PAPERLESS_API_TOKEN: str = ""
 
+    # Optional: restrict the Belege overview (GET /ledger/paperless/documents)
+    # to these Paperless "Dokumenttyp" IDs (comma-separated, e.g. "3,7") — so
+    # only invoices/receipts show up there, not every other document type
+    # Paperless might also hold. Empty = no restriction, list every document.
+    PAPERLESS_DOCUMENT_TYPE_IDS: str = ""
+
     # Manual FinTS bank statement live-pull (Phase 3). Empty = disabled — no
     # scheduled automation regardless, this only gates whether the UI/API
     # accept a manual pull at all. python-fints requires a registered product

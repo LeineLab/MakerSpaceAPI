@@ -829,3 +829,85 @@ def test_paperless_search_unreachable_returns_empty(auditor_client, monkeypatch)
 
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+# ---------------------------------------------------------------------------
+# Paperless Belege overview (GET /ledger/paperless/documents)
+# ---------------------------------------------------------------------------
+
+def test_paperless_documents_disabled_by_default_returns_empty(auditor_client):
+    resp = auditor_client.get("/api/v1/ledger/paperless/documents")
+    assert resp.status_code == 200
+    assert resp.json() == []
+    assert resp.headers["X-Total-Count"] == "0"
+
+
+def test_paperless_documents_marks_unlinked_and_linked(
+    auditor_client, treasurer_client, monkeypatch, bank_account, expense_category,
+):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "PAPERLESS_URL", "https://paperless.example.com")
+    monkeypatch.setattr(settings, "PAPERLESS_API_TOKEN", "test-token")
+
+    entry = treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-01",
+            "description": "Bueromaterial",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "-20.00"},
+                {"category_id": expense_category.id, "amount": "20.00", "paperless_document_id": "42"},
+            ],
+        },
+    ).json()
+
+    fake_response = {
+        "count": 2,
+        "results": [
+            {"id": 42, "title": "Rechnung Bueromarkt", "created": "2026-03-01"},
+            {"id": 99, "title": "Rechnung Getraenke", "created": "2026-02-15"},
+        ],
+    }
+    with patch("app.services.paperless.httpx.get") as mock_get:
+        mock_get.return_value = httpx.Response(
+            200, json=fake_response, request=httpx.Request("GET", "https://paperless.example.com/api/documents/"),
+        )
+        resp = auditor_client.get("/api/v1/ledger/paperless/documents")
+
+    assert resp.status_code == 200
+    assert resp.headers["X-Total-Count"] == "2"
+    docs = {d["id"]: d for d in resp.json()}
+    assert docs[42]["linked_entry_ids"] == [entry["id"]]
+    assert docs[99]["linked_entry_ids"] == []
+
+
+def test_paperless_documents_restricted_to_configured_document_types(auditor_client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "PAPERLESS_URL", "https://paperless.example.com")
+    monkeypatch.setattr(settings, "PAPERLESS_API_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "PAPERLESS_DOCUMENT_TYPE_IDS", "3, 7")
+
+    with patch("app.services.paperless.httpx.get") as mock_get:
+        mock_get.return_value = httpx.Response(
+            200, json={"count": 0, "results": []},
+            request=httpx.Request("GET", "https://paperless.example.com/api/documents/"),
+        )
+        auditor_client.get("/api/v1/ledger/paperless/documents")
+
+    assert mock_get.call_args.kwargs["params"]["document_type__id__in"] == "3,7"
+
+
+def test_paperless_documents_unreachable_returns_empty(auditor_client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "PAPERLESS_URL", "https://paperless.example.com")
+    monkeypatch.setattr(settings, "PAPERLESS_API_TOKEN", "test-token")
+
+    with patch("app.services.paperless.httpx.get", side_effect=httpx.ConnectError("unreachable")):
+        resp = auditor_client.get("/api/v1/ledger/paperless/documents")
+
+    assert resp.status_code == 200
+    assert resp.json() == []
+    assert resp.headers["X-Total-Count"] == "0"

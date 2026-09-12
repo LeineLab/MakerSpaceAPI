@@ -515,6 +515,18 @@ class PaperlessDocumentResult(BaseModel):
     created: Optional[str] = None
 
 
+class PaperlessDocumentOverviewItem(BaseModel):
+    """One row of the Belege overview (GET /ledger/paperless/documents) —
+    a Paperless document alongside whether it's already linked to a booked
+    ledger_entry_lines row. `linked_entry_ids` can hold more than one entry:
+    the same document may legitimately be linked more than once (e.g. a
+    partial payment against the same invoice, see Key Design Decision #28)."""
+    id: int
+    title: str
+    created: Optional[str] = None
+    linked_entry_ids: list[int] = []
+
+
 # --- FinTS bank presets: server/BLZ/name only, saved for reuse — never credentials ---
 
 class FintsBankPresetCreate(BaseModel):

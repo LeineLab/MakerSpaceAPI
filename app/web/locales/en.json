@@ -636,5 +636,15 @@
   "ledger.detail_no_bank_transaction": "No bank transaction linked (booked manually).",
   "ledger.detail_purpose": "Purpose",
   "ledger.detail_counterparty": "Counterparty",
-  "ledger.detail_bank_reference": "Bank reference"
+  "ledger.detail_bank_reference": "Bank reference",
+  "ledger.offline_account_payment_hint": "To book a payment from an offline account: in the Entries tab, use \"New entry\" with one line for the offline account and one for the matching category — works exactly like a real bank account.",
+  "ledger.tab_paperless_documents": "Documents",
+  "ledger.paperless_documents_title": "Document overview (Paperless)",
+  "ledger.paperless_documents_hint": "Every Paperless document with its linking status — an open invoice can be matched to the right entry directly from here.",
+  "ledger.paperless_documents_empty": "No documents found.",
+  "ledger.col_title": "Title",
+  "ledger.col_created": "Created",
+  "ledger.paperless_linked_badge": "Linked ({count})",
+  "ledger.btn_find_matching_transaction": "Find matching transaction",
+  "ledger.paperless_doc_search_modal_title": "Find matching transaction"
 }

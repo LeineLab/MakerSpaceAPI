@@ -76,6 +76,7 @@ from app.schemas.ledger import (
     LedgerTargetPayoutResponse,
     LedgerTargetUpdate,
     MittelverwendungReportResponse,
+    PaperlessDocumentOverviewItem,
     PaperlessDocumentResult,
 )
 from app.services import fints_client, paperless
@@ -2123,6 +2124,41 @@ def search_paperless(
     _viewer: dict = Depends(require_ledger_viewer_user),
 ):
     return paperless.search_documents(q)
+
+
+@router.get("/paperless/documents", response_model=list[PaperlessDocumentOverviewItem])
+def list_paperless_documents(
+    response: Response,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    _viewer: dict = Depends(require_ledger_viewer_user),
+    db: Session = Depends(get_db),
+):
+    """Belege overview: every Paperless document (optionally restricted to
+    PAPERLESS_DOCUMENT_TYPE_IDS, e.g. only "Rechnung"/"Beleg"), newest
+    first, alongside whether it's already linked to a booked entry line —
+    so open invoices can be spotted and booked without checking each one
+    individually. `X-Total-Count` follows the same paging convention as
+    GET /ledger/entries and GET /ledger/import/lines."""
+    documents, total = paperless.list_documents(limit=limit, offset=offset)
+    response.headers["X-Total-Count"] = str(total)
+    if not documents:
+        return []
+    doc_ids = [str(d["id"]) for d in documents]
+    linked_by_doc: dict[str, list[int]] = {}
+    for doc_id, entry_id in (
+        db.query(LedgerEntryLine.paperless_document_id, LedgerEntryLine.entry_id)
+        .filter(LedgerEntryLine.paperless_document_id.in_(doc_ids))
+        .all()
+    ):
+        linked_by_doc.setdefault(doc_id, []).append(entry_id)
+    return [
+        PaperlessDocumentOverviewItem(
+            id=d["id"], title=d["title"], created=d["created"],
+            linked_entry_ids=linked_by_doc.get(str(d["id"]), []),
+        )
+        for d in documents
+    ]
 
 
 # --- FinTS bank presets (server/BLZ/name only — never login/PIN) ---

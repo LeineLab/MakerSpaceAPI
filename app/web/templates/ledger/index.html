@@ -12,20 +12,15 @@
             :class="activeTab === 'entries' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
       {{ _('ledger.tab_entries') }}
     </button>
-    <button @click="switchTab('accounts')"
+    <button @click="switchTab('belege')" x-show="config.paperless_enabled"
             class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
-            :class="activeTab === 'accounts' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
-      {{ _('ledger.tab_accounts') }}
+            :class="activeTab === 'belege' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+      {{ _('ledger.tab_paperless_documents') }}
     </button>
     <button @click="switchTab('categories')"
             class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
             :class="activeTab === 'categories' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
       {{ _('ledger.tab_categories') }}
-    </button>
-    <button @click="switchTab('report')"
-            class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
-            :class="activeTab === 'report' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
-      {{ _('ledger.tab_report') }}
     </button>
     <button @click="switchTab('import')"
             class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
@@ -36,6 +31,11 @@
             class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
             :class="activeTab === 'targets' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
       {{ _('ledger.tab_targets') }}
+    </button>
+    <button @click="switchTab('accounts')"
+            class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
+            :class="activeTab === 'accounts' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+      {{ _('ledger.tab_accounts') }}
     </button>
     <button @click="switchTab('assets')"
             class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
@@ -51,6 +51,11 @@
             class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
             :class="activeTab === 'audit-reports' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
       {{ _('ledger.tab_audit_reports') }}
+    </button>
+    <button @click="switchTab('report')"
+            class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
+            :class="activeTab === 'report' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+      {{ _('ledger.tab_report') }}
     </button>
   </div>
 
@@ -222,6 +227,9 @@
         {{ _('ledger.btn_new_account') }}
       </button>
     </div>
+    <p x-show="accounts.some(a => a.is_offline)" class="text-xs text-gray-400 dark:text-gray-500 mb-4">
+      {{ _('ledger.offline_account_payment_hint') }}
+    </p>
 
     <div x-show="accountsError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="accountsError"></div>
 
@@ -1155,6 +1163,122 @@
     </template>
   </div>
 
+  <!-- ================= Belege (Paperless overview) ================= -->
+  <div x-show="activeTab === 'belege'">
+    <h2 class="text-xl font-semibold mb-1">{{ _('ledger.paperless_documents_title') }}</h2>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">{{ _('ledger.paperless_documents_hint') }}</p>
+
+    <div x-show="paperlessDocumentsError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="paperlessDocumentsError"></div>
+
+    <template x-if="loadingPaperlessDocuments">
+      <div class="text-gray-400 dark:text-gray-500 text-sm">Loading…</div>
+    </template>
+    <template x-if="!loadingPaperlessDocuments && paperlessDocuments.length === 0">
+      <p class="text-gray-400 dark:text-gray-500">{{ _('ledger.paperless_documents_empty') }}</p>
+    </template>
+    <template x-if="!loadingPaperlessDocuments && paperlessDocuments.length > 0">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
+            <tr>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_title') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_created') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_status') }}</th>
+              <th class="px-4 py-3 text-left" x-show="userIsTreasurer">{{ _('ledger.col_actions') }}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+            <template x-for="d in paperlessDocuments" :key="d.id">
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                <td class="px-4 py-3">
+                  <a x-show="config.paperless_url" :href="paperlessDocUrl(d.id)" target="_blank" rel="noopener"
+                     class="text-blue-600 dark:text-blue-400 hover:underline" x-text="d.title"></a>
+                  <span x-show="!config.paperless_url" x-text="d.title"></span>
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap" x-text="(d.created || '').slice(0, 10) || '—'"></td>
+                <td class="px-4 py-3">
+                  <span x-show="d.linked_entry_ids.length > 0" class="px-2 py-0.5 rounded text-xs font-medium bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
+                        x-text="PAPERLESS_LINKED_TMPL.replace('{count}', d.linked_entry_ids.length)"></span>
+                  <span x-show="d.linked_entry_ids.length === 0" class="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                    {{ _('ledger.target_payouts_filter_open') }}
+                  </span>
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap" x-show="userIsTreasurer">
+                  <button x-show="d.linked_entry_ids.length === 0" @click="openPaperlessDocSearch(d)"
+                          class="text-blue-600 dark:text-blue-400 hover:underline text-xs">
+                    {{ _('ledger.btn_find_matching_transaction') }}
+                  </button>
+                  <span x-show="d.linked_entry_ids.length > 0" class="text-gray-300 dark:text-gray-600">—</span>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </template>
+
+    <div x-show="!loadingPaperlessDocuments && paperlessDocuments.length > 0" class="mt-4 flex items-center justify-center gap-3">
+      <button @click="paperlessDocumentsPrevPage()" :disabled="paperlessDocumentsPage <= 1"
+              class="text-sm text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-40 disabled:no-underline">
+        {{ _('ledger.pagination_prev') }}
+      </button>
+      <span class="text-sm text-gray-500 dark:text-gray-400"
+            x-text="PAGE_INDICATOR_TMPL.replace('{page}', paperlessDocumentsPage).replace('{pages}', paperlessDocumentsPageCount).replace('{total}', paperlessDocumentsTotal)"></span>
+      <button @click="paperlessDocumentsNextPage()" :disabled="paperlessDocumentsPage >= paperlessDocumentsPageCount"
+              class="text-sm text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-40 disabled:no-underline">
+        {{ _('ledger.pagination_next') }}
+      </button>
+    </div>
+  </div>
+
+  <!-- ============ Paperless Document Search Modal ============ -->
+  <div x-show="showPaperlessDocSearchModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+       @mousedown.self="modalMousedownOutside = true">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg p-6" style="max-height: 90vh; overflow-y: auto;"
+         @mousedown="modalMousedownOutside = false" @click.outside="if (modalMousedownOutside) showPaperlessDocSearchModal = false">
+      <h2 class="text-lg font-bold mb-1">{{ _('ledger.paperless_doc_search_modal_title') }}</h2>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-4" x-text="paperlessDocSearchDoc ? paperlessDocSearchDoc.title : ''"></p>
+
+      <div class="mb-3">
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.filter_account') }}</label>
+        <select x-model.number="paperlessDocSearchAccountId" @change="searchPaperlessDocCandidates()"
+                class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 mb-2">
+          <option value="">{{ _('ledger.filter_account_all') }}</option>
+          <template x-for="a in importableAccounts" :key="a.id">
+            <option :value="a.id" x-text="a.name"></option>
+          </template>
+        </select>
+        <input type="text" x-model="paperlessDocSearchQuery" @input.debounce.400ms="searchPaperlessDocCandidates()"
+               placeholder="{{ _('ledger.placeholder_search_import_lines') }}"
+               class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800">
+      </div>
+
+      <p x-show="loadingPaperlessDocSearch" class="text-xs text-gray-400 dark:text-gray-500">…</p>
+      <div x-show="!loadingPaperlessDocSearch && paperlessDocSearchResults.length === 0" class="text-xs text-gray-400 dark:text-gray-500 mb-2">
+        {{ _('ledger.book_transfer_no_candidates') }}
+      </div>
+      <div x-show="!loadingPaperlessDocSearch && paperlessDocSearchResults.length > 0" class="space-y-1 mb-4">
+        <template x-for="c in paperlessDocSearchResults" :key="c.id">
+          <button type="button" @click="pickPaperlessDocSearchCandidate(c)"
+                  class="w-full text-left flex justify-between gap-2 text-sm px-2 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-gray-700">
+            <span>
+              <span x-text="c.booking_date"></span>
+              <span class="text-gray-500 dark:text-gray-400 ml-2" x-text="c.purpose_text || c.counterparty_name || '—'"></span>
+            </span>
+            <span class="font-mono shrink-0" x-text="fmt(c.amount)"></span>
+          </button>
+        </template>
+      </div>
+
+      <div class="flex justify-end">
+        <button type="button" @click="showPaperlessDocSearchModal = false"
+                class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.cancel') }}</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ============ Book Target Payout Modal ============ -->
   <div x-show="showTargetPayoutModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
        @mousedown.self="modalMousedownOutside = true">
@@ -1958,6 +2082,7 @@ const RESERVE_KIND_L = {
 const AUDIT_REPORT_MODAL_TITLE_CREATE_L = {{ _('ledger.audit_report_modal_title_create') | tojson }};
 const AUDIT_REPORT_MODAL_TITLE_EDIT_L = {{ _('ledger.audit_report_modal_title_edit') | tojson }};
 const AUDIT_REPORT_REMOVE_CONFIRM_L = {{ _('ledger.audit_report_remove_confirm') | tojson }};
+const PAPERLESS_LINKED_TMPL = {{ _('ledger.paperless_linked_badge') | tojson }};
 const CSV_FIELDS = [
   { key: 'booking_date_column', required: true, label: {{ _('ledger.csv_field_booking_date') | tojson }} },
   { key: 'amount_column', required: true, label: {{ _('ledger.csv_field_amount') | tojson }} },
@@ -2133,6 +2258,19 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     auditReportError: null,
     auditReportSubmitting: false,
 
+    paperlessDocuments: [],
+    paperlessDocumentsTotal: 0,
+    paperlessDocumentsPage: 1,
+    loadingPaperlessDocuments: false,
+    paperlessDocumentsError: null,
+
+    showPaperlessDocSearchModal: false,
+    paperlessDocSearchDoc: null,
+    paperlessDocSearchQuery: '',
+    paperlessDocSearchAccountId: '',
+    paperlessDocSearchResults: [],
+    loadingPaperlessDocSearch: false,
+
     get activeCategories() {
       return this.categories.filter(c => c.active);
     },
@@ -2215,6 +2353,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         this.loadMittelverwendung();
       }
       if (tab === 'audit-reports') this.loadAuditReports();
+      if (tab === 'belege') this.loadPaperlessDocuments();
     },
 
     get importSummaryText() {
@@ -2713,6 +2852,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         }
         this.showEntryModal = false;
         this.insertEntryLocally(data);
+        this.markPaperlessDocsLinkedLocally(lines, data.id);
       } catch (e) {
         if (e !== 'unauthenticated') this.entryError = e.message || String(e);
       } finally {
@@ -3241,10 +3381,27 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
           this.removeImportLineLocally(parseInt(this.bookForm.matchedImportLineId, 10));
         }
         this.insertEntryLocally(data);
+        this.markPaperlessDocsLinkedLocally(categoryLines, data.id);
       } catch (e) {
         if (e !== 'unauthenticated') this.bookError = e.message || String(e);
       } finally {
         this.bookSubmitting = false;
+      }
+    },
+
+    // Local update, same "don't refetch for one small state change" idea as
+    // insertEntryLocally (#40): if a category line just booked (from either
+    // this modal or the New Entry Modal) carries a paperless_document_id
+    // that happens to be visible in the currently-loaded Belege list, mark
+    // it linked immediately instead of leaving it to show a stale "Offen"
+    // badge until the tab is next switched to.
+    markPaperlessDocsLinkedLocally(categoryLines, entryId) {
+      for (const line of categoryLines) {
+        if (!line.paperless_document_id) continue;
+        const doc = this.paperlessDocuments.find(d => String(d.id) === String(line.paperless_document_id));
+        if (doc && !doc.linked_entry_ids.includes(entryId)) {
+          doc.linked_entry_ids.push(entryId);
+        }
       }
     },
 
@@ -3290,6 +3447,83 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       } catch (e) {
         // non-critical
       }
+    },
+
+    // --- Belege (Paperless overview): every document Paperless has
+    // (optionally restricted server-side to configured Dokumenttypen, e.g.
+    // only Rechnung/Beleg), alongside whether it's already linked, so an
+    // open invoice can be found and booked without checking each one
+    // individually against the Buchungen tab by hand.
+    get paperlessDocumentsPageCount() {
+      return Math.max(1, Math.ceil(this.paperlessDocumentsTotal / PAGE_SIZE));
+    },
+
+    async loadPaperlessDocuments() {
+      this.loadingPaperlessDocuments = true;
+      this.paperlessDocumentsError = null;
+      try {
+        const offset = (this.paperlessDocumentsPage - 1) * PAGE_SIZE;
+        const r = await apiFetch(`/api/v1/ledger/paperless/documents?limit=${PAGE_SIZE}&offset=${offset}`);
+        if (!r.ok) throw new Error('Failed to load documents');
+        this.paperlessDocuments = await r.json();
+        this.paperlessDocumentsTotal = Number(r.headers.get('X-Total-Count')) || this.paperlessDocuments.length;
+      } catch (e) {
+        if (e !== 'unauthenticated') this.paperlessDocumentsError = e.message || String(e);
+      } finally {
+        this.loadingPaperlessDocuments = false;
+      }
+    },
+
+    paperlessDocumentsPrevPage() {
+      if (this.paperlessDocumentsPage <= 1) return;
+      this.paperlessDocumentsPage--;
+      this.loadPaperlessDocuments();
+    },
+
+    paperlessDocumentsNextPage() {
+      if (this.paperlessDocumentsPage >= this.paperlessDocumentsPageCount) return;
+      this.paperlessDocumentsPage++;
+      this.loadPaperlessDocuments();
+    },
+
+    // Starting from an unlinked document, search the staging queue for the
+    // matching bank transaction instead of the other way around (the
+    // existing per-line Paperless search on the Book Import Line Modal
+    // starts from a transaction and searches for a document) — same idea
+    // as the target-payout matching workflow (#38), mirrored for documents.
+    openPaperlessDocSearch(doc) {
+      this.paperlessDocSearchDoc = doc;
+      this.paperlessDocSearchQuery = doc.title;
+      this.paperlessDocSearchAccountId = '';
+      this.paperlessDocSearchResults = [];
+      this.showPaperlessDocSearchModal = true;
+      this.searchPaperlessDocCandidates();
+    },
+
+    async searchPaperlessDocCandidates() {
+      this.loadingPaperlessDocSearch = true;
+      try {
+        let params = 'status=new&status=duplicate&limit=20';
+        if (this.paperlessDocSearchAccountId) params += `&bank_account_id=${this.paperlessDocSearchAccountId}`;
+        if (this.paperlessDocSearchQuery) params += `&q=${encodeURIComponent(this.paperlessDocSearchQuery)}`;
+        const r = await apiFetch(`/api/v1/ledger/import/lines?${params}`);
+        if (r.ok) this.paperlessDocSearchResults = await r.json();
+      } catch (e) {
+        // leave previous results on failure
+      } finally {
+        this.loadingPaperlessDocSearch = false;
+      }
+    },
+
+    // Picking a candidate hands off straight into the existing Book Import
+    // Line Modal, then pre-fills its (single, freshly reset) first category
+    // line with this document — reusing pickPaperlessDocForLine so the same
+    // duplicate-link check runs as when picking a document the other way
+    // around.
+    pickPaperlessDocSearchCandidate(candidate) {
+      this.showPaperlessDocSearchModal = false;
+      this.openBookModal(candidate);
+      this.pickPaperlessDocForLine(this.bookForm.category_lines[0], this.paperlessDocSearchDoc);
     },
 
     // --- FinTS live-pull (Phase 3) ---

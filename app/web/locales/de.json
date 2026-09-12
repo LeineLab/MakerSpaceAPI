@@ -636,5 +636,15 @@
   "ledger.detail_no_bank_transaction": "Keine Bank-Transaktion verknüpft (manuell gebucht).",
   "ledger.detail_purpose": "Verwendungszweck",
   "ledger.detail_counterparty": "Gegenpartei",
-  "ledger.detail_bank_reference": "Bankreferenz"
+  "ledger.detail_bank_reference": "Bankreferenz",
+  "ledger.offline_account_payment_hint": "Zahlung von einem Offline-Konto buchen: im Buchungen-Tab über „Neue Buchung“ eine Zeile mit dem Offline-Konto und eine Zeile mit der passenden Kategorie anlegen — funktioniert genauso wie bei einem echten Bankkonto.",
+  "ledger.tab_paperless_documents": "Belege",
+  "ledger.paperless_documents_title": "Beleg-Übersicht (Paperless)",
+  "ledger.paperless_documents_hint": "Alle Paperless-Dokumente mit Verknüpfungsstatus — offene Rechnungen können hier direkt der passenden Buchung zugeordnet werden.",
+  "ledger.paperless_documents_empty": "Keine Dokumente gefunden.",
+  "ledger.col_title": "Titel",
+  "ledger.col_created": "Erstellt",
+  "ledger.paperless_linked_badge": "Verknüpft ({count})",
+  "ledger.btn_find_matching_transaction": "Passende Transaktion suchen",
+  "ledger.paperless_doc_search_modal_title": "Passende Transaktion suchen"
 }
