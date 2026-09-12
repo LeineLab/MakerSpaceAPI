@@ -603,5 +603,13 @@
   "ledger.col_audit_date": "Audit date",
   "ledger.col_auditors": "Auditors",
   "ledger.col_discharge": "Discharge",
-  "ledger.audit_report_remove_confirm": "Really remove this audit report?"
+  "ledger.audit_report_remove_confirm": "Really remove this audit report?",
+  "ledger.btn_book_selected": "Book selected ({count})",
+  "ledger.target_payout_remaining_hint": "{amount} still open",
+  "ledger.label_amount_to_book": "Amount to book",
+  "ledger.target_payout_bundle_amount_hint": "With several selected payouts, the amount must equal their exact sum.",
+  "ledger.label_search_import_lines": "Search for a booking",
+  "ledger.placeholder_search_import_lines": "Purpose or name…",
+  "ledger.search_no_results": "No matches",
+  "ledger.target_payout_selected_title": "Selected payouts"
 }

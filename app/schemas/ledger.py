@@ -146,7 +146,6 @@ class LedgerEntryResponse(BaseModel):
     description: str
     paperless_document_id: Optional[str]
     reverses_entry_id: Optional[int]
-    booking_target_payout_id: Optional[int] = None
     created_by: str
     created_at: datetime
     lines: list[LedgerEntryLineResponse]
@@ -164,9 +163,14 @@ class LedgerTargetUpdate(BaseModel):
 class LedgerTargetPayoutResponse(BaseModel):
     """A `booking_target_payout` transaction from the legacy NFC-Kassen
     system, shown here so the treasurer can book it into the ledger (or see
-    that it already has been). No category here — the income was already
-    recognized when the cash arrived in the target (see Key Design Decision
-    #34); booking a payout is a pure transfer."""
+    how much of it already has been). No category here — the income was
+    already recognized when the cash arrived in the target (see Key Design
+    Decision #34); booking a payout is a pure transfer. `booked_amount`/
+    `remaining_amount` (see #38) replace a plain `booked` bool because a
+    payout can now be partially booked (split across several transfers);
+    `booked` is `True` only once `remaining_amount <= 0`. `entry_ids` lists
+    every ledger entry that covers some part of this payout — usually one,
+    more than one only for a split booking."""
     transaction_id: int
     target_id: int
     target_name: str
@@ -174,23 +178,36 @@ class LedgerTargetPayoutResponse(BaseModel):
     amount: Decimal = Field(examples=[Decimal("20.00")])
     note: Optional[str] = None
     created_at: datetime
+    booked_amount: Decimal = Field(examples=[Decimal("20.00")])
+    remaining_amount: Decimal = Field(examples=[Decimal("0.00")])
     booked: bool
-    ledger_entry_id: Optional[int] = None
+    entry_ids: list[int] = []
 
 
-class BookTargetPayoutRequest(BaseModel):
-    """A pure transfer from the shared Kassenbestand clearing account to
-    `bank_account_id` (whichever real account the cash was actually
-    deposited into) — no category, since the income was already recognized
-    when the cash arrived in the target. `entry_date`/`description` default
-    to the payout's own date/a generated label. `matched_import_line_id`
-    links the destination account's own not-yet-booked staged line for this
-    same deposit (found via `GET /ledger/import/lines?bank_account_id=&
-    amount=&status=new&status=duplicate`) — same "explicitly matched, not
-    guessed" pattern as transfer-booking an import line (#32) — so a
-    later-imported bank statement doesn't leave a dangling, separately-
-    bookable duplicate of a transaction this endpoint already recorded."""
+class BookTargetPayoutsRequest(BaseModel):
+    """Books one or more Kassen payouts as a single pure-transfer leg from
+    the shared Kassenbestand clearing account to `bank_account_id` — no
+    category, since the income was already recognized when the cash arrived
+    in the target(s). See Key Design Decision #38 for the split/bundle
+    rules this enforces:
+
+    - A single `payout_transaction_ids` entry may be booked for less than
+      its full remaining amount, to support splitting one payout across
+      several real transfers (e.g. a bank transfer-amount limit).
+    - Multiple `payout_transaction_ids` bundle several payouts into one
+      transfer — `amount` must equal the exact sum of their (so-far
+      entirely unbooked) amounts; no partial bundling.
+
+    `entry_date`/`description` default to a generated label (the single
+    payout's own date, or today for a bundle of several). `matched_import_
+    line_id` links the destination account's own not-yet-booked staged line
+    for this deposit (found via `GET /ledger/import/lines?bank_account_id=&
+    amount=&status=new&status=duplicate`, or now also `?q=` free-text) —
+    same "explicitly matched, not guessed" pattern as transfer-booking an
+    import line (#32)."""
+    payout_transaction_ids: list[int] = Field(min_length=1)
     bank_account_id: int
+    amount: Decimal = Field(gt=0, examples=[Decimal("20.00")])
     entry_date: Optional[date] = None
     description: Optional[str] = None
     matched_import_line_id: Optional[int] = None

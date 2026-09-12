@@ -140,12 +140,6 @@ class LedgerEntry(Base):
     reverses_entry_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("ledger_entries.id", ondelete="RESTRICT"), nullable=True
     )
-    # Set when this entry books a Kassen (NFC booking_target) payout —
-    # references transactions.id (type=booking_target_payout), UNIQUE so the
-    # same payout can never be booked twice. See Key Design Decision #34.
-    booking_target_payout_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("transactions.id", ondelete="SET NULL"), nullable=True, unique=True
-    )
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
 
@@ -180,6 +174,30 @@ class LedgerEntryLine(Base):
     entry: Mapped["LedgerEntry"] = relationship("LedgerEntry", back_populates="lines")
     bank_account: Mapped[Optional["BankAccount"]] = relationship("BankAccount")
     category: Mapped[Optional["LedgerCategory"]] = relationship("LedgerCategory")
+
+
+class LedgerTargetPayoutEntry(Base):
+    """Many-to-many link between a Kassen payout (`transactions.id`,
+    type=booking_target_payout) and the ledger_entries that (partially)
+    book it. Replaces the old 1:1 `ledger_entries.booking_target_payout_id`
+    column (migration 0015) — a payout can now be split across several
+    transfers (e.g. a bank transfer-amount limit forced multiple wires) or
+    several payouts can be bundled into one transfer. `amount` is the slice
+    of this payout covered by this entry: the entry's own leg amount when
+    the entry covers exactly one payout (whether the full amount or a
+    partial split), or the payout's own full amount when the entry bundles
+    several payouts together (bundling always covers each payout in full —
+    no partial bundling). See Key Design Decision #38."""
+    __tablename__ = "ledger_target_payout_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    transaction_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("transactions.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    entry_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("ledger_entries.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
 
 
 class LedgerAsset(Base):

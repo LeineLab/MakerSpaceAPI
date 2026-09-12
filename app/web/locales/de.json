@@ -603,5 +603,13 @@
   "ledger.col_audit_date": "Prüfungsdatum",
   "ledger.col_auditors": "Kassenprüfer",
   "ledger.col_discharge": "Entlastung",
-  "ledger.audit_report_remove_confirm": "Kassenprüfungsprotokoll wirklich entfernen?"
+  "ledger.audit_report_remove_confirm": "Kassenprüfungsprotokoll wirklich entfernen?",
+  "ledger.btn_book_selected": "Ausgewählte buchen ({count})",
+  "ledger.target_payout_remaining_hint": "davon {amount} offen",
+  "ledger.label_amount_to_book": "Zu buchender Betrag",
+  "ledger.target_payout_bundle_amount_hint": "Bei mehreren ausgewählten Auszahlungen muss der Betrag genau deren Summe entsprechen.",
+  "ledger.label_search_import_lines": "Buchung suchen",
+  "ledger.placeholder_search_import_lines": "Verwendungszweck oder Name…",
+  "ledger.search_no_results": "Keine Treffer",
+  "ledger.target_payout_selected_title": "Ausgewählte Auszahlungen"
 }

@@ -8,7 +8,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth.deps import require_auditor_writer_user, require_ledger_viewer_user, require_treasurer_user
@@ -32,6 +32,7 @@ from app.models.ledger import (
     LedgerReserveKind,
     LedgerReserveMovement,
     LedgerSphere,
+    LedgerTargetPayoutEntry,
 )
 from app.models.transaction import Transaction, TransactionType
 from app.schemas.booking_target import BookingTargetResponse
@@ -41,7 +42,7 @@ from app.schemas.ledger import (
     BankAccountCreate,
     BankAccountResponse,
     BankAccountUpdate,
-    BookTargetPayoutRequest,
+    BookTargetPayoutsRequest,
     CsvPreviewResponse,
     EuerCategoryTotal,
     EuerReportResponse,
@@ -425,19 +426,22 @@ def reverse_entry(
     linked back via `reverses_entry_id`. If the original entry came from
     booking an import staging line, that line is reopened (status back to
     `new`, `matched_entry_id` cleared) so it can be re-booked correctly. If
-    the original entry came from booking a Kassen payout (#34), its
-    `booking_target_payout_id` link is cleared on the *original* so the
-    payout shows as open again and can be re-booked — the reversal itself
-    keeps no such link (it isn't a payout booking, just its undo).
+    the original entry booked one or more Kassen payouts (#34/#38), its
+    `ledger_target_payout_entries` rows are removed so each linked payout's
+    covered amount reopens by exactly that entry's slice — for a plain
+    (non-split, non-bundled) booking that's the whole payout; for a split or
+    bundle it's only that one entry's contribution, leaving any of that
+    payout's other bookings untouched. The reversal itself gets no such
+    links (it isn't a payout booking, just its undo).
 
-    A reversal entry can't itself be reversed: that link (`matched_entry_id`
-    on a staging line, `booking_target_payout_id` on a payout booking) only
-    ever lives on the *original* entry, and gets cleared once it's reversed
-    — a reversal-of-a-reversal would financially re-instate the original
-    booking without re-establishing that link, leaving the door open to
-    double-booking the same import line or payout later. Re-booking the now
-    reopened staging line / payout normally is the correct way to "undo an
-    accidental reversal", not chaining a second one on top."""
+    A reversal entry can't itself be reversed: those links (`matched_entry_id`
+    on a staging line, `ledger_target_payout_entries` rows on a payout
+    booking) only ever live on the *original* entry, and get cleared once
+    it's reversed — a reversal-of-a-reversal would financially re-instate
+    the original booking without re-establishing them, leaving the door
+    open to double-booking the same import line or payout later. Re-booking
+    the now reopened staging line / payout normally is the correct way to
+    "undo an accidental reversal", not chaining a second one on top."""
     original = (
         db.query(LedgerEntry).options(joinedload(LedgerEntry.lines))
         .filter(LedgerEntry.id == entry_id).first()
@@ -478,8 +482,7 @@ def reverse_entry(
         import_line.status = LedgerImportStatus.new
         import_line.matched_entry_id = None
 
-    if original.booking_target_payout_id is not None:
-        original.booking_target_payout_id = None
+    db.query(LedgerTargetPayoutEntry).filter(LedgerTargetPayoutEntry.entry_id == entry_id).delete()
 
     db.commit()
     db.refresh(reversal)
@@ -532,75 +535,96 @@ def list_target_payouts(
 ):
     """Payouts (Auszahlungen) taken from a Kasse, for the treasurer to book
     into the ledger — a full "Aufstellung" by default (`booked` unset), or
-    filtered to just the open (`booked=false`) or already-booked
-    (`booked=true`) ones. Derived directly from `transactions`/
-    `booking_targets` (the legacy NFC-Kassen domain), joined against
-    `ledger_entries.booking_target_payout_id` to determine booked status —
-    no separate staging table, since `transactions` already is the source
-    of truth and is never mutated by this bridge."""
+    filtered to just the open (`booked=false`, i.e. `remaining_amount > 0`)
+    or fully-booked (`booked=true`) ones. Derived directly from
+    `transactions`/`booking_targets` (the legacy NFC-Kassen domain);
+    `ledger_target_payout_entries` (see #38) supplies how much of each has
+    been booked so far — a payout can be partially booked (a split still in
+    progress), so "booked" is a computed threshold, not a stored flag."""
     q = (
-        db.query(Transaction, BookingTarget, LedgerEntry.id)
+        db.query(Transaction, BookingTarget)
         .join(BookingTarget, Transaction.target_id == BookingTarget.id)
-        .outerjoin(LedgerEntry, LedgerEntry.booking_target_payout_id == Transaction.id)
         .filter(Transaction.type == TransactionType.booking_target_payout)
     )
     if target_id is not None:
         q = q.filter(Transaction.target_id == target_id)
-    if booked is True:
-        q = q.filter(LedgerEntry.id.isnot(None))
-    elif booked is False:
-        q = q.filter(LedgerEntry.id.is_(None))
+    rows = q.order_by(Transaction.created_at.desc()).all()
 
-    return [
-        LedgerTargetPayoutResponse(
+    links_by_txn: dict[int, list[LedgerTargetPayoutEntry]] = {}
+    txn_ids = [txn.id for txn, _ in rows]
+    if txn_ids:
+        for link in (
+            db.query(LedgerTargetPayoutEntry)
+            .filter(LedgerTargetPayoutEntry.transaction_id.in_(txn_ids)).all()
+        ):
+            links_by_txn.setdefault(link.transaction_id, []).append(link)
+
+    results = []
+    for txn, target in rows:
+        amount = -txn.amount
+        links = links_by_txn.get(txn.id, [])
+        booked_amount = sum((link.amount for link in links), Decimal("0.00"))
+        remaining_amount = amount - booked_amount
+        is_booked = remaining_amount <= 0
+        if booked is True and not is_booked:
+            continue
+        if booked is False and is_booked:
+            continue
+        results.append(LedgerTargetPayoutResponse(
             transaction_id=txn.id,
             target_id=target.id,
             target_name=target.name,
             target_slug=target.slug,
-            amount=-txn.amount,
+            amount=amount,
             note=txn.note,
             created_at=txn.created_at,
-            booked=entry_id is not None,
-            ledger_entry_id=entry_id,
-        )
-        for txn, target, entry_id in q.order_by(Transaction.created_at.desc()).all()
-    ]
+            booked_amount=booked_amount,
+            remaining_amount=remaining_amount,
+            booked=is_booked,
+            entry_ids=[link.entry_id for link in links],
+        ))
+    return results
 
 
 @router.post(
-    "/target-payouts/{transaction_id}/book", response_model=LedgerEntryResponse, status_code=201,
+    "/target-payouts/book", response_model=LedgerEntryResponse, status_code=201,
     responses={**HTTP_400, **HTTP_404, **HTTP_409},
 )
-def book_target_payout(
-    transaction_id: int,
-    body: BookTargetPayoutRequest,
+def book_target_payouts(
+    body: BookTargetPayoutsRequest,
     treasurer: dict = Depends(require_treasurer_user),
     db: Session = Depends(get_db),
 ):
-    """Book a Kassen payout as a pure transfer from the one shared
-    Kassenbestand clearing account to whichever real account the treasurer
-    actually deposited the cash into — no category line, since the income
-    was already recognized when the cash arrived in the target (folded into
-    the EÜR at read time, see `_compute_euer_report`). This is the only
-    ledger-side effect of a payout; it does not touch `transactions`/
-    `booking_targets` at all (that domain stays untouched, per Key Design
-    Decision #18 — this bridge only reads it). Each target's own payouts can
-    each be booked to a different destination account — e.g. cash physically
-    deposited into a private account, later transferred on to the real
-    Vereinskonto via an ordinary manual entry (`POST /entries`), independent
-    of this bridge. If the destination account's own bank statement for this
-    deposit has already been imported, `matched_import_line_id` links that
-    staged line so it's marked booked here too, instead of sitting there as
-    a separately-bookable duplicate of the same real-world transaction."""
-    txn = db.query(Transaction).filter(Transaction.id == transaction_id).first()
-    if not txn or txn.type != TransactionType.booking_target_payout:
-        raise HTTPException(status_code=404, detail="Booking target payout not found")
+    """Book one or more Kassen payouts as a single pure-transfer leg from the
+    one shared Kassenbestand clearing account to whichever real account the
+    treasurer actually deposited/wired the cash into — no category line,
+    since the income was already recognized when the cash arrived in the
+    target(s) (folded into the EÜR at read time, see `_compute_euer_report`).
+    Does not touch `transactions`/`booking_targets` at all (Key Design
+    Decision #18 — this bridge only reads that domain).
 
-    already_booked = db.query(LedgerEntry).filter(
-        LedgerEntry.booking_target_payout_id == transaction_id
-    ).first()
-    if already_booked:
-        raise HTTPException(status_code=409, detail=f"Already booked as entry {already_booked.id}")
+    See Key Design Decision #38 for the split/bundle rules: a single payout
+    may be booked for less than its remaining amount (a split, tracked via
+    `ledger_target_payout_entries` — the same payout can be booked again
+    later for the rest); multiple payouts in one call must be entirely
+    unbooked so far and `body.amount` must equal the exact sum of their
+    amounts (a bundle — no partial bundling, no mixing a bundle with a
+    split in the same call). If the destination account's own bank
+    statement for this deposit has already been imported,
+    `matched_import_line_id` links that staged line so it's marked booked
+    here too, instead of sitting there as a separately-bookable duplicate
+    of the same real-world transaction."""
+    txns = (
+        db.query(Transaction)
+        .filter(
+            Transaction.id.in_(body.payout_transaction_ids),
+            Transaction.type == TransactionType.booking_target_payout,
+        )
+        .all()
+    )
+    missing = set(body.payout_transaction_ids) - {t.id for t in txns}
+    if missing:
+        raise HTTPException(status_code=404, detail=f"Booking target payout(s) not found: {sorted(missing)}")
 
     clearing_account = db.query(BankAccount).filter(BankAccount.is_cash_clearing_account.is_(True)).first()
     if not clearing_account:
@@ -614,8 +638,45 @@ def book_target_payout(
     if destination.id == clearing_account.id:
         raise HTTPException(status_code=400, detail="Destination account cannot be the clearing account itself")
 
-    target = db.query(BookingTarget).filter(BookingTarget.id == txn.target_id).first()
-    amount = -txn.amount  # payout transactions are stored negative; the booking is the positive cash inflow
+    remaining_by_txn: dict[int, Decimal] = {}
+    for txn in txns:
+        full_amount = -txn.amount
+        already_booked = db.query(func.sum(LedgerTargetPayoutEntry.amount)).filter(
+            LedgerTargetPayoutEntry.transaction_id == txn.id
+        ).scalar() or Decimal("0.00")
+        remaining = full_amount - already_booked
+        if remaining <= 0:
+            raise HTTPException(status_code=409, detail=f"Payout {txn.id} is already fully booked")
+        remaining_by_txn[txn.id] = remaining
+
+    if len(txns) == 1:
+        if body.amount > remaining_by_txn[txns[0].id]:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Amount ({body.amount}) exceeds the remaining unbooked amount "
+                    f"for this payout ({remaining_by_txn[txns[0].id]})"
+                ),
+            )
+    else:
+        for txn in txns:
+            if remaining_by_txn[txn.id] != -txn.amount:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Payout {txn.id} is already partially booked — bundling requires "
+                        "payouts that haven't been booked at all yet"
+                    ),
+                )
+        total = sum(remaining_by_txn.values(), Decimal("0.00"))
+        if body.amount != total:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Amount ({body.amount}) must equal the sum of the selected payouts' "
+                    f"amounts ({total}) for a bundled booking"
+                ),
+            )
 
     matched_line = None
     if body.matched_import_line_id is not None:
@@ -631,28 +692,43 @@ def book_target_payout(
                 status_code=400,
                 detail="Matched import line must belong to the selected destination account",
             )
-        if matched_line.amount != amount:
+        if matched_line.amount != body.amount:
             raise HTTPException(
                 status_code=400,
                 detail=(
                     f"Matched import line's amount ({matched_line.amount}) doesn't match "
-                    f"the payout amount ({amount})"
+                    f"the booking amount ({body.amount})"
                 ),
             )
 
+    if len(txns) == 1:
+        target = db.query(BookingTarget).filter(BookingTarget.id == txns[0].target_id).first()
+        default_description = f"Kassenauszahlung: {target.name if target else txns[0].target_id}"
+        default_entry_date = txns[0].created_at.date()
+    else:
+        target_names = [
+            t.name for t in db.query(BookingTarget)
+            .filter(BookingTarget.id.in_({txn.target_id for txn in txns})).all()
+        ]
+        default_description = f"Kassenauszahlungen ({len(txns)}): {', '.join(sorted(target_names)) or '?'}"
+        default_entry_date = datetime.now(UTC).date()
+
     entry = LedgerEntry(
-        entry_date=body.entry_date or txn.created_at.date(),
-        description=body.description or f"Kassenauszahlung: {target.name if target else txn.target_id}",
-        booking_target_payout_id=transaction_id,
+        entry_date=body.entry_date or default_entry_date,
+        description=body.description or default_description,
         created_by=treasurer.get("sub", "unknown"),
         created_at=datetime.now(UTC).replace(tzinfo=None),
     )
     entry.lines = [
-        LedgerEntryLine(bank_account_id=destination.id, amount=amount),
-        LedgerEntryLine(bank_account_id=clearing_account.id, amount=-amount),
+        LedgerEntryLine(bank_account_id=destination.id, amount=body.amount),
+        LedgerEntryLine(bank_account_id=clearing_account.id, amount=-body.amount),
     ]
     db.add(entry)
     db.flush()
+
+    for txn in txns:
+        attributed = body.amount if len(txns) == 1 else (-txn.amount)
+        db.add(LedgerTargetPayoutEntry(transaction_id=txn.id, entry_id=entry.id, amount=attributed))
 
     if matched_line:
         matched_line.status = LedgerImportStatus.booked
@@ -1631,6 +1707,7 @@ def list_import_lines(
     status: list[LedgerImportStatus] = Query(default=[LedgerImportStatus.new]),
     bank_account_id: Optional[int] = Query(default=None),
     amount: Optional[Decimal] = Query(default=None),
+    q: Optional[str] = Query(default=None),
     limit: int = Query(default=200, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     _viewer: dict = Depends(require_ledger_viewer_user),
@@ -1647,17 +1724,28 @@ def list_import_lines(
     value): a line flagged `duplicate` by the (heuristic, false-positive-
     prone — see #19) dedup check is still perfectly bookable, so excluding
     it from transfer candidates would make a real transfer unmatchable
-    whenever either side happened to get flagged."""
-    q = db.query(LedgerImportLine)
+    whenever either side happened to get flagged.
+
+    `q` (free-text, case-insensitive substring on purpose_text/
+    counterparty_name) is the manual fallback for when exact-amount matching
+    doesn't work — e.g. a split/bundled Kassen payout booking (#38), where
+    a real transfer's amount deliberately doesn't equal any one payout's
+    amount."""
+    query = db.query(LedgerImportLine)
     if status:
-        q = q.filter(LedgerImportLine.status.in_(status))
+        query = query.filter(LedgerImportLine.status.in_(status))
     if bank_account_id is not None:
-        q = q.filter(LedgerImportLine.bank_account_id == bank_account_id)
+        query = query.filter(LedgerImportLine.bank_account_id == bank_account_id)
     if amount is not None:
-        q = q.filter(LedgerImportLine.amount == amount)
-    response.headers["X-Total-Count"] = str(q.count())
+        query = query.filter(LedgerImportLine.amount == amount)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            or_(LedgerImportLine.purpose_text.ilike(like), LedgerImportLine.counterparty_name.ilike(like))
+        )
+    response.headers["X-Total-Count"] = str(query.count())
     return (
-        q.order_by(LedgerImportLine.booking_date.desc(), LedgerImportLine.id.desc())
+        query.order_by(LedgerImportLine.booking_date.desc(), LedgerImportLine.id.desc())
         .offset(offset).limit(limit).all()
     )
 
