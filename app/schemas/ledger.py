@@ -113,11 +113,16 @@ class LedgerConfigResponse(BaseModel):
 
 
 class LedgerEntryLineCreate(BaseModel):
-    """Exactly one of bank_account_id/category_id must be set (checked in the endpoint)."""
+    """Exactly one of bank_account_id/category_id must be set (checked in the
+    endpoint). paperless_document_id is per-line (migration 0016) so several
+    invoices paid in one bank debit can each link their own document — one
+    ledger_entry_lines row per invoice, only meaningful on a category-side
+    line."""
     bank_account_id: Optional[int] = None
     category_id: Optional[int] = None
     amount: Decimal = Field(examples=[Decimal("-42.00")])
     note: Optional[str] = None
+    paperless_document_id: Optional[str] = None
 
 
 class LedgerEntryLineResponse(BaseModel):
@@ -126,6 +131,7 @@ class LedgerEntryLineResponse(BaseModel):
     category_id: Optional[int]
     amount: Decimal = Field(examples=[Decimal("-42.00")])
     note: Optional[str]
+    paperless_document_id: Optional[str] = None
     bank_account: Optional[BankAccountResponse] = None
     category: Optional[LedgerCategoryResponse] = None
 
@@ -133,10 +139,11 @@ class LedgerEntryLineResponse(BaseModel):
 
 
 class LedgerEntryCreate(BaseModel):
-    """A journal entry (Buchungssatz). Lines must sum to zero (double-entry)."""
+    """A journal entry (Buchungssatz). Lines must sum to zero (double-entry).
+    paperless_document_id lives on each line (LedgerEntryLineCreate), not
+    here — see migration 0016."""
     entry_date: date
     description: str = Field(examples=["Wareneinkauf Getränke"])
-    paperless_document_id: Optional[str] = None
     lines: list[LedgerEntryLineCreate] = Field(min_length=2)
 
 
@@ -161,7 +168,6 @@ class LedgerEntryResponse(BaseModel):
     id: int
     entry_date: date
     description: str
-    paperless_document_id: Optional[str]
     reverses_entry_id: Optional[int]
     created_by: str
     created_at: datetime
@@ -458,11 +464,15 @@ class LedgerImportLineCategorySplit(BaseModel):
     """Exactly one of category_id/bank_account_id must be set (checked in the
     endpoint). bank_account_id books a transfer leg to another account
     instead of a category — at most one split line may use it (a booking is
-    either a transfer or a category split, not a mix)."""
+    either a transfer or a category split, not a mix). paperless_document_id
+    is per split line (migration 0016) — e.g. several invoices paid in one
+    bank debit each link their own document; only meaningful on a
+    category_id line, ignored (not validated) on a bank_account_id one."""
     category_id: Optional[int] = None
     bank_account_id: Optional[int] = None
     amount: Decimal = Field(examples=[Decimal("50.00")])
     note: Optional[str] = None
+    paperless_document_id: Optional[str] = None
 
 
 class LedgerImportLineBookRequest(BaseModel):
@@ -470,6 +480,9 @@ class LedgerImportLineBookRequest(BaseModel):
     (amount fixed), `category_lines` supply the rest — their amounts must sum
     to the negative of the staging line's amount so the resulting entry
     balances to zero, exactly like a manually created LedgerEntryCreate.
+    Each split line carries its own optional `paperless_document_id`
+    (migration 0016) rather than one document for the whole booking, so
+    several invoices paid together can each link their own.
 
     `matched_import_line_id`: for a transfer (one split line has
     bank_account_id set), optionally the id of the *other* account's own
@@ -479,7 +492,6 @@ class LedgerImportLineBookRequest(BaseModel):
     line is booked too, linked to the same entry, instead of being left to
     show up again (and get double-booked) once reviewed on its own."""
     description: str = Field(examples=["Mitgliedsbeitrag Max Mustermann"])
-    paperless_document_id: Optional[str] = None
     category_lines: list[LedgerImportLineCategorySplit] = Field(min_length=1)
     matched_import_line_id: Optional[int] = None
 

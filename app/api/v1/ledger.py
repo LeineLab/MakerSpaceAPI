@@ -342,17 +342,18 @@ def list_entries(
         q = q.filter(
             LedgerEntry.entry_date >= f"{year}-01-01", LedgerEntry.entry_date <= f"{year}-12-31"
         )
-    if paperless_document_id is not None:
-        # Used by the frontend to warn (not block — partial payments against
-        # the same invoice are a legitimate reason to link it more than once)
-        # when a document is about to be linked a second time.
-        q = q.filter(LedgerEntry.paperless_document_id == paperless_document_id)
-    if bank_account_id is not None or category_id is not None:
+    if bank_account_id is not None or category_id is not None or paperless_document_id is not None:
         q = q.join(LedgerEntryLine)
         if bank_account_id is not None:
             q = q.filter(LedgerEntryLine.bank_account_id == bank_account_id)
         if category_id is not None:
             q = q.filter(LedgerEntryLine.category_id == category_id)
+        if paperless_document_id is not None:
+            # paperless_document_id lives per line (migration 0016) — used by
+            # the frontend to warn (not block — partial payments against the
+            # same invoice are a legitimate reason to link it more than once)
+            # when a document is about to be linked a second time.
+            q = q.filter(LedgerEntryLine.paperless_document_id == paperless_document_id)
     q = q.distinct()
     response.headers["X-Total-Count"] = str(q.count())
     entries = (
@@ -390,7 +391,9 @@ def create_entry(
 ):
     """Create a journal entry (Buchungssatz). Lines must sum to zero and each line
     must reference exactly one of an existing bank account or ledger category —
-    this is how a single receipt gets split across multiple categories."""
+    this is how a single receipt gets split across multiple categories, or
+    (Key Design Decision #44) several invoices paid in one bank debit each
+    get their own `paperless_document_id` on their own line."""
     total = sum((line.amount for line in body.lines), Decimal("0.00"))
     if total != 0:
         raise HTTPException(status_code=400, detail=f"Lines must sum to zero (got {total})")
@@ -411,7 +414,6 @@ def create_entry(
     entry = LedgerEntry(
         entry_date=body.entry_date,
         description=body.description,
-        paperless_document_id=body.paperless_document_id,
         created_by=treasurer.get("sub", "unknown"),
         created_at=datetime.now(UTC).replace(tzinfo=None),
     )
@@ -421,6 +423,7 @@ def create_entry(
             category_id=line.category_id,
             amount=line.amount,
             note=line.note,
+            paperless_document_id=line.paperless_document_id,
         )
         for line in body.lines
     ]
@@ -491,6 +494,7 @@ def reverse_entry(
             category_id=line.category_id,
             amount=-line.amount,
             note=line.note,
+            paperless_document_id=line.paperless_document_id,
         )
         for line in original.lines
     ]
@@ -1847,7 +1851,9 @@ def book_import_line(
     (booking a transfer); at most one may, and `matched_import_line_id` can
     then link the other account's own staged line for the same transfer so
     it's booked in the same step instead of being reviewed (and risking a
-    double-booking) separately later."""
+    double-booking) separately later. Each split line's own optional
+    `paperless_document_id` (Key Design Decision #44) covers e.g. several
+    invoices paid together in one debit, each linking its own document."""
     staging = db.query(LedgerImportLine).filter(LedgerImportLine.id == line_id).first()
     if not staging:
         raise HTTPException(status_code=404, detail="Import line not found")
@@ -1916,7 +1922,6 @@ def book_import_line(
     entry = LedgerEntry(
         entry_date=staging.booking_date,
         description=body.description,
-        paperless_document_id=body.paperless_document_id,
         created_by=treasurer.get("sub", "unknown"),
         created_at=datetime.now(UTC).replace(tzinfo=None),
     )
@@ -1925,6 +1930,7 @@ def book_import_line(
     ] + [
         LedgerEntryLine(
             category_id=line.category_id, bank_account_id=line.bank_account_id, amount=line.amount, note=line.note,
+            paperless_document_id=line.paperless_document_id,
         )
         for line in body.category_lines
     ]

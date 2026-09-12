@@ -129,14 +129,27 @@
                               @click.stop="openCapitalizeModal(l, e)" :title="CAPITALIZE_L"
                               class="ml-1 text-blue-600 dark:text-blue-400 hover:underline">🏷</button>
                       <span x-show="assetLineIds.has(l.id)" :title="CAPITALIZE_L" class="ml-1">🏷</span>
+                      <a x-show="l.paperless_document_id && config.paperless_url" :href="paperlessDocUrl(l.paperless_document_id)"
+                         target="_blank" rel="noopener" @click.stop :title="l.paperless_document_id" class="ml-1 text-blue-600 dark:text-blue-400 hover:underline">📎</a>
+                      <span x-show="l.paperless_document_id && !config.paperless_url" :title="l.paperless_document_id" class="ml-1">📎</span>
                     </div>
                   </template>
                 </td>
                 <td class="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">
-                  <a x-show="e.paperless_document_id && config.paperless_url" :href="paperlessDocUrl(e.paperless_document_id)"
-                     target="_blank" rel="noopener" @click.stop class="text-blue-600 dark:text-blue-400 hover:underline" x-text="e.paperless_document_id"></a>
-                  <span x-show="e.paperless_document_id && !config.paperless_url" x-text="e.paperless_document_id"></span>
-                  <span x-show="!e.paperless_document_id">—</span>
+                  <!-- Each line's own document is the source of truth (#44) —
+                       one link when every line shares the same single
+                       document (or there's just one), a stacked list when
+                       several invoices in this entry each link a different
+                       one (see the 📎 icons in the Buchungszeilen column for
+                       which line each belongs to). -->
+                  <template x-for="docId in entryPaperlessDocs(e)" :key="docId">
+                    <div class="whitespace-nowrap">
+                      <a x-show="config.paperless_url" :href="paperlessDocUrl(docId)"
+                         target="_blank" rel="noopener" @click.stop class="text-blue-600 dark:text-blue-400 hover:underline" x-text="docId"></a>
+                      <span x-show="!config.paperless_url" x-text="docId"></span>
+                    </div>
+                  </template>
+                  <span x-show="entryPaperlessDocs(e).length === 0">—</span>
                 </td>
                 <td class="px-4 py-3" x-show="userIsTreasurer">
                   <!-- A Storno (e.reverses_entry_id set) can't itself be reversed
@@ -1297,25 +1310,6 @@
                  class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
         </div>
 
-        <div class="relative" x-show="!bookForm.isTransfer">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.paperless_search_label') }}</label>
-          <input type="text" x-model="paperlessQuery" @input.debounce.400ms="searchPaperless()"
-                 placeholder="{{ _('ledger.paperless_search_placeholder') }}"
-                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
-          <template x-if="paperlessResults.length > 0">
-            <div class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border dark:border-gray-700 rounded shadow max-h-40 overflow-y-auto">
-              <template x-for="doc in paperlessResults" :key="doc.id">
-                <div @click="pickPaperlessDoc(doc)"
-                     class="px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer" x-text="doc.title"></div>
-              </template>
-            </div>
-          </template>
-          <p class="text-xs text-gray-400 dark:text-gray-500 mt-1" x-show="bookForm.paperless_document_id">
-            <span x-text="'ID: ' + bookForm.paperless_document_id"></span>
-          </p>
-          <p x-show="paperlessDuplicateWarning" class="text-xs text-amber-600 dark:text-amber-400 mt-1" x-text="paperlessDuplicateWarning"></p>
-        </div>
-
         <div>
           <label class="inline-flex items-center gap-2 cursor-pointer">
             <input type="checkbox" x-model="bookForm.isTransfer" @change="onTransferToggle()"
@@ -1346,6 +1340,27 @@
                 </div>
                 <p x-show="categoryIdSignWarning(line.category_id, line.amount)" class="text-xs text-amber-600 dark:text-amber-400 mt-0.5"
                    x-text="categoryIdSignWarning(line.category_id, line.amount)"></p>
+                <!-- Per-line document (#44): several invoices paid together
+                     in one bank debit each link their own — only relevant
+                     for a category split line, not a transfer counter-
+                     account line (bank_account_id set instead). -->
+                <div class="relative mt-1" x-show="!line.bank_account_id">
+                  <input type="text" x-model="line.paperlessQuery" @input.debounce.400ms="searchPaperlessForLine(line)"
+                         placeholder="{{ _('ledger.paperless_search_placeholder') }}"
+                         class="w-full border dark:border-gray-700 rounded px-2 py-1.5 text-xs bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                  <template x-if="line.paperlessResults.length > 0">
+                    <div class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border dark:border-gray-700 rounded shadow max-h-40 overflow-y-auto">
+                      <template x-for="doc in line.paperlessResults" :key="doc.id">
+                        <div @click="pickPaperlessDocForLine(line, doc)"
+                             class="px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer" x-text="doc.title"></div>
+                      </template>
+                    </div>
+                  </template>
+                  <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5" x-show="line.paperless_document_id">
+                    <span x-text="'ID: ' + line.paperless_document_id"></span>
+                  </p>
+                  <p x-show="line.paperlessDuplicateWarning" class="text-xs text-amber-600 dark:text-amber-400 mt-0.5" x-text="line.paperlessDuplicateWarning"></p>
+                </div>
               </div>
             </template>
           </div>
@@ -1415,19 +1430,10 @@
       <h2 class="text-lg font-bold mb-4">{{ _('ledger.entry_modal_title') }}</h2>
       <div x-show="entryError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="entryError"></div>
       <form @submit.prevent="createEntry()" class="space-y-4">
-        <div class="grid gap-4" :class="entryIsTransfer ? 'grid-cols-1' : 'grid-cols-2'">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_date') }}</label>
-            <input type="date" x-model="entryForm.entry_date" required
-                   class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
-          </div>
-          <div x-show="!entryIsTransfer">
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_paperless_id') }}</label>
-            <input type="text" x-model="entryForm.paperless_document_id" placeholder="{{ _('ledger.placeholder_paperless_id') }}"
-                   @input.debounce.400ms="checkPaperlessDuplicate(entryForm.paperless_document_id)"
-                   class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
-            <p x-show="paperlessDuplicateWarning" class="text-xs text-amber-600 dark:text-amber-400 mt-1" x-text="paperlessDuplicateWarning"></p>
-          </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_date') }}</label>
+          <input type="date" x-model="entryForm.entry_date" required
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_description') }}</label>
@@ -1464,6 +1470,15 @@
                 </div>
                 <p x-show="categoryLineSignWarning(line.ref, line.amount)" class="text-xs text-amber-600 dark:text-amber-400 mt-0.5"
                    x-text="categoryLineSignWarning(line.ref, line.amount)"></p>
+                <!-- Per-line document (#44): several invoices paid in one
+                     bank debit each get their own — only meaningful on a
+                     category line, same gating as the sign warning above. -->
+                <div x-show="line.ref && line.ref.startsWith('category:')" class="mt-1">
+                  <input type="text" x-model="line.paperless_document_id" placeholder="{{ _('ledger.placeholder_paperless_id') }}"
+                         @input.debounce.400ms="checkPaperlessDuplicateForLine(line)"
+                         class="w-full border dark:border-gray-700 rounded px-2 py-1.5 text-xs bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                  <p x-show="line.paperlessDuplicateWarning" class="text-xs text-amber-600 dark:text-amber-400 mt-0.5" x-text="line.paperlessDuplicateWarning"></p>
+                </div>
               </div>
             </template>
           </div>
@@ -1998,14 +2013,11 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
 
     showBookModal: false,
     bookingLine: null,
-    bookForm: { description: '', paperless_document_id: '', category_lines: [], isTransfer: false, transferAccountId: '', matchedImportLineId: '' },
+    bookForm: { description: '', category_lines: [], isTransfer: false, transferAccountId: '', matchedImportLineId: '' },
     bookError: null,
     bookSubmitting: false,
     transferCandidates: [],
     loadingTransferCandidates: false,
-    paperlessQuery: '',
-    paperlessResults: [],
-    paperlessDuplicateWarning: null,
 
     fintsForm: { server: '', bank_identifier: '', login: '', pin: '' },
     fintsPresets: [],
@@ -2267,6 +2279,14 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
 
     paperlessDocUrl(docId) {
       return this.config.paperless_url ? `${this.config.paperless_url.replace(/\/+$/, '')}/documents/${docId}` : null;
+    },
+
+    // Distinct, non-null documents across an entry's lines (#44) — usually
+    // one (a single receipt, or several invoices that happen to share one
+    // combined document), occasionally several (invoices each with their
+    // own document).
+    entryPaperlessDocs(e) {
+      return [...new Set(e.lines.map(l => l.paperless_document_id).filter(Boolean))];
     },
 
     async loadAccounts() {
@@ -2566,16 +2586,17 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       this.entryForm = {
         entry_date: new Date().toISOString().slice(0, 10),
         description: '',
-        paperless_document_id: '',
-        lines: [{ ref: '', amount: '' }, { ref: '', amount: '' }],
+        lines: [
+          { ref: '', amount: '', paperless_document_id: '', paperlessDuplicateWarning: null },
+          { ref: '', amount: '', paperless_document_id: '', paperlessDuplicateWarning: null },
+        ],
       };
       this.entryError = null;
-      this.paperlessDuplicateWarning = null;
       this.showEntryModal = true;
     },
 
     addLine() {
-      this.entryForm.lines.push({ ref: '', amount: '' });
+      this.entryForm.lines.push({ ref: '', amount: '', paperless_document_id: '', paperlessDuplicateWarning: null });
     },
 
     removeLine(idx) {
@@ -2632,6 +2653,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
             bank_account_id: kind === 'account' ? id : null,
             category_id: kind === 'category' ? id : null,
             amount: parseFloat(l.amount),
+            paperless_document_id: kind === 'category' ? (l.paperless_document_id || null) : null,
           };
         });
         const r = await apiFetch('/api/v1/ledger/entries', {
@@ -2640,7 +2662,6 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
           body: JSON.stringify({
             entry_date: this.entryForm.entry_date,
             description: this.entryForm.description,
-            paperless_document_id: this.entryForm.paperless_document_id || null,
             lines,
           }),
         });
@@ -3018,17 +3039,13 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       this.bookingLine = line;
       this.bookForm = {
         description: line.purpose_text || '',
-        paperless_document_id: '',
-        category_lines: [{ category_id: '', amount: '', note: '' }],
+        category_lines: [this.newBookCategoryLine()],
         isTransfer: false,
         transferAccountId: '',
         matchedImportLineId: '',
       };
       this.transferCandidates = [];
       this.bookError = null;
-      this.paperlessQuery = '';
-      this.paperlessResults = [];
-      this.paperlessDuplicateWarning = null;
       this.showBookModal = true;
     },
 
@@ -3059,8 +3076,15 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
     },
 
+    newBookCategoryLine() {
+      return {
+        category_id: '', amount: '', note: '',
+        paperless_document_id: '', paperlessQuery: '', paperlessResults: [], paperlessDuplicateWarning: null,
+      };
+    },
+
     addBookLine() {
-      this.bookForm.category_lines.push({ category_id: '', amount: '', note: '' });
+      this.bookForm.category_lines.push(this.newBookCategoryLine());
     },
 
     removeBookLine(idx) {
@@ -3092,13 +3116,13 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
               category_id: parseInt(l.category_id, 10),
               amount: parseFloat(l.amount),
               note: l.note || null,
+              paperless_document_id: l.paperless_document_id || null,
             }));
         const r = await apiFetch(`/api/v1/ledger/import/lines/${this.bookingLine.id}/book`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             description: this.bookForm.description,
-            paperless_document_id: this.bookForm.paperless_document_id || null,
             category_lines: categoryLines,
             matched_import_line_id: (this.bookForm.isTransfer && this.bookForm.matchedImportLineId)
               ? parseInt(this.bookForm.matchedImportLineId, 10) : null,
@@ -3127,38 +3151,44 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
     },
 
-    // --- import: Paperless search ---
-    async searchPaperless() {
-      if (!this.paperlessQuery) {
-        this.paperlessResults = [];
+    // --- Paperless search — per line (#44), since each split line now
+    // carries its own document instead of one for the whole booking. Takes
+    // the line object itself (bookForm.category_lines item, or an
+    // entryForm.lines item for the plain-text duplicate check) and mutates
+    // its own paperlessQuery/paperlessResults/paperless_document_id/
+    // paperlessDuplicateWarning fields.
+    async searchPaperlessForLine(line) {
+      if (!line.paperlessQuery) {
+        line.paperlessResults = [];
         return;
       }
       try {
-        const r = await apiFetch(`/api/v1/ledger/paperless/search?q=${encodeURIComponent(this.paperlessQuery)}`);
-        if (r.ok) this.paperlessResults = await r.json();
+        const r = await apiFetch(`/api/v1/ledger/paperless/search?q=${encodeURIComponent(line.paperlessQuery)}`);
+        if (r.ok) line.paperlessResults = await r.json();
       } catch (e) {
         // leave previous results on failure
       }
     },
 
-    pickPaperlessDoc(doc) {
-      this.bookForm.paperless_document_id = String(doc.id);
-      this.paperlessResults = [];
-      this.paperlessQuery = doc.title;
-      this.checkPaperlessDuplicate(this.bookForm.paperless_document_id);
+    pickPaperlessDocForLine(line, doc) {
+      line.paperless_document_id = String(doc.id);
+      line.paperlessResults = [];
+      line.paperlessQuery = doc.title;
+      this.checkPaperlessDuplicateForLine(line);
     },
 
-    async checkPaperlessDuplicate(docId) {
+    async checkPaperlessDuplicateForLine(line) {
       // Warn, don't block — a partial payment against the same invoice is a
-      // legitimate reason to link one document to more than one entry.
-      this.paperlessDuplicateWarning = null;
+      // legitimate reason to link one document to more than one line.
+      line.paperlessDuplicateWarning = null;
+      const docId = line.paperless_document_id;
       if (!docId) return;
       try {
         const r = await apiFetch(`/api/v1/ledger/entries?paperless_document_id=${encodeURIComponent(docId)}`);
         if (!r.ok) return;
         const existing = await r.json();
         if (existing.length > 0) {
-          this.paperlessDuplicateWarning = PAPERLESS_DUPLICATE_TMPL.replace('{count}', existing.length);
+          line.paperlessDuplicateWarning = PAPERLESS_DUPLICATE_TMPL.replace('{count}', existing.length);
         }
       } catch (e) {
         // non-critical

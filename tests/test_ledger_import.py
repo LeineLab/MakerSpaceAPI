@@ -437,6 +437,38 @@ def test_book_import_line_splits_across_categories(treasurer_client, bank_accoun
     assert len(resp.json()["lines"]) == 3
 
 
+def test_book_import_line_multiple_invoices_each_link_own_document(
+    treasurer_client, bank_account, expense_category, db,
+):
+    """Key Design Decision #44: several invoices paid in one bank debit each
+    link their own paperless_document_id on their own split line."""
+    other = LedgerCategory(
+        name="Büromaterial", slug="bueromaterial-2",
+        kind=LedgerCategoryKind.expense, sphere=LedgerSphere.ideell, active=True,
+    )
+    db.add(other)
+    db.commit()
+
+    _upload(treasurer_client, bank_account.id, _MT940_SAMPLE)
+    lines = treasurer_client.get("/api/v1/ledger/import/lines").json()
+    debit_line = next(l for l in lines if Decimal(str(l["amount"])) < 0)
+
+    resp = treasurer_client.post(
+        f"/api/v1/ledger/import/lines/{debit_line['id']}/book",
+        json={
+            "description": "Sammelabbuchung 2 Rechnungen",
+            "category_lines": [
+                {"category_id": expense_category.id, "amount": "20.00", "paperless_document_id": "INV-A"},
+                {"category_id": other.id, "amount": "10.00", "paperless_document_id": "INV-B"},
+            ],
+        },
+    )
+    assert resp.status_code == 201
+    cat_lines = {l["category_id"]: l["paperless_document_id"] for l in resp.json()["lines"] if l["category_id"] is not None}
+    assert cat_lines[expense_category.id] == "INV-A"
+    assert cat_lines[other.id] == "INV-B"
+
+
 def test_book_import_line_rejects_unbalanced_split(treasurer_client, bank_account, income_category):
     _upload(treasurer_client, bank_account.id, _MT940_SAMPLE)
     lines = treasurer_client.get("/api/v1/ledger/import/lines").json()

@@ -131,7 +131,6 @@ class LedgerEntry(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     entry_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     description: Mapped[str] = mapped_column(String(255), nullable=False)
-    paperless_document_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     # Set on a reversal entry (created by POST /ledger/entries/{id}/reverse) to
     # the original entry it cancels out — entries are otherwise immutable, so
     # "undoing" a booking means posting an offsetting entry, not editing/
@@ -170,6 +169,12 @@ class LedgerEntryLine(Base):
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     note: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # Moved here (migration 0016) from ledger_entries — a single entry-level
+    # field couldn't represent several invoices paid in one bank debit, one
+    # ledger_entry_lines row per invoice. Only meaningful on a category-side
+    # line (a bank_account line is a cash movement, not an invoice); the API
+    # layer doesn't enforce that, same as `note`.
+    paperless_document_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
     entry: Mapped["LedgerEntry"] = relationship("LedgerEntry", back_populates="lines")
     bank_account: Mapped[Optional["BankAccount"]] = relationship("BankAccount")

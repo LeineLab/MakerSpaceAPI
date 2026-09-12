@@ -376,6 +376,40 @@ def test_create_entry_splits_across_multiple_categories(
     assert len(resp.json()["lines"]) == 3
 
 
+def test_create_entry_multiple_invoices_each_link_own_document(
+    treasurer_client, bank_account, expense_category, db
+):
+    """Key Design Decision #44: several invoices paid in one bank debit each
+    get their own paperless_document_id on their own category line, instead
+    of sharing the one entry-level field the old schema had."""
+    other_expense = LedgerCategory(
+        name="Büromaterial", slug="bueromaterial-2",
+        kind=LedgerCategoryKind.expense, sphere=LedgerSphere.ideell, active=True,
+    )
+    db.add(other_expense)
+    db.commit()
+
+    resp = treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-02",
+            "description": "Sammelabbuchung 2 Rechnungen",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "-100.00"},
+                {"category_id": expense_category.id, "amount": "70.00", "paperless_document_id": "INV-1"},
+                {"category_id": other_expense.id, "amount": "30.00", "paperless_document_id": "INV-2"},
+            ],
+        },
+    )
+    assert resp.status_code == 201
+    lines = resp.json()["lines"]
+    bank_line = next(l for l in lines if l["bank_account_id"] == bank_account.id)
+    cat_lines = {l["category_id"]: l["paperless_document_id"] for l in lines if l["category_id"] is not None}
+    assert bank_line["paperless_document_id"] is None
+    assert cat_lines[expense_category.id] == "INV-1"
+    assert cat_lines[other_expense.id] == "INV-2"
+
+
 def test_create_entry_rejects_unbalanced_lines(treasurer_client, bank_account, income_category):
     resp = treasurer_client.post(
         "/api/v1/ledger/entries",
@@ -446,10 +480,9 @@ def test_list_entries_filters_by_paperless_document_id(treasurer_client, bank_ac
         json={
             "entry_date": "2026-03-01",
             "description": "Mit Beleg",
-            "paperless_document_id": "42",
             "lines": [
                 {"bank_account_id": bank_account.id, "amount": "50.00"},
-                {"category_id": income_category.id, "amount": "-50.00"},
+                {"category_id": income_category.id, "amount": "-50.00", "paperless_document_id": "42"},
             ],
         },
     )
@@ -598,6 +631,25 @@ def test_reverse_entry_posts_offsetting_entry(treasurer_client, bank_account, in
     original_entry = next(e for e in all_entries if e["id"] == original["id"])
     original_amounts = {Decimal(str(l["amount"])) for l in original_entry["lines"]}
     assert original_amounts == {Decimal("-50.00"), Decimal("50.00")}
+
+
+def test_reverse_entry_copies_line_paperless_document(treasurer_client, bank_account, income_category):
+    resp = treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-01",
+            "description": "Mit Beleg",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "50.00"},
+                {"category_id": income_category.id, "amount": "-50.00", "paperless_document_id": "INV-9"},
+            ],
+        },
+    )
+    original = resp.json()
+
+    reversal = treasurer_client.post(f"/api/v1/ledger/entries/{original['id']}/reverse").json()
+    cat_line = next(l for l in reversal["lines"] if l["category_id"] == income_category.id)
+    assert cat_line["paperless_document_id"] == "INV-9"
 
 
 def test_reverse_entry_cancels_out_in_euer_report(treasurer_client, bank_account, income_category):
