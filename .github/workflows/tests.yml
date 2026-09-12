@@ -8,6 +8,20 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: makerspaceapi_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
     steps:
       - uses: actions/checkout@v4
 
@@ -49,6 +63,14 @@ jobs:
             sleep 0.5
           done
           kill %1
+
+      - name: Migration round-trip against MariaDB (upgrade / downgrade / upgrade)
+        env:
+          DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/makerspaceapi_ci
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
 
       - name: Install test dependencies
         run: pip install -r requirements-test.txt
