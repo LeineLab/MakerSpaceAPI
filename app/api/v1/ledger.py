@@ -1,7 +1,7 @@
 import hashlib
 import json
 from dataclasses import asdict
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Optional
@@ -148,7 +148,47 @@ def _computed_balance(db: Session, account: BankAccount, as_of: date) -> Decimal
         .filter(LedgerEntryLine.bank_account_id == account.id, LedgerEntry.entry_date <= as_of)
         .scalar()
     )
-    return account.opening_balance + booked_sum
+    balance = account.opening_balance + booked_sum
+
+    if account.is_cash_clearing_account:
+        # Kassen cash-in events (topup/target-topup/adjustment, #34) are
+        # deliberately never written as ledger_entries — they're the actual
+        # physical cash arriving in the pool this account represents, only
+        # ever booked *out* again via a real POST /target-payouts/book
+        # transfer. Without adding that cash-in total back in here, this
+        # account's computed balance would only ever accumulate payout
+        # debits and drift further negative forever, never reflecting "cash
+        # collected but not yet deposited" — found by the user comparing a
+        # real installation's Kassenbestand balance against reality.
+        cash_in = db.query(func.coalesce(func.sum(Transaction.amount), Decimal("0.00"))).filter(
+            Transaction.type.in_([
+                TransactionType.topup,
+                TransactionType.booking_target_topup,
+                TransactionType.booking_target_adjustment,
+            ]),
+            Transaction.created_at < f"{as_of + timedelta(days=1)}",
+        ).scalar()
+        balance += cash_in
+
+    return balance
+
+
+def _reject_cash_clearing_account_line(account: BankAccount) -> None:
+    """The shared Kassenbestand clearing account (#34) may only ever be
+    debited via POST /ledger/target-payouts/book (which builds its own
+    entry directly, bypassing this check) — its balance computation
+    (_computed_balance above) accounts for cash-in events implicitly rather
+    than via booked lines, so any other manual line against it (a plain
+    entry, or a transfer split's counter-account) would silently corrupt
+    that balance instead of raising a visible error."""
+    if account.is_cash_clearing_account:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"'{account.name}' is the Kassenbestand clearing account and can only be booked "
+                "via POST /ledger/target-payouts/book, not a manual entry or transfer"
+            ),
+        )
 
 
 @router.get("/accounts/{account_id}/balance", response_model=BankAccountBalanceResponse, responses={**HTTP_404})
@@ -478,8 +518,11 @@ def create_entry(
                 status_code=400,
                 detail="Each line needs exactly one of bank_account_id or category_id",
             )
-        if has_account and not db.query(BankAccount).filter(BankAccount.id == line.bank_account_id).first():
-            raise HTTPException(status_code=404, detail=f"Bank account {line.bank_account_id} not found")
+        if has_account:
+            account = db.query(BankAccount).filter(BankAccount.id == line.bank_account_id).first()
+            if not account:
+                raise HTTPException(status_code=404, detail=f"Bank account {line.bank_account_id} not found")
+            _reject_cash_clearing_account_line(account)
         if has_category and not db.query(LedgerCategory).filter(LedgerCategory.id == line.category_id).first():
             raise HTTPException(status_code=404, detail=f"Category {line.category_id} not found")
 
@@ -1969,8 +2012,10 @@ def book_import_line(
             if not db.query(LedgerCategory).filter(LedgerCategory.id == line.category_id).first():
                 raise HTTPException(status_code=404, detail=f"Category {line.category_id} not found")
         else:
-            if not db.query(BankAccount).filter(BankAccount.id == line.bank_account_id).first():
+            counter_account = db.query(BankAccount).filter(BankAccount.id == line.bank_account_id).first()
+            if not counter_account:
                 raise HTTPException(status_code=404, detail=f"Bank account {line.bank_account_id} not found")
+            _reject_cash_clearing_account_line(counter_account)
             transfer_lines.append(line)
 
     if len(transfer_lines) > 1:

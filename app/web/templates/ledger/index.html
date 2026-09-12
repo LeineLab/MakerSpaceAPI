@@ -2148,8 +2148,11 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     get trackedAccounts() {
       // Used for manual-entry line pickers — offline accounts are meant to be
       // booked against directly (transfers in, invoices out), so they're
-      // included here.
-      return this.accounts.filter(a => a.tracked);
+      // included here. The Kassenbestand clearing account is excluded: its
+      // balance accounts for cash-in events implicitly (see #34/#46), so a
+      // manual line against it would corrupt that balance — the backend
+      // rejects it outright, this just keeps it from being offered at all.
+      return this.accounts.filter(a => a.tracked && !a.is_cash_clearing_account);
     },
 
     get importableAccounts() {
@@ -2163,8 +2166,10 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     },
 
     get payoutDestinationAccounts() {
-      // The clearing account itself can't be its own transfer destination.
-      return this.trackedAccounts.filter(a => !a.is_cash_clearing_account);
+      // trackedAccounts already excludes the clearing account (see there) —
+      // this alias just names the intent at the one call site that uses it
+      // (the clearing account can't be its own transfer destination).
+      return this.trackedAccounts;
     },
 
     get yearOptions() {

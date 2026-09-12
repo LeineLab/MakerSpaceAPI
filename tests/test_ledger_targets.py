@@ -890,3 +890,92 @@ def test_reversing_payout_entry_reopens_it_for_rebooking(treasurer_client, db, d
     rebooked = _book(treasurer_client, [txn.id], bank_account.id, "30.00", description="Korrekt gebucht")
     assert rebooked.status_code == 201
     assert rebooked.json()["id"] != booked["id"]
+
+
+# ---------------------------------------------------------------------------
+# Kassenbestand clearing account balance includes implicit cash-in, and can
+# only ever be booked via /target-payouts/book — not a manual entry/transfer
+# ---------------------------------------------------------------------------
+
+def test_clearing_account_balance_includes_cash_in_events(
+    treasurer_client, db, donation_target, bank_account, clearing_account,
+):
+    """Cash-in events (topup/target-topup/adjustment, #34) never become
+    ledger_entries, so the clearing account's computed balance must add them
+    back in itself — otherwise it would only ever accumulate payout debits
+    and never reflect the cash actually still sitting uncollected."""
+    _make_cash_in(db, donation_target, TransactionType.topup, "100.00")
+    txn = _make_payout(db, donation_target, amount="100.00")
+
+    # before any payout is booked: only the cash-in counts
+    balance = treasurer_client.get(f"/api/v1/ledger/accounts/{clearing_account.id}/balance").json()
+    assert balance["computed_balance"] == "100.00"
+
+    _book(treasurer_client, [txn.id], bank_account.id, "100.00")
+
+    # fully collected and fully paid out — balance nets to exactly zero,
+    # not -100.00 (the bug reported: only the payout debit was counted)
+    balance = treasurer_client.get(f"/api/v1/ledger/accounts/{clearing_account.id}/balance").json()
+    assert balance["computed_balance"] == "0.00"
+
+
+def test_clearing_account_balance_reflects_still_uncollected_cash(
+    treasurer_client, db, donation_target, bank_account, clearing_account,
+):
+    _make_cash_in(db, donation_target, TransactionType.topup, "150.00")
+    txn = _make_payout(db, donation_target, amount="100.00")
+    _book(treasurer_client, [txn.id], bank_account.id, "100.00")
+
+    # 150 collected, only 100 paid out so far — 50 still sitting uncollected
+    balance = treasurer_client.get(f"/api/v1/ledger/accounts/{clearing_account.id}/balance").json()
+    assert balance["computed_balance"] == "50.00"
+
+
+def test_clearing_account_balance_includes_shortfall_adjustment(
+    treasurer_client, db, donation_target, clearing_account,
+):
+    _make_cash_in(db, donation_target, TransactionType.topup, "100.00")
+    # a Fehlbestand write-off: 10.00 less physically present than booked
+    _make_cash_in(db, donation_target, TransactionType.booking_target_adjustment, "-10.00")
+
+    balance = treasurer_client.get(f"/api/v1/ledger/accounts/{clearing_account.id}/balance").json()
+    assert balance["computed_balance"] == "90.00"
+
+
+def test_create_entry_rejects_clearing_account_line(treasurer_client, clearing_account, donation_category):
+    resp = treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-01",
+            "description": "Versehentliche Buchung",
+            "lines": [
+                {"bank_account_id": clearing_account.id, "amount": "50.00"},
+                {"category_id": donation_category.id, "amount": "-50.00"},
+            ],
+        },
+    )
+    assert resp.status_code == 400
+
+
+def test_book_import_line_transfer_rejects_clearing_account_counter(
+    treasurer_client, db, bank_account, clearing_account,
+):
+    line = _stage_import_line(db, bank_account, Decimal("50.00"))
+    resp = treasurer_client.post(
+        f"/api/v1/ledger/import/lines/{line.id}/book",
+        json={
+            "description": "Versehentlicher Transfer",
+            "category_lines": [{"bank_account_id": clearing_account.id, "amount": "-50.00"}],
+        },
+    )
+    assert resp.status_code == 400
+
+
+def test_target_payouts_book_still_works_against_clearing_account(
+    treasurer_client, db, donation_target, bank_account, clearing_account,
+):
+    """Regression guard: the new manual-booking block must not affect the
+    one sanctioned path that legitimately books against this account."""
+    txn = _make_payout(db, donation_target, amount="20.00")
+    resp = _book(treasurer_client, [txn.id], bank_account.id, "20.00")
+    assert resp.status_code == 201
