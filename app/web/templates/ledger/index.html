@@ -856,7 +856,6 @@
               <th class="px-4 py-3 text-left">{{ _('ledger.col_target') }}</th>
               <th class="px-4 py-3 text-right">{{ _('ledger.label_amount') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_note') }}</th>
-              <th class="px-4 py-3 text-left" x-show="userIsTreasurer">{{ _('ledger.col_actions') }}</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -875,7 +874,6 @@
                         x-text="TARGET_PAYOUT_REMAINING_TMPL.replace('{amount}', fmt(p.remaining_amount))"></span>
                 </td>
                 <td class="px-4 py-3 text-xs" x-text="p.note || '—'"></td>
-                <td class="px-4 py-3" x-show="userIsTreasurer">
                   <span x-show="p.booked" class="px-2 py-0.5 rounded text-xs font-medium bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
                         x-text="TARGET_PAYOUT_BOOKED_TMPL.replace('{id}', p.entry_ids.join(', #'))"></span>
                 </td>
