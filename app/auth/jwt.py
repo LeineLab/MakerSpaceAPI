@@ -1,17 +1,20 @@
 from datetime import UTC, datetime, timedelta
 
-from authlib.jose import jwt
-from authlib.jose.errors import JoseError
+from joserfc import jwt
+from joserfc.errors import JoseError
+from joserfc.jwk import OctKey
+from joserfc.jwt import JWTClaimsRegistry
 
 from app.config import settings
 
 _ALGORITHM = "HS256"
 _EXPIRE_HOURS = 8
+_claims_registry = JWTClaimsRegistry()
 
 
-def _key() -> bytes:
-    """Return the signing key as bytes."""
-    return settings.SECRET_KEY.encode()
+def _key() -> OctKey:
+    """Return the signing key."""
+    return OctKey.import_key(settings.SECRET_KEY.encode())
 
 
 def create_admin_jwt(user_info: dict) -> str:
@@ -20,8 +23,7 @@ def create_admin_jwt(user_info: dict) -> str:
         **user_info,
         "exp": int((datetime.now(UTC) + timedelta(hours=_EXPIRE_HOURS)).timestamp()),
     }
-    token_bytes = jwt.encode({"alg": _ALGORITHM}, payload, _key())
-    return token_bytes.decode("utf-8") if isinstance(token_bytes, bytes) else token_bytes
+    return jwt.encode({"alg": _ALGORITHM}, payload, _key())
 
 
 def verify_admin_jwt(token: str | None) -> dict | None:
@@ -29,9 +31,9 @@ def verify_admin_jwt(token: str | None) -> dict | None:
     if not token:
         return None
     try:
-        claims = jwt.decode(token, _key())
-        claims.validate()
-        return dict(claims)
+        decoded = jwt.decode(token, _key())
+        _claims_registry.validate(decoded.claims)
+        return dict(decoded.claims)
     except (JoseError, Exception):
         return None
 
@@ -46,8 +48,7 @@ def create_link_token(nfc_id: int) -> str:
         "nfc_id": nfc_id,
         "exp": int((datetime.now(UTC) + timedelta(seconds=LINK_TOKEN_TTL)).timestamp()),
     }
-    token_bytes = jwt.encode({"alg": _ALGORITHM}, payload, _key())
-    return token_bytes.decode("utf-8") if isinstance(token_bytes, bytes) else token_bytes
+    return jwt.encode({"alg": _ALGORITHM}, payload, _key())
 
 
 def verify_link_token(token: str | None) -> int | None:
@@ -55,10 +56,10 @@ def verify_link_token(token: str | None) -> int | None:
     if not token:
         return None
     try:
-        claims = jwt.decode(token, _key())
-        claims.validate()
-        if claims.get("type") != "nfc_link":
+        decoded = jwt.decode(token, _key())
+        _claims_registry.validate(decoded.claims)
+        if decoded.claims.get("type") != "nfc_link":
             return None
-        return int(claims["nfc_id"])
+        return int(decoded.claims["nfc_id"])
     except (JoseError, Exception):
         return None
