@@ -9,6 +9,7 @@ from app.services.bank_statement import (
     account_identifier_matches,
     guess_csv_mapping,
     parse_csv_statement,
+    parse_statement_file,
     preview_csv,
 )
 
@@ -56,6 +57,33 @@ def test_legacy_comparison_only_implemented_for_standard_german_iban_layout():
     # Non-German or non-standard-layout IBANs: no BLZ/Kontonummer decomposition
     # is attempted, so a legacy-format identifier never spuriously matches.
     assert not account_identifier_matches("12030000/0000202051", "FR1420041010050500013M02606")
+
+
+# ---------------------------------------------------------------------------
+# MT940 — the mt-940 library's 5.0.0-compatible default prepends a structured
+# :86:'s ?31 sub-field (the counterparty's IBAN) onto ?32's ?applicant_name
+# instead of keeping it separate (library issue #132). Confirmed against a
+# real export, 2026-09-12: counterparty_name came out as
+# "DE89370400440532013000Erika Musterfrau" with counterparty_iban left None.
+# ---------------------------------------------------------------------------
+
+_MT940_WITH_STRUCTURED_COUNTERPARTY = (
+    ":20:STARTUMSE\r\n"
+    ":25:DE02120300000000202051\r\n"
+    ":28C:1/1\r\n"
+    ":60F:C260101EUR1000,00\r\n"
+    ":61:2603010301C75,00NTRFNONREF\r\n"
+    ":86:166?00SEPA GUTSCHRIFT?20EREF+E2E-SPENDE-001?21SVWZ+Spende"
+    "?30GENODEF1XXX?31DE89370400440532013000?32Erika Musterfrau\r\n"
+    ":62F:C260301EUR1075,00\r\n"
+).encode("utf-8")
+
+
+def test_mt940_separates_counterparty_iban_from_name():
+    statement = parse_statement_file(_MT940_WITH_STRUCTURED_COUNTERPARTY)
+    [line] = statement.lines
+    assert line.counterparty_name == "Erika Musterfrau"
+    assert line.counterparty_iban == "DE89370400440532013000"
 
 
 # ---------------------------------------------------------------------------

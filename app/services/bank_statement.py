@@ -127,10 +127,21 @@ def lines_from_mt940_transactions(transactions) -> list[ParsedStatementLine]:
 def _parse_mt940(content: bytes) -> ParsedStatement:
     import mt940  # optional dependency, only needed for this import path
 
+    # applicant_iban=True: the mt-940 library's 5.0.0-compatible default
+    # files the structured :86: field's ?31 sub-field (the counterparty's
+    # IBAN/account number) under `applicant_name` — literally prepending it
+    # to the counterparty's actual name — instead of its own `applicant_iban`
+    # key (library issue #132; see mt940.options.Options' own docstring).
+    # Confirmed against a real export, 2026-09-12: without this, a line's
+    # counterparty_name came out as "DE89370400440532013000Erika Musterfrau"
+    # with counterparty_iban left None, exactly matching the library's
+    # documented pre-4.x behavior. This does not touch anything else — every
+    # other Options flag defaults off and is left alone.
+    options = mt940.Options(applicant_iban=True)
     try:
-        statement = mt940.parse(content)
+        statement = mt940.parse(content, options=options)
     except UnicodeDecodeError:
-        statement = mt940.parse(content, encoding="latin-1")
+        statement = mt940.parse(content, encoding="latin-1", options=options)
 
     iban = statement.data.get("account_identification")
     if not iban:
