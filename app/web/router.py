@@ -10,7 +10,7 @@ from app.auth.deps import (
     require_product_manager_user,
     require_session_user,
 )
-from app.auth.oidc import is_admin, is_product_manager, is_treasurer
+from app.auth.oidc import is_admin, is_auditor_writer, is_product_manager, is_treasurer
 from app.web.auth import router as auth_router
 from app.web.i18n import detect_language, get_translator
 from app.web.templating import templates
@@ -172,7 +172,7 @@ def ledger_page(
 ):
     return templates.TemplateResponse(
         request, "ledger/index.html",
-        _ctx(request, user, user_is_treasurer=is_treasurer(user)),
+        _ctx(request, user, user_is_treasurer=is_treasurer(user), user_can_write_audit_reports=is_auditor_writer(user)),
     )
 
 

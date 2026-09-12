@@ -11,7 +11,7 @@ from fastapi.responses import Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
-from app.auth.deps import require_ledger_viewer_user, require_treasurer_user
+from app.auth.deps import require_auditor_writer_user, require_ledger_viewer_user, require_treasurer_user
 from app.config import settings
 from app.database import get_db
 from app.models.booking_target import BookingTarget
@@ -19,6 +19,7 @@ from app.models.ledger import (
     BankAccount,
     FintsBankPreset,
     LedgerAsset,
+    LedgerAuditReport,
     LedgerCategory,
     LedgerCategoryKind,
     LedgerEntry,
@@ -27,6 +28,10 @@ from app.models.ledger import (
     LedgerImportLine,
     LedgerImportSource,
     LedgerImportStatus,
+    LedgerReserve,
+    LedgerReserveKind,
+    LedgerReserveMovement,
+    LedgerSphere,
 )
 from app.models.transaction import Transaction, TransactionType
 from app.schemas.booking_target import BookingTargetResponse
@@ -49,6 +54,9 @@ from app.schemas.ledger import (
     LedgerAssetCreate,
     LedgerAssetResponse,
     LedgerAssetUpdate,
+    LedgerAuditReportCreate,
+    LedgerAuditReportResponse,
+    LedgerAuditReportUpdate,
     LedgerCategoryCreate,
     LedgerCategoryResponse,
     LedgerCategoryUpdate,
@@ -58,8 +66,15 @@ from app.schemas.ledger import (
     LedgerImportLineBookRequest,
     LedgerImportLineResponse,
     LedgerImportSummary,
+    LedgerReserveCreate,
+    LedgerReserveMovementCreate,
+    LedgerReserveMovementResponse,
+    LedgerReserveMovementUpdate,
+    LedgerReserveResponse,
+    LedgerReserveUpdate,
     LedgerTargetPayoutResponse,
     LedgerTargetUpdate,
+    MittelverwendungReportResponse,
     PaperlessDocumentResult,
 )
 from app.services import fints_client, paperless
@@ -834,7 +849,7 @@ def delete_asset(
 
 # --- EÜR report ---
 
-def _compute_euer_report(db: Session, year: int) -> EuerReportResponse:
+def _compute_euer_report(db: Session, year: int, cumulative: bool = False) -> EuerReportResponse:
     """Einnahmenüberschussrechnung: category totals for a year, grouped by
     category (which carries its EÜR-Sphäre). Categorization correctness (which
     category, which Sphäre) should be signed off by the Verein's Kassenprüfer/
@@ -867,21 +882,29 @@ def _compute_euer_report(db: Session, year: int) -> EuerReportResponse:
     only ever appear in the one year it was booked. Its full cost is instead
     replaced by the linear, monatsgenau AfA amount computed for `year` against
     the asset's own target category, which may differ from whatever category
-    the purchase itself was originally booked against."""
+    the purchase itself was originally booked against.
+
+    `cumulative=True` sums everything from the beginning of the ledger's
+    history through 31.12 of `year` instead of just that calendar year (an
+    asset's contribution becomes its cumulative depreciation-to-date rather
+    than one year's installment) — used by the Mittelverwendungsrechnung
+    (#36) to get a running Vortrag without a second aggregation
+    implementation that could drift out of sync with this one."""
     asset_entry_line_ids = {row[0] for row in db.query(LedgerAsset.entry_line_id).all()}
 
-    lines = (
+    lines_query = (
         db.query(LedgerEntryLine)
         .join(LedgerEntry)
         .join(LedgerCategory)
-        .filter(
-            LedgerEntry.entry_date >= f"{year}-01-01",
-            LedgerEntry.entry_date <= f"{year}-12-31",
-            LedgerEntryLine.category_id.isnot(None),
-        )
-        .options(joinedload(LedgerEntryLine.category))
-        .all()
+        .filter(LedgerEntryLine.category_id.isnot(None))
     )
+    if cumulative:
+        lines_query = lines_query.filter(LedgerEntry.entry_date <= f"{year}-12-31")
+    else:
+        lines_query = lines_query.filter(
+            LedgerEntry.entry_date >= f"{year}-01-01", LedgerEntry.entry_date <= f"{year}-12-31"
+        )
+    lines = lines_query.options(joinedload(LedgerEntryLine.category)).all()
 
     raw_totals: dict[int, Decimal] = {}
     categories: dict[int, LedgerCategory] = {}
@@ -893,17 +916,19 @@ def _compute_euer_report(db: Session, year: int) -> EuerReportResponse:
 
     assets = db.query(LedgerAsset).options(joinedload(LedgerAsset.category)).all()
     for asset in assets:
-        depreciation = _asset_depreciation_for_year(asset, year)
+        depreciation = (
+            _asset_cumulative_depreciation(asset, year, 12) if cumulative
+            else _asset_depreciation_for_year(asset, year)
+        )
         if depreciation == 0:
             continue
         categories[asset.category_id] = asset.category
         raw_totals[asset.category_id] = raw_totals.get(asset.category_id, Decimal("0.00")) + depreciation
 
-    target_events = (
+    target_events_query = (
         db.query(Transaction.amount, BookingTarget.default_category_id)
         .join(BookingTarget, Transaction.target_id == BookingTarget.id)
         .filter(
-            Transaction.created_at >= f"{year}-01-01",
             Transaction.created_at < f"{year + 1}-01-01",
             Transaction.type.in_([
                 TransactionType.topup,
@@ -912,8 +937,10 @@ def _compute_euer_report(db: Session, year: int) -> EuerReportResponse:
             ]),
             BookingTarget.default_category_id.isnot(None),
         )
-        .all()
     )
+    if not cumulative:
+        target_events_query = target_events_query.filter(Transaction.created_at >= f"{year}-01-01")
+    target_events = target_events_query.all()
     for amount, category_id in target_events:
         if category_id not in categories:
             category = db.query(LedgerCategory).filter(LedgerCategory.id == category_id).first()
@@ -1031,6 +1058,310 @@ def euer_report_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# --- Rücklagen (§62 AO reserves) and Mittelverwendungsrechnung ---
+
+def _reserve_balance(db: Session, reserve_id: int, as_of: date) -> Decimal:
+    total = (
+        db.query(func.sum(LedgerReserveMovement.amount))
+        .filter(LedgerReserveMovement.reserve_id == reserve_id, LedgerReserveMovement.movement_date <= as_of)
+        .scalar()
+    )
+    return total if total is not None else Decimal("0.00")
+
+
+def _reserve_response(db: Session, reserve: LedgerReserve, as_of: date) -> LedgerReserveResponse:
+    return LedgerReserveResponse(
+        id=reserve.id, name=reserve.name, kind=reserve.kind, sphere=reserve.sphere,
+        purpose=reserve.purpose, target_date=reserve.target_date,
+        balance=_reserve_balance(db, reserve.id, as_of),
+    )
+
+
+def _validate_reserve_zweckgebunden(kind: LedgerReserveKind, purpose: Optional[str], target_date: Optional[date]) -> None:
+    """A zweckgebundene Rücklage (§62 Abs. 1 Nr. 1 AO) legally needs a
+    concrete plan and timeframe — checked here as "the descriptive fields
+    are filled in", not a numeric legal check (see Key Design Decision #36,
+    same "advisory, not enforced" precedent as the GWG threshold)."""
+    if kind == LedgerReserveKind.zweckgebunden and (not purpose or not target_date):
+        raise HTTPException(
+            status_code=400,
+            detail="A zweckgebundene reserve needs a concrete purpose and target_date",
+        )
+
+
+@router.get("/reserves", response_model=list[LedgerReserveResponse])
+def list_reserves(
+    as_of: Optional[date] = Query(default=None),
+    _viewer: dict = Depends(require_ledger_viewer_user),
+    db: Session = Depends(get_db),
+):
+    as_of = as_of or datetime.now(UTC).date()
+    reserves = db.query(LedgerReserve).order_by(LedgerReserve.name).all()
+    return [_reserve_response(db, r, as_of) for r in reserves]
+
+
+@router.post("/reserves", response_model=LedgerReserveResponse, status_code=201, responses={**HTTP_400})
+def create_reserve(
+    body: LedgerReserveCreate,
+    _treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    _validate_reserve_zweckgebunden(body.kind, body.purpose, body.target_date)
+    reserve = LedgerReserve(
+        name=body.name, kind=body.kind, sphere=body.sphere,
+        purpose=body.purpose, target_date=body.target_date,
+        created_at=datetime.now(UTC).replace(tzinfo=None),
+    )
+    db.add(reserve)
+    db.commit()
+    db.refresh(reserve)
+    return _reserve_response(db, reserve, datetime.now(UTC).date())
+
+
+@router.put("/reserves/{reserve_id}", response_model=LedgerReserveResponse, responses={**HTTP_400, **HTTP_404})
+def update_reserve(
+    reserve_id: int,
+    body: LedgerReserveUpdate,
+    _treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    reserve = db.query(LedgerReserve).filter(LedgerReserve.id == reserve_id).first()
+    if not reserve:
+        raise HTTPException(status_code=404, detail="Reserve not found")
+
+    new_kind = body.kind if body.kind is not None else reserve.kind
+    new_purpose = body.purpose if body.purpose is not None else reserve.purpose
+    new_target_date = None if body.clear_target_date else (body.target_date if body.target_date is not None else reserve.target_date)
+    _validate_reserve_zweckgebunden(new_kind, new_purpose, new_target_date)
+
+    if body.name is not None:
+        reserve.name = body.name
+    if body.kind is not None:
+        reserve.kind = body.kind
+    if body.sphere is not None:
+        reserve.sphere = body.sphere
+    if body.purpose is not None:
+        reserve.purpose = body.purpose
+    if body.clear_target_date:
+        reserve.target_date = None
+    elif body.target_date is not None:
+        reserve.target_date = body.target_date
+
+    db.commit()
+    db.refresh(reserve)
+    return _reserve_response(db, reserve, datetime.now(UTC).date())
+
+
+@router.delete("/reserves/{reserve_id}", status_code=204, responses={**HTTP_404, **HTTP_409})
+def delete_reserve(
+    reserve_id: int,
+    _treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    reserve = db.query(LedgerReserve).filter(LedgerReserve.id == reserve_id).first()
+    if not reserve:
+        raise HTTPException(status_code=404, detail="Reserve not found")
+    if db.query(LedgerReserveMovement).filter(LedgerReserveMovement.reserve_id == reserve_id).first():
+        raise HTTPException(status_code=409, detail="Reserve has movements — remove them first")
+    db.delete(reserve)
+    db.commit()
+
+
+@router.get("/reserve-movements", response_model=list[LedgerReserveMovementResponse])
+def list_reserve_movements(
+    reserve_id: Optional[int] = Query(default=None),
+    _viewer: dict = Depends(require_ledger_viewer_user),
+    db: Session = Depends(get_db),
+):
+    q = db.query(LedgerReserveMovement)
+    if reserve_id is not None:
+        q = q.filter(LedgerReserveMovement.reserve_id == reserve_id)
+    return q.order_by(LedgerReserveMovement.movement_date.desc()).all()
+
+
+@router.post("/reserve-movements", response_model=LedgerReserveMovementResponse, status_code=201, responses={**HTTP_404})
+def create_reserve_movement(
+    body: LedgerReserveMovementCreate,
+    treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    if not db.query(LedgerReserve).filter(LedgerReserve.id == body.reserve_id).first():
+        raise HTTPException(status_code=404, detail=f"Reserve {body.reserve_id} not found")
+    movement = LedgerReserveMovement(
+        reserve_id=body.reserve_id, movement_date=body.movement_date, amount=body.amount,
+        note=body.note, created_by=treasurer.get("sub", "unknown"),
+        created_at=datetime.now(UTC).replace(tzinfo=None),
+    )
+    db.add(movement)
+    db.commit()
+    db.refresh(movement)
+    return movement
+
+
+@router.put("/reserve-movements/{movement_id}", response_model=LedgerReserveMovementResponse, responses={**HTTP_404})
+def update_reserve_movement(
+    movement_id: int,
+    body: LedgerReserveMovementUpdate,
+    _treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    movement = db.query(LedgerReserveMovement).filter(LedgerReserveMovement.id == movement_id).first()
+    if not movement:
+        raise HTTPException(status_code=404, detail="Movement not found")
+    if body.movement_date is not None:
+        movement.movement_date = body.movement_date
+    if body.amount is not None:
+        movement.amount = body.amount
+    if body.note is not None:
+        movement.note = body.note
+    db.commit()
+    db.refresh(movement)
+    return movement
+
+
+@router.delete("/reserve-movements/{movement_id}", status_code=204, responses={**HTTP_404})
+def delete_reserve_movement(
+    movement_id: int,
+    _treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    movement = db.query(LedgerReserveMovement).filter(LedgerReserveMovement.id == movement_id).first()
+    if not movement:
+        raise HTTPException(status_code=404, detail="Movement not found")
+    db.delete(movement)
+    db.commit()
+
+
+@router.get("/report/mittelverwendung", response_model=MittelverwendungReportResponse)
+def mittelverwendung_report(
+    year: int = Query(...),
+    _viewer: dict = Depends(require_ledger_viewer_user),
+    db: Session = Depends(get_db),
+):
+    """Rücklagen/Mittelverwendungsrechnung — see MittelverwendungReportResponse
+    docstring and Key Design Decision #36 for the underlying assumptions
+    (which Sphären count toward "zeitnah zu verwendende Mittel", why reserve
+    movements aren't real ledger_entries)."""
+    cumulative_euer = _compute_euer_report(db, year, cumulative=True)
+    relevant_net = sum(
+        (
+            (c.total if c.kind == LedgerCategoryKind.income else -c.total)
+            for c in cumulative_euer.categories
+            if c.sphere != LedgerSphere.wirtschaftlicher_geschaeftsbetrieb
+        ),
+        Decimal("0.00"),
+    )
+
+    movement_amounts = (
+        db.query(LedgerReserveMovement.amount)
+        .filter(LedgerReserveMovement.movement_date <= f"{year}-12-31")
+        .all()
+    )
+    zufuehrungen = sum((amt for (amt,) in movement_amounts if amt > 0), Decimal("0.00"))
+    aufloesungen = sum((-amt for (amt,) in movement_amounts if amt < 0), Decimal("0.00"))
+
+    reserves = db.query(LedgerReserve).order_by(LedgerReserve.name).all()
+    year_end = date(year, 12, 31)
+
+    return MittelverwendungReportResponse(
+        year=year,
+        cumulative_relevant_net_result=relevant_net,
+        cumulative_reserve_zufuehrungen=zufuehrungen,
+        cumulative_reserve_aufloesungen=aufloesungen,
+        available_funds=relevant_net - zufuehrungen + aufloesungen,
+        reserves=[_reserve_response(db, r, year_end) for r in reserves],
+    )
+
+
+# --- Kassenprüfungsprotokolle (audit reports) ---
+
+@router.get("/audit-reports", response_model=list[LedgerAuditReportResponse])
+def list_audit_reports(
+    _viewer: dict = Depends(require_ledger_viewer_user),
+    db: Session = Depends(get_db),
+):
+    return db.query(LedgerAuditReport).order_by(LedgerAuditReport.period_end.desc()).all()
+
+
+@router.post("/audit-reports", response_model=LedgerAuditReportResponse, status_code=201, responses={**HTTP_400})
+def create_audit_report(
+    body: LedgerAuditReportCreate,
+    auditor: dict = Depends(require_auditor_writer_user),
+    db: Session = Depends(get_db),
+):
+    """Writing a Kassenprüfungsprotokoll requires the narrower auditor-only
+    permission (admin or explicit auditor-group membership) — see Key
+    Design Decision #37 for why a plain treasurer can't author this."""
+    if body.period_end < body.period_start:
+        raise HTTPException(status_code=400, detail="period_end must not be before period_start")
+    report = LedgerAuditReport(
+        period_start=body.period_start,
+        period_end=body.period_end,
+        audit_date=body.audit_date,
+        auditors=body.auditors,
+        findings=body.findings,
+        recommends_discharge=body.recommends_discharge,
+        paperless_document_id=body.paperless_document_id,
+        created_by=auditor.get("sub", "unknown"),
+        created_at=datetime.now(UTC).replace(tzinfo=None),
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    return report
+
+
+@router.put("/audit-reports/{report_id}", response_model=LedgerAuditReportResponse, responses={**HTTP_400, **HTTP_404})
+def update_audit_report(
+    report_id: int,
+    body: LedgerAuditReportUpdate,
+    _auditor: dict = Depends(require_auditor_writer_user),
+    db: Session = Depends(get_db),
+):
+    report = db.query(LedgerAuditReport).filter(LedgerAuditReport.id == report_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Audit report not found")
+
+    new_start = body.period_start if body.period_start is not None else report.period_start
+    new_end = body.period_end if body.period_end is not None else report.period_end
+    if new_end < new_start:
+        raise HTTPException(status_code=400, detail="period_end must not be before period_start")
+
+    if body.period_start is not None:
+        report.period_start = body.period_start
+    if body.period_end is not None:
+        report.period_end = body.period_end
+    if body.audit_date is not None:
+        report.audit_date = body.audit_date
+    if body.auditors is not None:
+        report.auditors = body.auditors
+    if body.findings is not None:
+        report.findings = body.findings
+    if body.recommends_discharge is not None:
+        report.recommends_discharge = body.recommends_discharge
+    if body.clear_paperless_document_id:
+        report.paperless_document_id = None
+    elif body.paperless_document_id is not None:
+        report.paperless_document_id = body.paperless_document_id
+
+    db.commit()
+    db.refresh(report)
+    return report
+
+
+@router.delete("/audit-reports/{report_id}", status_code=204, responses={**HTTP_404})
+def delete_audit_report(
+    report_id: int,
+    _auditor: dict = Depends(require_auditor_writer_user),
+    db: Session = Depends(get_db),
+):
+    report = db.query(LedgerAuditReport).filter(LedgerAuditReport.id == report_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Audit report not found")
+    db.delete(report)
+    db.commit()
 
 
 # --- Bank statement import (Phase 2: file upload; FinTS live-pull is Phase 3) ---

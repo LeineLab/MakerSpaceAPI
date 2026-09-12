@@ -5,7 +5,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.auth.jwt import verify_admin_jwt
-from app.auth.oidc import is_admin, is_auditor, is_machine_admin, is_product_manager, is_treasurer
+from app.auth.oidc import is_admin, is_auditor, is_auditor_writer, is_machine_admin, is_product_manager, is_treasurer
 from app.auth.tokens import verify_api_token
 from app.database import get_db
 from app.models.machine import Machine
@@ -63,6 +63,15 @@ def require_ledger_viewer_user(user: dict = Depends(require_session_user)) -> di
     """Allow admins, treasurers, and auditors (Kassenprüfer) read-only access to the ledger."""
     if not is_auditor(user):
         raise HTTPException(status_code=403, detail="Ledger access required")
+    return user
+
+
+def require_auditor_writer_user(user: dict = Depends(require_session_user)) -> dict:
+    """Allow admins and users explicitly in the auditor (Kassenprüfer) OIDC
+    group — deliberately NOT a plain treasurer (see is_auditor_writer's
+    docstring). Only used for writing Kassenprüfungsprotokolle."""
+    if not is_auditor_writer(user):
+        raise HTTPException(status_code=403, detail="Auditor access required")
     return user
 
 

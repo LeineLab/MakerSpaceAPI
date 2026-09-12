@@ -60,3 +60,17 @@ def is_auditor(user_info: dict) -> bool:
         return True
     group = settings.OIDC_AUDITOR_GROUP
     return bool(group) and group in get_user_groups(user_info)
+
+
+def is_auditor_writer(user_info: dict) -> bool:
+    """True if user is admin OR explicitly belongs to the auditor (Kassenprüfer)
+    group — deliberately NOT satisfied by a plain treasurer, unlike every other
+    is_*() check in this module. Used only for writing Kassenprüfungsprotokolle
+    (audit reports): a treasurer being able to author the record that audits
+    their own bookkeeping would defeat the point of an independent Kassenprüfung.
+    Reading those reports still goes through the normal is_auditor() (treasurer-
+    inclusive) check — this only narrows the write side."""
+    if is_admin(user_info):
+        return True
+    group = settings.OIDC_AUDITOR_GROUP
+    return bool(group) and group in get_user_groups(user_info)

@@ -46,6 +46,16 @@ class LedgerSphere(str, enum.Enum):
     wirtschaftlicher_geschaeftsbetrieb = "wirtschaftlicher_geschaeftsbetrieb"
 
 
+class LedgerReserveKind(str, enum.Enum):
+    """The four Rücklagenarten a gemeinnütziger Verein may legally form under
+    §62 AO. Kept as German legal terms (not translated), same convention as
+    LedgerSphere — these are specific tax-law categories, not generic labels."""
+    frei = "frei"
+    zweckgebunden = "zweckgebunden"
+    betriebsmittel = "betriebsmittel"
+    wiederbeschaffung = "wiederbeschaffung"
+
+
 class BankAccount(Base):
     """Despite the name, also holds "offline" accounts (`is_offline=True`) —
     manual-balance holders with no IBAN and no statement import, e.g. a
@@ -208,6 +218,72 @@ class LedgerAsset(Base):
 
     entry_line: Mapped["LedgerEntryLine"] = relationship("LedgerEntryLine")
     category: Mapped["LedgerCategory"] = relationship("LedgerCategory")
+
+
+class LedgerReserve(Base):
+    """A Rücklage (§62 AO) — a named pot that part of the Verein's already-
+    recognized surplus is earmarked into. This is NOT a real cash movement
+    (the money stays in whichever bank account it already sits in); it's a
+    logical allocation used to compile the Mittelverwendungsrechnung (see Key
+    Design Decision #36). `sphere` is purely informational here (unlike
+    LedgerCategory, it's never required even when LEDGER_SPHERES_ENABLED) —
+    it doesn't affect the report computation. `purpose`/`target_date` are the
+    concrete-plan-and-timeframe a `zweckgebunden` reserve legally needs;
+    validated as required for that kind in the API layer, not the DB."""
+    __tablename__ = "ledger_reserves"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    kind: Mapped[LedgerReserveKind] = mapped_column(Enum(LedgerReserveKind), nullable=False)
+    sphere: Mapped[Optional[LedgerSphere]] = mapped_column(Enum(LedgerSphere), nullable=True)
+    purpose: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    target_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
+
+
+class LedgerReserveMovement(Base):
+    """A Zuführung (positive amount) or Auflösung/Entnahme (negative amount)
+    against one LedgerReserve, dated and freely correctable (unlike
+    `ledger_entries`, these aren't real financial bookings — just a note on
+    top of already-recognized surplus, see LedgerReserve's docstring)."""
+    __tablename__ = "ledger_reserve_movements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    reserve_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("ledger_reserves.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    movement_date: Mapped[date] = mapped_column(Date, nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    note: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
+
+    reserve: Mapped["LedgerReserve"] = relationship("LedgerReserve")
+
+
+class LedgerAuditReport(Base):
+    """A Kassenprüfungsprotokoll — the annual (or ad-hoc) audit report from
+    the Verein's Kassenprüfer, covering a period and recommending (or not)
+    the Vorstand's Entlastung. `auditors` is free text, not a FK to `users`
+    — Kassenprüfer are elected members and not necessarily app users at all.
+    Writing these is gated by `require_auditor_writer_user` (admin or
+    explicit auditor-group membership, deliberately NOT a plain treasurer —
+    see Key Design Decision #37) since a treasurer authoring the report that
+    audits their own bookkeeping would defeat the point. Freely editable/
+    deletable like LedgerReserve(Movement) — not part of the immutable
+    financial audit trail itself, just a record about it."""
+    __tablename__ = "ledger_audit_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    audit_date: Mapped[date] = mapped_column(Date, nullable=False)
+    auditors: Mapped[str] = mapped_column(String(255), nullable=False)
+    findings: Mapped[Optional[str]] = mapped_column(String(4000), nullable=True)
+    recommends_discharge: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    paperless_document_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
 
 
 class LedgerImportBatch(Base):

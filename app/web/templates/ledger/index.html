@@ -2,7 +2,7 @@
 {% block title %}{{ _('ledger.title') }} – MakerSpaceAPI{% endblock %}
 {% block content %}
 
-<div x-data="ledgerApp({{ user_is_treasurer | tojson }})" x-cloak>
+<div x-data="ledgerApp({{ user_is_treasurer | tojson }}, {{ user_can_write_audit_reports | tojson }})" x-cloak>
   <h1 class="text-2xl font-bold mb-4">{{ _('ledger.title') }}</h1>
 
   <!-- Tabs -->
@@ -41,6 +41,16 @@
             class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
             :class="activeTab === 'assets' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
       {{ _('ledger.tab_assets') }}
+    </button>
+    <button @click="switchTab('reserves')"
+            class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
+            :class="activeTab === 'reserves' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+      {{ _('ledger.tab_reserves') }}
+    </button>
+    <button @click="switchTab('audit-reports')"
+            class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
+            :class="activeTab === 'audit-reports' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+      {{ _('ledger.tab_audit_reports') }}
     </button>
   </div>
 
@@ -869,6 +879,177 @@
     </template>
   </div>
 
+  <!-- ================= Rücklagen & Mittelverwendung ================= -->
+  <div x-show="activeTab === 'reserves'">
+    <h2 class="text-xl font-semibold mb-1">{{ _('ledger.mittelverwendung_title') }}</h2>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">{{ _('ledger.mittelverwendung_hint') }}</p>
+
+    <div class="flex items-center gap-2 mb-4">
+      <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.report_year') }}</label>
+      <select x-model.number="mittelverwendungYear" @change="loadMittelverwendung()"
+              class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+        <template x-for="y in yearOptions" :key="y">
+          <option :value="y" x-text="y"></option>
+        </template>
+      </select>
+    </div>
+
+    <div x-show="mittelverwendungError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="mittelverwendungError"></div>
+
+    <template x-if="loadingMittelverwendung">
+      <div class="text-gray-400 dark:text-gray-500 text-sm mb-8">Loading…</div>
+    </template>
+    <template x-if="!loadingMittelverwendung && mittelverwendung">
+      <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-8">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+          <div class="text-xs text-gray-400 dark:text-gray-500 uppercase">{{ _('ledger.col_relevant_net_result') }}</div>
+          <div class="text-lg font-bold" x-text="fmt(mittelverwendung.cumulative_relevant_net_result)"></div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+          <div class="text-xs text-gray-400 dark:text-gray-500 uppercase">{{ _('ledger.col_zufuehrungen') }}</div>
+          <div class="text-lg font-bold" x-text="fmt(mittelverwendung.cumulative_reserve_zufuehrungen)"></div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+          <div class="text-xs text-gray-400 dark:text-gray-500 uppercase">{{ _('ledger.col_aufloesungen') }}</div>
+          <div class="text-lg font-bold" x-text="fmt(mittelverwendung.cumulative_reserve_aufloesungen)"></div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+          <div class="text-xs text-gray-400 dark:text-gray-500 uppercase">{{ _('ledger.col_available_funds') }}</div>
+          <div class="text-lg font-bold" :class="parseFloat(mittelverwendung.available_funds) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'" x-text="fmt(mittelverwendung.available_funds)"></div>
+        </div>
+      </div>
+    </template>
+
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+      <h2 class="text-xl font-semibold">{{ _('ledger.reserves_title') }}</h2>
+      <button x-show="userIsTreasurer" @click="openReserveModal()"
+              class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+        {{ _('ledger.btn_new_reserve') }}
+      </button>
+    </div>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">{{ _('ledger.reserves_hint') }}</p>
+
+    <div x-show="reservesError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="reservesError"></div>
+
+    <template x-if="loadingReserves">
+      <div class="text-gray-400 dark:text-gray-500 text-sm">Loading…</div>
+    </template>
+    <template x-if="!loadingReserves && reserves.length === 0">
+      <p class="text-gray-400 dark:text-gray-500">{{ _('ledger.reserves_empty') }}</p>
+    </template>
+    <template x-if="!loadingReserves && reserves.length > 0">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
+            <tr>
+              <th class="px-4 py-3 text-left">{{ _('common.name') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_kind') }}</th>
+              <th class="px-4 py-3 text-left" x-show="config.spheres_enabled">{{ _('ledger.col_sphere') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_purpose') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_target_date') }}</th>
+              <th class="px-4 py-3 text-right">{{ _('ledger.col_balance') }}</th>
+              <th class="px-4 py-3 text-left" x-show="userIsTreasurer">{{ _('ledger.col_actions') }}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+            <template x-for="r in reserves" :key="r.id">
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                <td class="px-4 py-3 font-medium" x-text="r.name"></td>
+                <td class="px-4 py-3" x-text="RESERVE_KIND_L[r.kind]"></td>
+                <td class="px-4 py-3 text-xs" x-show="config.spheres_enabled" x-text="sphereLabel(r.sphere)"></td>
+                <td class="px-4 py-3 text-xs" x-text="r.purpose || '—'"></td>
+                <td class="px-4 py-3 whitespace-nowrap" x-text="r.target_date || '—'"></td>
+                <td class="px-4 py-3 text-right font-mono" x-text="fmt(r.balance)"></td>
+                <td class="px-4 py-3 whitespace-nowrap" x-show="userIsTreasurer">
+                  <button @click="openMovementsModal(r)" class="text-blue-600 dark:text-blue-400 hover:underline text-xs mr-2">
+                    {{ _('ledger.btn_manage_movements') }}
+                  </button>
+                  <button @click="openEditReserveModal(r)" class="text-blue-600 dark:text-blue-400 hover:underline text-xs mr-2">
+                    {{ _('common.edit') }}
+                  </button>
+                  <button @click="deleteReserve(r)" class="text-red-600 dark:text-red-400 hover:underline text-xs">
+                    {{ _('common.remove') }}
+                  </button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- ================= Kassenprüfung (audit reports) ================= -->
+  <div x-show="activeTab === 'audit-reports'">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+      <h2 class="text-xl font-semibold">{{ _('ledger.audit_reports_title') }}</h2>
+      <button x-show="userCanWriteAuditReports" @click="openAuditReportModal()"
+              class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+        {{ _('ledger.btn_new_audit_report') }}
+      </button>
+    </div>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">{{ _('ledger.audit_reports_hint') }}</p>
+
+    <div x-show="auditReportsError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="auditReportsError"></div>
+
+    <template x-if="loadingAuditReports">
+      <div class="text-gray-400 dark:text-gray-500 text-sm">Loading…</div>
+    </template>
+    <template x-if="!loadingAuditReports && auditReports.length === 0">
+      <p class="text-gray-400 dark:text-gray-500">{{ _('ledger.audit_reports_empty') }}</p>
+    </template>
+    <template x-if="!loadingAuditReports && auditReports.length > 0">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
+            <tr>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_period') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_audit_date') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_auditors') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_discharge') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.label_findings') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_paperless') }}</th>
+              <th class="px-4 py-3 text-left" x-show="userCanWriteAuditReports">{{ _('ledger.col_actions') }}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+            <template x-for="a in auditReports" :key="a.id">
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 align-top">
+                <td class="px-4 py-3 whitespace-nowrap" x-text="a.period_start + ' – ' + a.period_end"></td>
+                <td class="px-4 py-3 whitespace-nowrap" x-text="a.audit_date"></td>
+                <td class="px-4 py-3" x-text="a.auditors"></td>
+                <td class="px-4 py-3">
+                  <span class="px-2 py-0.5 rounded text-xs font-medium"
+                        :class="a.recommends_discharge ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'"
+                        x-text="a.recommends_discharge ? YES_NO_L.yes : YES_NO_L.no"></span>
+                </td>
+                <td class="px-4 py-3 text-xs max-w-xs" x-text="a.findings || '—'"></td>
+                <td class="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">
+                  <a x-show="a.paperless_document_id && config.paperless_url" :href="paperlessDocUrl(a.paperless_document_id)"
+                     target="_blank" rel="noopener" class="text-blue-600 dark:text-blue-400 hover:underline" x-text="a.paperless_document_id"></a>
+                  <span x-show="a.paperless_document_id && !config.paperless_url" x-text="a.paperless_document_id"></span>
+                  <span x-show="!a.paperless_document_id">—</span>
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap" x-show="userCanWriteAuditReports">
+                  <button @click="openEditAuditReportModal(a)" class="text-blue-600 dark:text-blue-400 hover:underline text-xs mr-2">
+                    {{ _('common.edit') }}
+                  </button>
+                  <button @click="deleteAuditReport(a)" class="text-red-600 dark:text-red-400 hover:underline text-xs">
+                    {{ _('common.remove') }}
+                  </button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </template>
+  </div>
+
   <!-- ============ Book Target Payout Modal ============ -->
   <div x-show="showTargetPayoutModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
        @mousedown.self="modalMousedownOutside = true">
@@ -1314,6 +1495,195 @@
       </form>
     </div>
   </div>
+
+  <!-- ============ Reserve (Rücklage) Modal ============ -->
+  <div x-show="showReserveModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+       @mousedown.self="modalMousedownOutside = true">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6"
+         @mousedown="modalMousedownOutside = false" @click.outside="if (modalMousedownOutside) showReserveModal = false">
+      <h2 class="text-lg font-bold mb-4" x-text="editingReserveId ? RESERVE_MODAL_TITLE_EDIT_L : RESERVE_MODAL_TITLE_CREATE_L"></h2>
+      <div x-show="reserveError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="reserveError"></div>
+      <form @submit.prevent="submitReserve()" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('common.name') }}</label>
+          <input type="text" x-model="reserveForm.name" required
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_reserve_kind') }}</label>
+          <select x-model="reserveForm.kind" required
+                  class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="">{{ _('ledger.select_reserve_kind') }}</option>
+            <option value="frei">{{ _('ledger.reserve_kind_frei') }}</option>
+            <option value="zweckgebunden">{{ _('ledger.reserve_kind_zweckgebunden') }}</option>
+            <option value="betriebsmittel">{{ _('ledger.reserve_kind_betriebsmittel') }}</option>
+            <option value="wiederbeschaffung">{{ _('ledger.reserve_kind_wiederbeschaffung') }}</option>
+          </select>
+        </div>
+        <div x-show="config.spheres_enabled">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_sphere') }}</label>
+          <select x-model="reserveForm.sphere"
+                  class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="">{{ _('ledger.select_sphere') }}</option>
+            <option value="ideell">{{ _('ledger.sphere_ideell') }}</option>
+            <option value="vermoegensverwaltung">{{ _('ledger.sphere_vermoegensverwaltung') }}</option>
+            <option value="zweckbetrieb">{{ _('ledger.sphere_zweckbetrieb') }}</option>
+            <option value="wirtschaftlicher_geschaeftsbetrieb">{{ _('ledger.sphere_wirtschaftlicher_geschaeftsbetrieb') }}</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_purpose') }}</label>
+          <input type="text" x-model="reserveForm.purpose"
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_target_date') }}</label>
+          <input type="date" x-model="reserveForm.target_date"
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <p x-show="reserveForm.kind === 'zweckgebunden'" class="text-xs text-gray-400 dark:text-gray-500 mt-1">{{ _('ledger.reserve_zweckgebunden_hint') }}</p>
+        </div>
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" @click="showReserveModal = false"
+                  class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.cancel') }}</button>
+          <button type="submit" :disabled="reserveSubmitting"
+                  class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
+            <span x-show="!reserveSubmitting" x-text="editingReserveId ? SAVE_L : RESERVE_MODAL_TITLE_CREATE_L"></span>
+            <span x-show="reserveSubmitting">…</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ Reserve Movements Modal ============ -->
+  <div x-show="showMovementsModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+       @mousedown.self="modalMousedownOutside = true">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg p-6"
+         @mousedown="modalMousedownOutside = false" @click.outside="if (modalMousedownOutside) showMovementsModal = false">
+      <h2 class="text-lg font-bold mb-4" x-text="movementsReserve ? MOVEMENTS_MODAL_TITLE_TMPL.replace('{name}', movementsReserve.name) : ''"></h2>
+
+      <div x-show="movementsError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="movementsError"></div>
+
+      <template x-if="loadingMovements">
+        <div class="text-gray-400 dark:text-gray-500 text-sm mb-4">Loading…</div>
+      </template>
+      <template x-if="!loadingMovements && movements.length === 0">
+        <p class="text-gray-400 dark:text-gray-500 text-sm mb-4">{{ _('ledger.movements_empty') }}</p>
+      </template>
+      <template x-if="!loadingMovements && movements.length > 0">
+        <div class="mb-4 max-h-56 overflow-y-auto border dark:border-gray-700 rounded divide-y divide-gray-100 dark:divide-gray-700">
+          <template x-for="m in movements" :key="m.id">
+            <div class="flex items-center justify-between px-3 py-2 text-sm">
+              <div>
+                <span class="font-mono" x-text="m.movement_date"></span>
+                <span class="ml-2 font-mono" :class="parseFloat(m.amount) < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'" x-text="fmtSigned(m.amount)"></span>
+                <span x-show="m.note" class="ml-2 text-xs text-gray-500 dark:text-gray-400" x-text="m.note"></span>
+              </div>
+              <div class="flex gap-2 shrink-0 ml-2">
+                <button @click="editMovement(m)" class="text-blue-600 dark:text-blue-400 hover:underline text-xs">{{ _('common.edit') }}</button>
+                <button @click="deleteMovement(m)" class="text-red-600 dark:text-red-400 hover:underline text-xs">{{ _('common.remove') }}</button>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+
+      <form @submit.prevent="submitMovement()" class="space-y-3 border-t dark:border-gray-700 pt-4">
+        <div x-show="movementError" class="bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="movementError"></div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.col_date') }}</label>
+            <input type="date" x-model="movementForm.movement_date" required
+                   class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_amount') }}</label>
+            <input type="number" step="0.01" x-model="movementForm.amount" required
+                   class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+          </div>
+        </div>
+        <p class="text-xs text-gray-400 dark:text-gray-500">{{ _('ledger.movement_amount_hint') }}</p>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.col_note') }}</label>
+          <input type="text" x-model="movementForm.note"
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div class="flex justify-end gap-3 pt-1">
+          <button type="button" x-show="editingMovementId" @click="resetMovementForm()"
+                  class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.cancel') }}</button>
+          <button type="submit" :disabled="movementSubmitting"
+                  class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
+            <span x-show="!movementSubmitting" x-text="editingMovementId ? SAVE_L : ADD_MOVEMENT_L"></span>
+            <span x-show="movementSubmitting">…</span>
+          </button>
+        </div>
+      </form>
+
+      <div class="flex justify-end pt-4">
+        <button type="button" @click="showMovementsModal = false"
+                class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.cancel') }}</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Audit Report (Kassenprüfungsprotokoll) Modal ============ -->
+  <div x-show="showAuditReportModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+       @mousedown.self="modalMousedownOutside = true">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6"
+         @mousedown="modalMousedownOutside = false" @click.outside="if (modalMousedownOutside) showAuditReportModal = false">
+      <h2 class="text-lg font-bold mb-4" x-text="editingAuditReportId ? AUDIT_REPORT_MODAL_TITLE_EDIT_L : AUDIT_REPORT_MODAL_TITLE_CREATE_L"></h2>
+      <div x-show="auditReportError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="auditReportError"></div>
+      <form @submit.prevent="submitAuditReport()" class="space-y-4">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_period_start') }}</label>
+            <input type="date" x-model="auditReportForm.period_start" required
+                   class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_period_end') }}</label>
+            <input type="date" x-model="auditReportForm.period_end" required
+                   class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_audit_date') }}</label>
+          <input type="date" x-model="auditReportForm.audit_date" required
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_auditors') }}</label>
+          <input type="text" x-model="auditReportForm.auditors" required placeholder="Max Mustermann, Erika Musterfrau"
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_findings') }}</label>
+          <textarea x-model="auditReportForm.findings" rows="4"
+                    class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"></textarea>
+        </div>
+        <div>
+          <label class="inline-flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" x-model="auditReportForm.recommends_discharge" class="rounded border-gray-300 dark:border-gray-600">
+            <span class="text-sm text-gray-700 dark:text-gray-300">{{ _('ledger.label_recommends_discharge') }}</span>
+          </label>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_paperless_id') }}</label>
+          <input type="text" x-model="auditReportForm.paperless_document_id" placeholder="{{ _('ledger.placeholder_paperless_id') }}"
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" @click="showAuditReportModal = false"
+                  class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.cancel') }}</button>
+          <button type="submit" :disabled="auditReportSubmitting"
+                  class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
+            <span x-show="!auditReportSubmitting" x-text="editingAuditReportId ? SAVE_L : AUDIT_REPORT_MODAL_TITLE_CREATE_L"></span>
+            <span x-show="auditReportSubmitting">…</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -1362,6 +1732,21 @@ const ASSET_MODAL_TITLE_CREATE_L = {{ _('ledger.asset_modal_title_create') | toj
 const ASSET_MODAL_TITLE_EDIT_L = {{ _('ledger.asset_modal_title_edit') | tojson }};
 const ASSET_REMOVE_CONFIRM_L = {{ _('ledger.asset_remove_confirm') | tojson }};
 const SAVE_L = {{ _('common.save') | tojson }};
+const RESERVE_MODAL_TITLE_CREATE_L = {{ _('ledger.reserve_modal_title_create') | tojson }};
+const RESERVE_MODAL_TITLE_EDIT_L = {{ _('ledger.reserve_modal_title_edit') | tojson }};
+const RESERVE_REMOVE_CONFIRM_L = {{ _('ledger.reserve_remove_confirm') | tojson }};
+const MOVEMENT_REMOVE_CONFIRM_L = {{ _('ledger.movement_remove_confirm') | tojson }};
+const MOVEMENTS_MODAL_TITLE_TMPL = {{ _('ledger.movements_modal_title') | tojson }};
+const ADD_MOVEMENT_L = {{ _('ledger.btn_add_movement') | tojson }};
+const RESERVE_KIND_L = {
+  frei: {{ _('ledger.reserve_kind_frei') | tojson }},
+  zweckgebunden: {{ _('ledger.reserve_kind_zweckgebunden') | tojson }},
+  betriebsmittel: {{ _('ledger.reserve_kind_betriebsmittel') | tojson }},
+  wiederbeschaffung: {{ _('ledger.reserve_kind_wiederbeschaffung') | tojson }},
+};
+const AUDIT_REPORT_MODAL_TITLE_CREATE_L = {{ _('ledger.audit_report_modal_title_create') | tojson }};
+const AUDIT_REPORT_MODAL_TITLE_EDIT_L = {{ _('ledger.audit_report_modal_title_edit') | tojson }};
+const AUDIT_REPORT_REMOVE_CONFIRM_L = {{ _('ledger.audit_report_remove_confirm') | tojson }};
 const CSV_FIELDS = [
   { key: 'booking_date_column', required: true, label: {{ _('ledger.csv_field_booking_date') | tojson }} },
   { key: 'amount_column', required: true, label: {{ _('ledger.csv_field_amount') | tojson }} },
@@ -1373,9 +1758,10 @@ const CSV_FIELDS = [
   { key: 'balance_after_column', required: false, label: {{ _('ledger.csv_field_balance_after') | tojson }} },
 ];
 
-function ledgerApp(userIsTreasurer) {
+function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
   return {
     userIsTreasurer,
+    userCanWriteAuditReports,
     activeTab: 'entries',
     config: { spheres_enabled: true },
     // Shared by every modal's backdrop-click-to-close: a text-selection drag
@@ -1495,6 +1881,39 @@ function ledgerApp(userIsTreasurer) {
     assetError: null,
     assetSubmitting: false,
 
+    reserves: [],
+    loadingReserves: true,
+    reservesError: null,
+    showReserveModal: false,
+    editingReserveId: null,
+    reserveForm: { name: '', kind: '', sphere: '', purpose: '', target_date: '' },
+    reserveError: null,
+    reserveSubmitting: false,
+
+    mittelverwendungYear: new Date().getFullYear(),
+    mittelverwendung: null,
+    loadingMittelverwendung: false,
+    mittelverwendungError: null,
+
+    showMovementsModal: false,
+    movementsReserve: null,
+    movements: [],
+    loadingMovements: false,
+    movementsError: null,
+    editingMovementId: null,
+    movementForm: { movement_date: '', amount: '', note: '' },
+    movementError: null,
+    movementSubmitting: false,
+
+    auditReports: [],
+    loadingAuditReports: true,
+    auditReportsError: null,
+    showAuditReportModal: false,
+    editingAuditReportId: null,
+    auditReportForm: { period_start: '', period_end: '', audit_date: '', auditors: '', findings: '', recommends_discharge: true, paperless_document_id: '' },
+    auditReportError: null,
+    auditReportSubmitting: false,
+
     get activeCategories() {
       return this.categories.filter(c => c.active);
     },
@@ -1567,6 +1986,11 @@ function ledgerApp(userIsTreasurer) {
         this.loadTargets();
         this.loadTargetPayouts();
       }
+      if (tab === 'reserves') {
+        this.loadReserves();
+        this.loadMittelverwendung();
+      }
+      if (tab === 'audit-reports') this.loadAuditReports();
     },
 
     get importSummaryText() {
@@ -2686,6 +3110,272 @@ function ledgerApp(userIsTreasurer) {
         await this.loadAssets();
       } catch (e) {
         if (e !== 'unauthenticated') this.assetsError = e.message || String(e);
+      }
+    },
+
+    // --- reserves (Rücklagen) ---
+    async loadReserves() {
+      this.loadingReserves = true;
+      this.reservesError = null;
+      try {
+        const r = await apiFetch('/api/v1/ledger/reserves');
+        if (!r.ok) throw new Error('Failed to load reserves');
+        this.reserves = await r.json();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.reservesError = e.message || String(e);
+      } finally {
+        this.loadingReserves = false;
+      }
+    },
+
+    async loadMittelverwendung() {
+      this.loadingMittelverwendung = true;
+      this.mittelverwendungError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/report/mittelverwendung?year=${this.mittelverwendungYear}`);
+        if (!r.ok) throw new Error('Failed to load report');
+        this.mittelverwendung = await r.json();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.mittelverwendungError = e.message || String(e);
+      } finally {
+        this.loadingMittelverwendung = false;
+      }
+    },
+
+    openReserveModal() {
+      this.editingReserveId = null;
+      this.reserveForm = { name: '', kind: '', sphere: '', purpose: '', target_date: '' };
+      this.reserveError = null;
+      this.showReserveModal = true;
+    },
+
+    openEditReserveModal(reserve) {
+      this.editingReserveId = reserve.id;
+      this.reserveForm = {
+        name: reserve.name, kind: reserve.kind, sphere: reserve.sphere || '',
+        purpose: reserve.purpose || '', target_date: reserve.target_date || '',
+      };
+      this.reserveError = null;
+      this.showReserveModal = true;
+    },
+
+    async submitReserve() {
+      this.reserveSubmitting = true;
+      this.reserveError = null;
+      try {
+        const payload = {
+          name: this.reserveForm.name,
+          kind: this.reserveForm.kind,
+          sphere: this.config.spheres_enabled ? (this.reserveForm.sphere || null) : null,
+          purpose: this.reserveForm.purpose || null,
+          target_date: this.reserveForm.target_date || null,
+        };
+        if (this.editingReserveId && !this.reserveForm.target_date) payload.clear_target_date = true;
+        const url = this.editingReserveId
+          ? `/api/v1/ledger/reserves/${this.editingReserveId}` : '/api/v1/ledger/reserves';
+        const r = await apiFetch(url, {
+          method: this.editingReserveId ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          this.reserveError = data.detail || 'Error saving reserve';
+          return;
+        }
+        this.showReserveModal = false;
+        await this.loadReserves();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.reserveError = e.message || String(e);
+      } finally {
+        this.reserveSubmitting = false;
+      }
+    },
+
+    async deleteReserve(reserve) {
+      if (!confirm(RESERVE_REMOVE_CONFIRM_L)) return;
+      this.reservesError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/reserves/${reserve.id}`, { method: 'DELETE' });
+        if (!r.ok && r.status !== 404) {
+          const data = await r.json();
+          this.reservesError = data.detail || 'Error removing reserve';
+          return;
+        }
+        await this.loadReserves();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.reservesError = e.message || String(e);
+      }
+    },
+
+    resetMovementForm() {
+      this.editingMovementId = null;
+      this.movementForm = { movement_date: '', amount: '', note: '' };
+      this.movementError = null;
+    },
+
+    async openMovementsModal(reserve) {
+      this.movementsReserve = reserve;
+      this.resetMovementForm();
+      this.movementsError = null;
+      this.showMovementsModal = true;
+      await this.loadMovements();
+    },
+
+    async loadMovements() {
+      this.loadingMovements = true;
+      this.movementsError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/reserve-movements?reserve_id=${this.movementsReserve.id}`);
+        if (!r.ok) throw new Error('Failed to load movements');
+        this.movements = await r.json();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.movementsError = e.message || String(e);
+      } finally {
+        this.loadingMovements = false;
+      }
+    },
+
+    editMovement(movement) {
+      this.editingMovementId = movement.id;
+      this.movementForm = { movement_date: movement.movement_date, amount: movement.amount, note: movement.note || '' };
+      this.movementError = null;
+    },
+
+    async submitMovement() {
+      this.movementSubmitting = true;
+      this.movementError = null;
+      try {
+        const url = this.editingMovementId
+          ? `/api/v1/ledger/reserve-movements/${this.editingMovementId}` : '/api/v1/ledger/reserve-movements';
+        const body = this.editingMovementId
+          ? { movement_date: this.movementForm.movement_date, amount: this.movementForm.amount, note: this.movementForm.note || null }
+          : { reserve_id: this.movementsReserve.id, movement_date: this.movementForm.movement_date, amount: this.movementForm.amount, note: this.movementForm.note || null };
+        const r = await apiFetch(url, {
+          method: this.editingMovementId ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          this.movementError = data.detail || 'Error saving movement';
+          return;
+        }
+        this.resetMovementForm();
+        await this.loadMovements();
+        await this.loadReserves();
+        await this.loadMittelverwendung();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.movementError = e.message || String(e);
+      } finally {
+        this.movementSubmitting = false;
+      }
+    },
+
+    async deleteMovement(movement) {
+      if (!confirm(MOVEMENT_REMOVE_CONFIRM_L)) return;
+      this.movementsError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/reserve-movements/${movement.id}`, { method: 'DELETE' });
+        if (!r.ok && r.status !== 404) {
+          const data = await r.json();
+          this.movementsError = data.detail || 'Error removing movement';
+          return;
+        }
+        await this.loadMovements();
+        await this.loadReserves();
+        await this.loadMittelverwendung();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.movementsError = e.message || String(e);
+      }
+    },
+
+    // --- Kassenprüfung (audit reports) ---
+    async loadAuditReports() {
+      this.loadingAuditReports = true;
+      this.auditReportsError = null;
+      try {
+        const r = await apiFetch('/api/v1/ledger/audit-reports');
+        if (!r.ok) throw new Error('Failed to load audit reports');
+        this.auditReports = await r.json();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.auditReportsError = e.message || String(e);
+      } finally {
+        this.loadingAuditReports = false;
+      }
+    },
+
+    openAuditReportModal() {
+      this.editingAuditReportId = null;
+      this.auditReportForm = {
+        period_start: '', period_end: '', audit_date: '', auditors: '',
+        findings: '', recommends_discharge: true, paperless_document_id: '',
+      };
+      this.auditReportError = null;
+      this.showAuditReportModal = true;
+    },
+
+    openEditAuditReportModal(report) {
+      this.editingAuditReportId = report.id;
+      this.auditReportForm = {
+        period_start: report.period_start, period_end: report.period_end, audit_date: report.audit_date,
+        auditors: report.auditors, findings: report.findings || '',
+        recommends_discharge: report.recommends_discharge, paperless_document_id: report.paperless_document_id || '',
+      };
+      this.auditReportError = null;
+      this.showAuditReportModal = true;
+    },
+
+    async submitAuditReport() {
+      this.auditReportSubmitting = true;
+      this.auditReportError = null;
+      try {
+        const payload = {
+          period_start: this.auditReportForm.period_start,
+          period_end: this.auditReportForm.period_end,
+          audit_date: this.auditReportForm.audit_date,
+          auditors: this.auditReportForm.auditors,
+          findings: this.auditReportForm.findings || null,
+          recommends_discharge: this.auditReportForm.recommends_discharge,
+          paperless_document_id: this.auditReportForm.paperless_document_id || null,
+        };
+        if (this.editingAuditReportId && !this.auditReportForm.paperless_document_id) {
+          payload.clear_paperless_document_id = true;
+        }
+        const url = this.editingAuditReportId
+          ? `/api/v1/ledger/audit-reports/${this.editingAuditReportId}` : '/api/v1/ledger/audit-reports';
+        const r = await apiFetch(url, {
+          method: this.editingAuditReportId ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          this.auditReportError = data.detail || 'Error saving audit report';
+          return;
+        }
+        this.showAuditReportModal = false;
+        await this.loadAuditReports();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.auditReportError = e.message || String(e);
+      } finally {
+        this.auditReportSubmitting = false;
+      }
+    },
+
+    async deleteAuditReport(report) {
+      if (!confirm(AUDIT_REPORT_REMOVE_CONFIRM_L)) return;
+      this.auditReportsError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/audit-reports/${report.id}`, { method: 'DELETE' });
+        if (!r.ok && r.status !== 404) {
+          const data = await r.json();
+          this.auditReportsError = data.detail || 'Error removing audit report';
+          return;
+        }
+        await this.loadAuditReports();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.auditReportsError = e.message || String(e);
       }
     },
   };

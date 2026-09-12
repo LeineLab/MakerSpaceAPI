@@ -4,7 +4,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.ledger import LedgerCategoryKind, LedgerImportStatus, LedgerSphere
+from app.models.ledger import LedgerCategoryKind, LedgerImportStatus, LedgerReserveKind, LedgerSphere
 
 
 class BankAccountCreate(BaseModel):
@@ -259,6 +259,126 @@ class EuerReportResponse(BaseModel):
     total_income: Decimal = Field(examples=[Decimal("5000.00")])
     total_expense: Decimal = Field(examples=[Decimal("3200.00")])
     net_result: Decimal = Field(examples=[Decimal("1800.00")])
+
+
+class LedgerReserveCreate(BaseModel):
+    """`purpose`/`target_date` are required when `kind == 'zweckgebunden'` —
+    a zweckgebundene Rücklage legally needs a concrete plan and timeframe,
+    checked in the endpoint (not the DB). `sphere` is purely informational
+    here (never required, unlike LedgerCategory)."""
+    name: str = Field(examples=["Wiederbeschaffung Lasercutter"])
+    kind: LedgerReserveKind
+    sphere: Optional[LedgerSphere] = None
+    purpose: Optional[str] = None
+    target_date: Optional[date] = None
+
+
+class LedgerReserveUpdate(BaseModel):
+    name: Optional[str] = None
+    kind: Optional[LedgerReserveKind] = None
+    sphere: Optional[LedgerSphere] = None
+    purpose: Optional[str] = None
+    target_date: Optional[date] = None
+    clear_target_date: bool = False
+
+
+class LedgerReserveResponse(BaseModel):
+    id: int
+    name: str
+    kind: LedgerReserveKind
+    sphere: Optional[LedgerSphere]
+    purpose: Optional[str]
+    target_date: Optional[date]
+    balance: Decimal = Field(examples=[Decimal("500.00")])
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LedgerReserveMovementCreate(BaseModel):
+    """Positive `amount` = Zuführung (earmarking funds into the reserve),
+    negative = Auflösung/Entnahme (releasing them back for general use)."""
+    reserve_id: int
+    movement_date: date
+    amount: Decimal = Field(examples=[Decimal("500.00")])
+    note: Optional[str] = None
+
+
+class LedgerReserveMovementUpdate(BaseModel):
+    movement_date: Optional[date] = None
+    amount: Optional[Decimal] = None
+    note: Optional[str] = None
+
+
+class LedgerReserveMovementResponse(BaseModel):
+    id: int
+    reserve_id: int
+    movement_date: date
+    amount: Decimal = Field(examples=[Decimal("500.00")])
+    note: Optional[str]
+    created_by: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MittelverwendungReportResponse(BaseModel):
+    """Rücklagen/Mittelverwendungsrechnung (§55/§62 AO): a running Vortrag of
+    surplus that must be used in a timely manner, net of what's legitimately
+    earmarked into reserves. `cumulative_relevant_net_result` sums the EÜR
+    net result (income minus expense) of every category NOT in the
+    wirtschaftlicher Geschäftsbetrieb Sphäre, from the beginning of the
+    ledger's history through 31.12 of `year` — that Sphäre's after-tax
+    surplus is treated as more freely usable and excluded here; this
+    simplification (like the EÜR-Sphäre mapping itself) should be checked
+    against the Verein's own situation by its Kassenprüfer/Steuerberater.
+    `available_funds = cumulative_relevant_net_result - cumulative_zufuehrungen
+    + cumulative_aufloesungen` — the amount still awaiting timely use."""
+    year: int
+    cumulative_relevant_net_result: Decimal = Field(examples=[Decimal("4200.00")])
+    cumulative_reserve_zufuehrungen: Decimal = Field(examples=[Decimal("1500.00")])
+    cumulative_reserve_aufloesungen: Decimal = Field(examples=[Decimal("300.00")])
+    available_funds: Decimal = Field(examples=[Decimal("3000.00")])
+    reserves: list[LedgerReserveResponse]
+
+
+class LedgerAuditReportCreate(BaseModel):
+    """A Kassenprüfungsprotokoll. `auditors` is free text (e.g. "Max
+    Mustermann, Erika Musterfrau") — Kassenprüfer are elected members, not
+    necessarily app users. Writing requires the narrower auditor-only
+    permission (see Key Design Decision #37), not just any treasurer."""
+    period_start: date
+    period_end: date
+    audit_date: date
+    auditors: str = Field(examples=["Max Mustermann, Erika Musterfrau"])
+    findings: Optional[str] = None
+    recommends_discharge: bool = True
+    paperless_document_id: Optional[str] = None
+
+
+class LedgerAuditReportUpdate(BaseModel):
+    period_start: Optional[date] = None
+    period_end: Optional[date] = None
+    audit_date: Optional[date] = None
+    auditors: Optional[str] = None
+    findings: Optional[str] = None
+    recommends_discharge: Optional[bool] = None
+    paperless_document_id: Optional[str] = None
+    clear_paperless_document_id: bool = False
+
+
+class LedgerAuditReportResponse(BaseModel):
+    id: int
+    period_start: date
+    period_end: date
+    audit_date: date
+    auditors: str
+    findings: Optional[str]
+    recommends_discharge: bool
+    paperless_document_id: Optional[str]
+    created_by: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LedgerImportLineResponse(BaseModel):
