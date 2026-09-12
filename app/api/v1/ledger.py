@@ -240,6 +240,68 @@ def update_account(
 
 # --- Ledger categories (Kontenrahmen) ---
 
+def _normalize_match_keywords(keywords: list[str]) -> list[str]:
+    """Trim, drop empties, and dedupe case-insensitively while preserving the
+    first-seen casing — order otherwise preserved."""
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for kw in keywords:
+        kw = kw.strip()
+        if not kw:
+            continue
+        key = kw.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(kw)
+    return normalized
+
+
+def _validate_match_keywords_no_overlap(
+    db: Session, keywords: list[str], exclude_category_id: Optional[int] = None
+) -> None:
+    """A purpose text containing one keyword must never ambiguously match two
+    categories — so no new keyword may be a substring of (or contain) an
+    existing keyword already used by a *different* category, case-
+    insensitively (e.g. "Keks" is rejected once "Keksdose" is registered
+    elsewhere). Keywords within the same category aren't checked against
+    each other — redundant, but harmless."""
+    if not keywords:
+        return
+    q = db.query(LedgerCategory).filter(LedgerCategory.match_keywords.isnot(None))
+    if exclude_category_id is not None:
+        q = q.filter(LedgerCategory.id != exclude_category_id)
+    for other in q.all():
+        for other_kw in other.match_keywords or []:
+            other_lower = other_kw.lower()
+            for new_kw in keywords:
+                new_lower = new_kw.lower()
+                if other_lower in new_lower or new_lower in other_lower:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"Match keyword '{new_kw}' overlaps with '{other_kw}' already used by "
+                            f"category '{other.name}' — a purpose text containing one could "
+                            f"ambiguously match both categories"
+                        ),
+                    )
+
+
+def _suggest_category_id(
+    purpose_text: Optional[str], categories_with_keywords: list[tuple[int, list[str]]]
+) -> Optional[int]:
+    """First category (in the given order) whose match_keywords contains a
+    case-insensitive substring of purpose_text — advisory only, see #45."""
+    if not purpose_text:
+        return None
+    text_lower = purpose_text.lower()
+    for category_id, keywords in categories_with_keywords:
+        for kw in keywords:
+            if kw.lower() in text_lower:
+                return category_id
+    return None
+
+
 @router.get("/categories", response_model=list[LedgerCategoryResponse])
 def list_categories(
     include_inactive: bool = Query(default=False),
@@ -265,8 +327,11 @@ def create_category(
     # Ignore any sphere sent while the feature is disabled, so the data stays
     # consistent with the current setting regardless of what a caller sends.
     sphere = body.sphere if settings.LEDGER_SPHERES_ENABLED else None
+    match_keywords = _normalize_match_keywords(body.match_keywords or [])
+    _validate_match_keywords_no_overlap(db, match_keywords)
     category = LedgerCategory(
-        name=body.name, slug=body.slug, kind=body.kind, sphere=sphere, active=True
+        name=body.name, slug=body.slug, kind=body.kind, sphere=sphere, active=True,
+        match_keywords=match_keywords or None,
     )
     db.add(category)
     db.commit()
@@ -312,6 +377,13 @@ def update_category(
         category.name = body.name
     if body.active is not None:
         category.active = body.active
+    if body.match_keywords is not None:
+        # Purely advisory (#45) — never reclassifies past bookings, so this
+        # is freely editable regardless of whether the category is in use,
+        # unlike slug/kind/sphere above.
+        match_keywords = _normalize_match_keywords(body.match_keywords)
+        _validate_match_keywords_no_overlap(db, match_keywords, exclude_category_id=category_id)
+        category.match_keywords = match_keywords or None
     db.commit()
     db.refresh(category)
     return category
@@ -1828,10 +1900,24 @@ def list_import_lines(
             or_(LedgerImportLine.purpose_text.ilike(like), LedgerImportLine.counterparty_name.ilike(like))
         )
     response.headers["X-Total-Count"] = str(query.count())
-    return (
+    lines = (
         query.order_by(LedgerImportLine.booking_date.desc(), LedgerImportLine.id.desc())
         .offset(offset).limit(limit).all()
     )
+
+    # suggested_category_id (#45): computed here, not stored — active
+    # categories' match_keywords against each line's purpose_text.
+    categories_with_keywords = [
+        (c.id, c.match_keywords) for c in
+        db.query(LedgerCategory).filter(
+            LedgerCategory.active.is_(True), LedgerCategory.match_keywords.isnot(None)
+        ).all()
+        if c.match_keywords
+    ]
+    for line in lines:
+        line.suggested_category_id = _suggest_category_id(line.purpose_text, categories_with_keywords)
+
+    return lines
 
 
 @router.post(

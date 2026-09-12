@@ -123,6 +123,11 @@ class LedgerCategory(Base):
     # always NULL when that's disabled (e.g. a commercial installation).
     sphere: Mapped[Optional[LedgerSphere]] = mapped_column(Enum(LedgerSphere), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Migration 0017: terms matched case-insensitively (substring) against a
+    # staging line's purpose_text to compute a suggested_category_id — advisory
+    # only, never enforced. No two categories may have overlapping keywords
+    # (checked in the API layer, not the DB) — see Key Design Decision #45.
+    match_keywords: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
 
 
 class LedgerEntry(Base):

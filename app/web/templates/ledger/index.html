@@ -323,7 +323,9 @@
               <th class="px-4 py-3 text-left">{{ _('common.slug') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_kind') }}</th>
               <th class="px-4 py-3 text-left" x-show="config.spheres_enabled">{{ _('ledger.col_sphere') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_match_keywords') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_active') }}</th>
+              <th class="px-4 py-3 text-left" x-show="userIsTreasurer">{{ _('ledger.col_actions') }}</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -337,6 +339,8 @@
                         x-text="c.kind === 'income' ? KIND_L.income : KIND_L.expense"></span>
                 </td>
                 <td class="px-4 py-3 text-xs" x-show="config.spheres_enabled" x-text="sphereLabel(c.sphere)"></td>
+                <td class="px-4 py-3 text-xs text-gray-500 dark:text-gray-400"
+                    x-text="(c.match_keywords && c.match_keywords.length) ? c.match_keywords.join(', ') : '—'"></td>
                 <td class="px-4 py-3">
                   <label class="inline-flex items-center gap-2" :class="userIsTreasurer ? 'cursor-pointer' : 'opacity-60'">
                     <input type="checkbox" :checked="c.active" :disabled="!userIsTreasurer"
@@ -344,6 +348,11 @@
                            class="rounded border-gray-300 dark:border-gray-600">
                     <span class="text-xs text-gray-500 dark:text-gray-400" x-text="c.active ? ACTIVE_L.active : ACTIVE_L.inactive"></span>
                   </label>
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap" x-show="userIsTreasurer">
+                  <button @click="openCategoryModal(c)" class="text-blue-600 dark:text-blue-400 hover:underline text-xs">
+                    {{ _('common.edit') }}
+                  </button>
                 </td>
               </tr>
             </template>
@@ -1320,6 +1329,9 @@
 
         <div x-show="!bookForm.isTransfer">
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ _('ledger.lines_title') }}</label>
+          <p x-show="bookCategorySuggested" class="text-xs text-amber-600 dark:text-amber-400 mb-2">
+            {{ _('ledger.category_autofill_hint') }}
+          </p>
           <div class="space-y-2">
             <template x-for="(line, idx) in bookForm.category_lines" :key="idx">
               <div>
@@ -1554,9 +1566,9 @@
        @mousedown.self="modalMousedownOutside = true">
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6"
          @mousedown="modalMousedownOutside = false" @click.outside="if (modalMousedownOutside) showCategoryModal = false">
-      <h2 class="text-lg font-bold mb-4">{{ _('ledger.category_modal_title') }}</h2>
+      <h2 class="text-lg font-bold mb-4" x-text="editingCategoryId ? CATEGORY_MODAL_TITLE_EDIT_L : CATEGORY_MODAL_TITLE_L"></h2>
       <div x-show="categoryError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="categoryError"></div>
-      <form @submit.prevent="createCategory()" class="space-y-4">
+      <form @submit.prevent="submitCategory()" class="space-y-4">
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('common.name') }}</label>
           <input type="text" x-model="categoryForm.name" required
@@ -1587,12 +1599,18 @@
             <option value="wirtschaftlicher_geschaeftsbetrieb">{{ _('ledger.sphere_wirtschaftlicher_geschaeftsbetrieb') }}</option>
           </select>
         </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_match_keywords') }}</label>
+          <input type="text" x-model="categoryForm.match_keywords" placeholder="{{ _('ledger.placeholder_match_keywords') }}"
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">{{ _('ledger.match_keywords_hint') }}</p>
+        </div>
         <div class="flex justify-end gap-3 pt-2">
           <button type="button" @click="showCategoryModal = false"
                   class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.cancel') }}</button>
           <button type="submit" :disabled="categorySubmitting"
                   class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
-            <span x-show="!categorySubmitting">{{ _('ledger.btn_create_category') }}</span>
+            <span x-show="!categorySubmitting" x-text="editingCategoryId ? SAVE_L : CATEGORY_BTN_CREATE_L"></span>
             <span x-show="categorySubmitting">…</span>
           </button>
         </div>
@@ -1914,6 +1932,9 @@ const SAVE_L = {{ _('common.save') | tojson }};
 const RESERVE_MODAL_TITLE_CREATE_L = {{ _('ledger.reserve_modal_title_create') | tojson }};
 const RESERVE_MODAL_TITLE_EDIT_L = {{ _('ledger.reserve_modal_title_edit') | tojson }};
 const RESERVE_REMOVE_CONFIRM_L = {{ _('ledger.reserve_remove_confirm') | tojson }};
+const CATEGORY_MODAL_TITLE_L = {{ _('ledger.category_modal_title') | tojson }};
+const CATEGORY_MODAL_TITLE_EDIT_L = {{ _('ledger.category_modal_title_edit') | tojson }};
+const CATEGORY_BTN_CREATE_L = {{ _('ledger.btn_create_category') | tojson }};
 const MOVEMENT_REMOVE_CONFIRM_L = {{ _('ledger.movement_remove_confirm') | tojson }};
 const MOVEMENTS_MODAL_TITLE_TMPL = {{ _('ledger.movements_modal_title') | tojson }};
 const ADD_MOVEMENT_L = {{ _('ledger.btn_add_movement') | tojson }};
@@ -1977,7 +1998,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     loadingCategories: true,
     categoriesError: null,
     showCategoryModal: false,
-    categoryForm: { name: '', slug: '', kind: '', sphere: '' },
+    editingCategoryId: null,
+    categoryForm: { name: '', slug: '', kind: '', sphere: '', match_keywords: '' },
     categoryError: null,
     categorySubmitting: false,
 
@@ -2014,6 +2036,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     showBookModal: false,
     bookingLine: null,
     bookForm: { description: '', category_lines: [], isTransfer: false, transferAccountId: '', matchedImportLineId: '' },
+    bookCategorySuggested: false,
     bookError: null,
     bookSubmitting: false,
     transferCandidates: [],
@@ -2759,29 +2782,66 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     },
 
     // --- categories ---
-    openCategoryModal() {
-      this.categoryForm = { name: '', slug: '', kind: '', sphere: '' };
+    openCategoryModal(category = null) {
+      if (category) {
+        this.editingCategoryId = category.id;
+        this.categoryForm = {
+          name: category.name, slug: category.slug, kind: category.kind,
+          sphere: category.sphere || '',
+          match_keywords: (category.match_keywords || []).join(', '),
+        };
+      } else {
+        this.editingCategoryId = null;
+        this.categoryForm = { name: '', slug: '', kind: '', sphere: '', match_keywords: '' };
+      }
       this.categoryError = null;
       this.showCategoryModal = true;
     },
 
-    async createCategory() {
+    async submitCategory() {
       this.categorySubmitting = true;
       this.categoryError = null;
       try {
-        const r = await apiFetch('/api/v1/ledger/categories', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        const matchKeywords = this.categoryForm.match_keywords.split(',').map(s => s.trim()).filter(Boolean);
+        let url, method, payload;
+        if (this.editingCategoryId) {
+          // Only send fields that actually changed — slug/kind/sphere
+          // reclassify the category and are rejected (409) once it has
+          // booked lines (see #45/#28), so always resending the form's
+          // current values would 409 even a plain rename or match_keywords
+          // edit on a category that's already in use.
+          const original = this.categories.find(c => c.id === this.editingCategoryId) || {};
+          payload = {};
+          if (this.categoryForm.name !== original.name) payload.name = this.categoryForm.name;
+          if (this.categoryForm.slug !== original.slug) payload.slug = this.categoryForm.slug;
+          if (this.categoryForm.kind !== original.kind) payload.kind = this.categoryForm.kind;
+          const sphereValue = this.config.spheres_enabled ? (this.categoryForm.sphere || null) : null;
+          if (sphereValue !== (original.sphere || null)) payload.sphere = sphereValue;
+          const originalKeywords = original.match_keywords || [];
+          if (JSON.stringify(matchKeywords) !== JSON.stringify(originalKeywords)) {
+            payload.match_keywords = matchKeywords;
+          }
+          url = `/api/v1/ledger/categories/${this.editingCategoryId}`;
+          method = 'PUT';
+        } else {
+          payload = {
             name: this.categoryForm.name,
             slug: this.categoryForm.slug,
             kind: this.categoryForm.kind,
             sphere: this.config.spheres_enabled ? (this.categoryForm.sphere || null) : null,
-          }),
+            match_keywords: matchKeywords,
+          };
+          url = '/api/v1/ledger/categories';
+          method = 'POST';
+        }
+        const r = await apiFetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
         });
         const data = await r.json();
         if (!r.ok) {
-          this.categoryError = data.detail || 'Error creating category';
+          this.categoryError = data.detail || 'Error saving category';
           return;
         }
         this.showCategoryModal = false;
@@ -3037,9 +3097,21 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     // --- import: booking modal ---
     openBookModal(line) {
       this.bookingLine = line;
+      const firstLine = this.newBookCategoryLine();
+      // Autofill (#45): the staging line's own suggested_category_id
+      // (computed server-side from active categories' match_keywords
+      // against purpose_text) pre-fills the single default line with the
+      // category and the full amount — purely a starting point, freely
+      // overridable, same "advisory, not enforced" precedent as the sign
+      // warning and the GWG hint.
+      this.bookCategorySuggested = !!line.suggested_category_id;
+      if (line.suggested_category_id) {
+        firstLine.category_id = String(line.suggested_category_id);
+        firstLine.amount = (-parseFloat(line.amount)).toFixed(2);
+      }
       this.bookForm = {
         description: line.purpose_text || '',
-        category_lines: [this.newBookCategoryLine()],
+        category_lines: [firstLine],
         isTransfer: false,
         transferAccountId: '',
         matchedImportLineId: '',

@@ -73,11 +73,16 @@ class CsvPreviewResponse(BaseModel):
 
 class LedgerCategoryCreate(BaseModel):
     """`sphere` is required when settings.LEDGER_SPHERES_ENABLED is True (checked
-    in the endpoint), otherwise ignored and stored as None."""
+    in the endpoint), otherwise ignored and stored as None. `match_keywords`
+    (Key Design Decision #45) are matched case-insensitively as a substring
+    against a staging line's purpose_text to suggest this category at booking
+    time — no two categories may have an overlapping keyword (checked in the
+    endpoint)."""
     name: str = Field(examples=["Mitgliedsbeiträge"])
     slug: str = Field(examples=["mitgliedsbeitraege"])
     kind: LedgerCategoryKind
     sphere: Optional[LedgerSphere] = None
+    match_keywords: Optional[list[str]] = Field(default=None, examples=[["Mitgliedsbeitrag"]])
 
 
 class LedgerCategoryUpdate(BaseModel):
@@ -85,12 +90,15 @@ class LedgerCategoryUpdate(BaseModel):
     while it isn't referenced by any booked line yet (checked in the
     endpoint) — changing them after the fact would retroactively reclassify
     already-booked history in the EÜR report. `name`/`active` have no such
-    restriction; they're just a display label and a retire switch."""
+    restriction; they're just a display label and a retire switch.
+    `match_keywords`: omit (`None`) to leave unchanged, `[]` to clear, a
+    non-empty list to replace — same overlap check as create."""
     name: Optional[str] = None
     slug: Optional[str] = None
     kind: Optional[LedgerCategoryKind] = None
     sphere: Optional[LedgerSphere] = None
     active: Optional[bool] = None
+    match_keywords: Optional[list[str]] = None
 
 
 class LedgerCategoryResponse(BaseModel):
@@ -100,6 +108,7 @@ class LedgerCategoryResponse(BaseModel):
     kind: LedgerCategoryKind
     sphere: Optional[LedgerSphere]
     active: bool
+    match_keywords: Optional[list[str]] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -160,6 +169,10 @@ class LedgerImportLineResponse(BaseModel):
     status: LedgerImportStatus
     matched_entry_id: Optional[int]
     created_at: datetime
+    # Computed in list_import_lines() (Key Design Decision #45) from active
+    # categories' match_keywords against purpose_text — advisory only, not
+    # persisted; None if no keyword matched.
+    suggested_category_id: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 

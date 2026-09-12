@@ -345,6 +345,43 @@ def test_list_import_lines_reports_total_count_and_pages(treasurer_client, bank_
 
 
 # ---------------------------------------------------------------------------
+# suggested_category_id (Key Design Decision #45) — purpose-text autofill
+# ---------------------------------------------------------------------------
+
+def test_list_import_lines_suggests_category_from_match_keyword(treasurer_client, bank_account):
+    cat = treasurer_client.post(
+        "/api/v1/ledger/categories",
+        json={"name": "Mitgliedsbeiträge", "slug": "mitgliedsbeitraege", "kind": "income",
+              "sphere": "ideell", "match_keywords": ["Mitgliedsbeitrag"]},
+    ).json()
+
+    _upload(treasurer_client, bank_account.id, _MT940_SAMPLE)
+    lines = {l["amount"]: l for l in treasurer_client.get("/api/v1/ledger/import/lines").json()}
+
+    assert lines["50.00"]["suggested_category_id"] == cat["id"]
+    assert lines["-30.00"]["suggested_category_id"] is None
+
+
+def test_list_import_lines_no_suggestion_without_match_keywords(treasurer_client, bank_account, income_category):
+    _upload(treasurer_client, bank_account.id, _MT940_SAMPLE)
+    lines = treasurer_client.get("/api/v1/ledger/import/lines").json()
+    assert all(l["suggested_category_id"] is None for l in lines)
+
+
+def test_list_import_lines_no_suggestion_from_inactive_category(treasurer_client, bank_account):
+    cat = treasurer_client.post(
+        "/api/v1/ledger/categories",
+        json={"name": "Mitgliedsbeiträge", "slug": "mitgliedsbeitraege", "kind": "income",
+              "sphere": "ideell", "match_keywords": ["Mitgliedsbeitrag"]},
+    ).json()
+    treasurer_client.put(f"/api/v1/ledger/categories/{cat['id']}", json={"active": False})
+
+    _upload(treasurer_client, bank_account.id, _MT940_SAMPLE)
+    lines = {l["amount"]: l for l in treasurer_client.get("/api/v1/ledger/import/lines").json()}
+    assert lines["50.00"]["suggested_category_id"] is None
+
+
+# ---------------------------------------------------------------------------
 # POST /ledger/import/lines/{id}/book and /ignore
 # ---------------------------------------------------------------------------
 

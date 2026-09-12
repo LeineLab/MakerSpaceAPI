@@ -324,6 +324,148 @@ def test_list_categories_excludes_inactive_by_default(treasurer_client, income_c
     assert resp.status_code == 200
     assert resp.json() == []
 
+
+# ---------------------------------------------------------------------------
+# match_keywords (Key Design Decision #45) — purpose-text autofill suggestions
+# ---------------------------------------------------------------------------
+
+def test_create_category_with_match_keywords(treasurer_client):
+    resp = treasurer_client.post(
+        "/api/v1/ledger/categories",
+        json={
+            "name": "Mitgliedsbeiträge", "slug": "mitgliedsbeitraege", "kind": "income",
+            "sphere": "ideell", "match_keywords": ["Mitgliedsbeitrag", "Beitrag"],
+        },
+    )
+    assert resp.status_code == 201
+    assert resp.json()["match_keywords"] == ["Mitgliedsbeitrag", "Beitrag"]
+
+
+def test_create_category_match_keywords_deduped_case_insensitively(treasurer_client):
+    resp = treasurer_client.post(
+        "/api/v1/ledger/categories",
+        json={
+            "name": "Spenden", "slug": "spenden", "kind": "income", "sphere": "ideell",
+            "match_keywords": ["Spende", " spende ", "SPENDE", ""],
+        },
+    )
+    assert resp.status_code == 201
+    assert resp.json()["match_keywords"] == ["Spende"]
+
+
+def test_create_category_match_keyword_overlapping_existing_rejected(treasurer_client):
+    treasurer_client.post(
+        "/api/v1/ledger/categories",
+        json={"name": "Keksdose", "slug": "keksdose", "kind": "expense", "sphere": "ideell",
+              "match_keywords": ["Keksdose"]},
+    )
+    resp = treasurer_client.post(
+        "/api/v1/ledger/categories",
+        json={"name": "Kekse", "slug": "kekse", "kind": "expense", "sphere": "ideell",
+              "match_keywords": ["Keks"]},
+    )
+    assert resp.status_code == 400
+
+
+def test_create_category_match_keyword_containing_existing_rejected(treasurer_client):
+    """Same overlap check, the other direction: registering the longer term
+    first, then a shorter one that would be its substring."""
+    treasurer_client.post(
+        "/api/v1/ledger/categories",
+        json={"name": "Kekse", "slug": "kekse", "kind": "expense", "sphere": "ideell",
+              "match_keywords": ["Keks"]},
+    )
+    resp = treasurer_client.post(
+        "/api/v1/ledger/categories",
+        json={"name": "Keksdose", "slug": "keksdose", "kind": "expense", "sphere": "ideell",
+              "match_keywords": ["Keksdose"]},
+    )
+    assert resp.status_code == 400
+
+
+def test_create_category_match_keyword_no_conflict_when_distinct(treasurer_client):
+    treasurer_client.post(
+        "/api/v1/ledger/categories",
+        json={"name": "Spenden", "slug": "spenden", "kind": "income", "sphere": "ideell",
+              "match_keywords": ["Spende"]},
+    )
+    resp = treasurer_client.post(
+        "/api/v1/ledger/categories",
+        json={"name": "Mitgliedsbeiträge", "slug": "mitgliedsbeitraege", "kind": "income",
+              "sphere": "ideell", "match_keywords": ["Mitgliedsbeitrag"]},
+    )
+    assert resp.status_code == 201
+
+
+def test_update_category_match_keywords_replace(treasurer_client, income_category):
+    resp = treasurer_client.put(
+        f"/api/v1/ledger/categories/{income_category.id}",
+        json={"match_keywords": ["Foo", "Bar"]},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["match_keywords"] == ["Foo", "Bar"]
+
+
+def test_update_category_match_keywords_empty_list_clears(treasurer_client, income_category):
+    treasurer_client.put(
+        f"/api/v1/ledger/categories/{income_category.id}", json={"match_keywords": ["Foo"]}
+    )
+    resp = treasurer_client.put(
+        f"/api/v1/ledger/categories/{income_category.id}", json={"match_keywords": []}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["match_keywords"] is None
+
+
+def test_update_category_match_keywords_allowed_even_when_in_use(
+    treasurer_client, bank_account, income_category
+):
+    """Unlike slug/kind/sphere, match_keywords never reclassifies past
+    bookings, so it's editable regardless of whether the category is used."""
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-01",
+            "description": "Beitrag",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "50.00"},
+                {"category_id": income_category.id, "amount": "-50.00"},
+            ],
+        },
+    )
+    resp = treasurer_client.put(
+        f"/api/v1/ledger/categories/{income_category.id}", json={"match_keywords": ["Beitrag"]}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["match_keywords"] == ["Beitrag"]
+
+
+def test_update_category_match_keyword_overlapping_other_category_rejected(
+    treasurer_client, income_category, expense_category
+):
+    treasurer_client.put(
+        f"/api/v1/ledger/categories/{income_category.id}", json={"match_keywords": ["Keksdose"]}
+    )
+    resp = treasurer_client.put(
+        f"/api/v1/ledger/categories/{expense_category.id}", json={"match_keywords": ["Keks"]}
+    )
+    assert resp.status_code == 400
+
+
+def test_update_category_match_keywords_no_conflict_with_own_previous_value(
+    treasurer_client, income_category
+):
+    """Re-submitting/adjusting a category's own keywords must not trip the
+    overlap check against its own prior value."""
+    treasurer_client.put(
+        f"/api/v1/ledger/categories/{income_category.id}", json={"match_keywords": ["Beitrag"]}
+    )
+    resp = treasurer_client.put(
+        f"/api/v1/ledger/categories/{income_category.id}",
+        json={"match_keywords": ["Beitrag", "Mitgliedsbeitrag"]},
+    )
+    assert resp.status_code == 200
+
     resp_all = treasurer_client.get("/api/v1/ledger/categories?include_inactive=true")
     assert len(resp_all.json()) == 1
 
