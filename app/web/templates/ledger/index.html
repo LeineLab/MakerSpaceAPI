@@ -105,9 +105,8 @@
               <th class="px-4 py-3 text-left" x-show="userIsTreasurer">{{ _('ledger.col_actions') }}</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-            <template x-for="e in entries" :key="e.id">
-            <tbody>
+          <template x-for="(e, idx) in entries" :key="e.id">
+            <tbody :class="idx > 0 && 'border-t border-gray-100 dark:border-gray-700'">
               <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 align-top cursor-pointer" @click="toggleEntryDetail(e.id)">
                 <td class="px-4 py-3 whitespace-nowrap" x-text="e.entry_date"></td>
                 <td class="px-4 py-3">
@@ -181,8 +180,7 @@
                 </td>
               </tr>
             </tbody>
-            </template>
-          </tbody>
+          </template>
         </table>
         </div>
       </div>
