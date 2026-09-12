@@ -104,6 +104,19 @@ def lines_from_mt940_transactions(transactions) -> list[ParsedStatementLine]:
     live-pull (`app/services/fints_client.py::fetch_transactions`), since
     `FinTS3PinTanClient.get_transactions()` returns the same transaction
     shape when the bank speaks MT940 over FinTS (the common case).
+
+    The sign is re-derived here from the raw `:61:` debit/credit mark
+    (`d["status"]`, still present alongside the library's own `d["amount"]`)
+    rather than trusted as-is from `d["amount"].amount`: `_parse_mt940` below
+    passes `reversal_sign=True` so its own `mt940.parse()` call signs a
+    Storno's "RC" mark (reversal of a credit — a debit) correctly, but
+    `python-fints`'s internal MT940 parsing (`fints.utils.mt940_to_array`)
+    calls `mt940.models.Transactions()` with no options at all, so the same
+    "RC" mark comes back wrongly positive on the FinTS path — and there's no
+    parameter to pass through into that internal call to fix it there. Re-
+    deriving the sign directly from the mark, independent of whichever
+    library options happened to run, fixes both paths the same way and
+    doesn't depend on `python-fints` ever picking this option up itself.
     """
     lines = []
     for tx in transactions:
@@ -113,9 +126,12 @@ def lines_from_mt940_transactions(transactions) -> list[ParsedStatementLine]:
         counterparty_name = d.get("applicant_name") or d.get("recipient_name")
         counterparty_iban = d.get("gvc_applicant_iban") or d.get("applicant_iban")
         bank_reference = d.get("end_to_end_reference") or d.get("bank_reference")
+        amount = Decimal(str(d["amount"].amount)).copy_abs()
+        if (d.get("status") or "").upper() in ("D", "RC"):
+            amount = -amount
         lines.append(ParsedStatementLine(
             booking_date=date(booking_date.year, booking_date.month, booking_date.day),
-            amount=Decimal(str(d["amount"].amount)),
+            amount=amount,
             purpose_text=purpose,
             counterparty_name=counterparty_name,
             counterparty_iban=counterparty_iban,
@@ -136,7 +152,12 @@ def _parse_mt940(content: bytes) -> ParsedStatement:
     # counterparty_name came out as "DE89370400440532013000Erika Musterfrau"
     # with counterparty_iban left None, exactly matching the library's
     # documented pre-4.x behavior. This does not touch anything else — every
-    # other Options flag defaults off and is left alone.
+    # other Options flag defaults off and is left alone. (A `:61:` Storno's
+    # "RC" debit/credit mark has a similar library-default sign bug —
+    # `reversal_sign`, library issue #130 — but that's fixed downstream in
+    # `lines_from_mt940_transactions()` instead of here, since the FinTS
+    # live-pull path shares this same bug via `python-fints`'s own internal
+    # MT940 parsing, which accepts no `options` at all.)
     options = mt940.Options(applicant_iban=True)
     try:
         statement = mt940.parse(content, options=options)

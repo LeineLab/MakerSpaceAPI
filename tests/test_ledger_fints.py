@@ -62,11 +62,19 @@ class _FakeMT940Transaction:
     """Duck-types `mt940.models.Transaction`: a `.data` dict, as consumed by
     `lines_from_mt940_transactions()`. What `_FakeClient.get_transactions`
     below returns — the *raw* shape `FinTS3PinTanClient.get_transactions()`
-    itself returns, before fints_client converts it."""
-    def __init__(self, amount="50.00", reference="E2E-1", purpose="Mitgliedsbeitrag"):
+    itself returns, before fints_client converts it.
+
+    `amount` here mimics whatever unsigned-or-wrongly-signed value
+    `python-fints`'s own internal, options-less MT940 parsing produces
+    (`d["amount"].amount`) — `status` is the raw `:61:` mark alongside it,
+    which `lines_from_mt940_transactions()` uses to derive the real sign
+    independent of whatever sign `amount` itself already carries (see #46's
+    follow-up fix)."""
+    def __init__(self, amount="50.00", reference="E2E-1", purpose="Mitgliedsbeitrag", status="C"):
         self.data = {
             "date": date(2026, 3, 1),
             "entry_date": None,
+            "status": status,
             "amount": _FakeAmount(Decimal(amount)),
             "purpose": purpose,
             "posting_text": None,
@@ -261,6 +269,29 @@ def test_transactions_fetch_after_accounts_known(monkeypatch):
     assert tx_step["iban"] == "DE02120300000000202051"
     assert len(tx_step["lines"]) == 1
     assert tx_step["lines"][0].bank_reference == "E2E-1"
+
+
+def test_transactions_fetch_signs_storno_reversal_correctly(monkeypatch):
+    """`python-fints`'s own internal MT940 parsing (fints.utils.mt940_to_array)
+    calls mt940.models.Transactions() with no options at all, so a Storno's
+    "RC" mark (reversal of a credit — a debit) comes back positive from the
+    library itself, same as the file-upload bug (#46's follow-up). This must
+    be corrected regardless, from the raw mark alone — verified here via a
+    fake transaction whose underlying `amount` is positive (mimicking the
+    library's own wrongly-signed output) but whose `status` is "RC"."""
+    from app.services import fints_client
+
+    client = _FakeClient([
+        [_FakeAccount("DE02120300000000202051")],
+        [_FakeMT940Transaction(amount="9.84", status="RC")],
+    ])
+    _patch_fints(monkeypatch, client)
+
+    accounts_step = fints_client.start_dialog("https://bank.example/fints", "12030000", "user", "1234")
+    tx_step = fints_client.start_transactions(
+        accounts_step["session_id"], "DE02120300000000202051", date(2026, 1, 1), date(2026, 3, 31),
+    )
+    assert tx_step["lines"][0].amount == Decimal("-9.84")
 
 
 def test_transactions_fetch_unknown_iban_in_session(monkeypatch):

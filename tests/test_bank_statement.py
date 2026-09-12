@@ -87,6 +87,46 @@ def test_mt940_separates_counterparty_iban_from_name():
 
 
 # ---------------------------------------------------------------------------
+# MT940 — the mt-940 library's 5.0.0-compatible default only negates a plain
+# "D" mark, leaving a Storno's "RC" ("reversal of credit" — money leaves the
+# account, like a debit) positive (library issue #130). Confirmed against a
+# real bank correction, 2026-09-12: an interest payment's Storno (:61:...RC...)
+# came out as a credit instead of a debit.
+# ---------------------------------------------------------------------------
+
+_MT940_WITH_STORNO_REVERSAL = (
+    ":20:STARTUMS\r\n"
+    ":25:37040044/0532013000\r\n"
+    ":28C:0\r\n"
+    ":60F:C250707EUR6007,25\r\n"
+    ":61:2506300707RCR9,84NRTINONREF\r\n"
+    ":86:899?00Storno?10968?20SVWZ+Korrektur\r\n"
+    ":61:2506300707RDR2,46NRTINONREF\r\n"
+    ":86:899?00Storno?10968?20SVWZ+Kapitalertragsteuer\r\n"
+    ":61:2506300707RDR0,13NRTINONREF\r\n"
+    ":86:899?00Storno?10968?20SVWZ+Solidaritaetszuschlag\r\n"
+    ":61:2506300707CR9,84NINTNONREF\r\n"
+    ":86:814?00Zinsen?10967?20SVWZ+Korrektur\r\n"
+    ":62F:C250707EUR6009,84\r\n"
+).encode("utf-8")
+
+
+def test_mt940_storno_reversal_of_credit_is_negative():
+    statement = parse_statement_file(_MT940_WITH_STORNO_REVERSAL)
+    amounts = [line.amount for line in statement.lines]
+    # RC (Storno of the original interest credit): a debit, negative.
+    assert amounts[0] == Decimal("-9.84")
+    # RD (Storno of a debit, e.g. withheld tax): a credit, positive.
+    assert amounts[1] == Decimal("2.46")
+    assert amounts[2] == Decimal("0.13")
+    # Plain C (the corrected interest credit): positive.
+    assert amounts[3] == Decimal("9.84")
+    # -9.84 + 2.46 + 0.13 + 9.84 = 2.59, matching the statement's own
+    # opening (6007.25) -> closing (6009.84) delta.
+    assert sum(amounts, Decimal("0")) == Decimal("2.59")
+
+
+# ---------------------------------------------------------------------------
 # CSV import — no standard schema across banks, so column mapping is
 # user-driven (preview_csv -> guess_csv_mapping -> parse_csv_statement)
 # ---------------------------------------------------------------------------
