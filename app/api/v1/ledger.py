@@ -614,27 +614,35 @@ def book_target_payouts(
     treasurer: dict = Depends(require_treasurer_user),
     db: Session = Depends(get_db),
 ):
-    """Book one or more Kassen payouts as a single pure-transfer leg from the
-    one shared Kassenbestand clearing account to whichever real account the
-    treasurer actually deposited/wired the cash into — no category line,
-    since the income was already recognized when the cash arrived in the
-    target(s) (folded into the EÜR at read time, see `_compute_euer_report`).
-    Does not touch `transactions`/`booking_targets` at all (Key Design
-    Decision #18 — this bridge only reads that domain).
+    """Book one or more Kassen payouts as a single transfer leg from the one
+    shared Kassenbestand clearing account to whichever real account the
+    treasurer actually deposited/wired the cash into. Normally this is a
+    pure transfer with no category line, since the income was already
+    recognized when the cash arrived in the target(s) (folded into the EÜR
+    at read time, see `_compute_euer_report`). Does not touch `transactions`/
+    `booking_targets` at all (Key Design Decision #18 — this bridge only
+    reads that domain).
 
-    See Key Design Decision #38 for the allocation rule: `body.amount` is
-    distributed over the selected payouts smallest-remaining-first, filling
+    See Key Design Decision #38 for the allocation rule: the amount owed to
+    the selected payouts is distributed smallest-remaining-first, filling
     each one's own remaining amount before moving to the next-larger one,
     tracked per (payout, entry) pair via `ledger_target_payout_entries` — 400
-    if the amount exceeds the selected payouts' combined remaining, or
-    doesn't reach every selected payout. A single id with a partial amount is
-    a split (the same payout can be booked again later for the rest); several
-    ids covering their full combined remaining is a bundle; anything in
-    between — several payouts, an amount that lines up with neither — is
-    exactly the same call, just with a partial slice landing on the
-    largest-remaining payout(s) reached, which can then be finished off in a
-    later booking. If the destination account's own bank statement for this
-    deposit has already been imported, `matched_import_line_id` links that staged line
+    if it doesn't reach every selected payout. A single id with a partial
+    amount is a split (the same payout can be booked again later for the
+    rest); several ids covering their full combined remaining is a bundle;
+    anything in between — several payouts, an amount that lines up with
+    neither — is exactly the same call, just with a partial slice landing on
+    the largest-remaining payout(s) reached, which can then be finished off
+    in a later booking.
+
+    See Key Design Decision #42: if `body.amount` exceeds the selected
+    payouts' combined remaining amount (e.g. a donation deposited together
+    with a Kassen payout in one transfer), the excess is booked against
+    `body.category_lines` instead of being rejected — 400 if they don't sum
+    to exactly the negative of that excess.
+
+    If the destination account's own bank statement for this deposit has
+    already been imported, `matched_import_line_id` links that staged line
     so it's marked booked here too, instead of sitting there as a
     separately-bookable duplicate of the same real-world transaction."""
     txns = (
@@ -673,14 +681,6 @@ def book_target_payouts(
         remaining_by_txn[txn.id] = remaining
 
     total_remaining = sum(remaining_by_txn.values(), Decimal("0.00"))
-    if body.amount > total_remaining:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Amount ({body.amount}) exceeds the combined remaining amount of the "
-                f"selected payouts ({total_remaining})"
-            ),
-        )
 
     # Sequential allocation, smallest remaining amount first: fill each
     # selected payout's remaining amount before moving to the next-larger
@@ -716,6 +716,44 @@ def book_target_payouts(
                 f"{sorted(unreached)} — remove them from the selection or increase the amount"
             ),
         )
+
+    # Key Design Decision #42: any amount left over once every selected
+    # payout is fully covered (`leftover` here, since the loop above only
+    # stops early when it's exhausted before reaching every payout — the
+    # `unreached` check just above already rejected that case) is a real
+    # bank amount beyond what's owed to the Kassen payouts, e.g. a donation
+    # deposited together with a payout in one transfer. It must be booked
+    # against category_lines summing to exactly its negative, so the entry
+    # still balances to zero — the same "sum must balance" rule as a manual
+    # entry or an import-line booking, just computed from the excess instead
+    # of the whole bank amount.
+    excess = leftover
+    category_total = sum((line.amount for line in body.category_lines), Decimal("0.00"))
+    if category_total != -excess:
+        if excess > 0:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Amount ({body.amount}) exceeds the selected payouts' combined "
+                    f"remaining amount ({total_remaining}) by {excess} — category_lines "
+                    f"must sum to {-excess} to book the difference against a category "
+                    f"(e.g. a donation), or reduce the amount to {total_remaining}"
+                ),
+            )
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Amount ({body.amount}) doesn't exceed the selected payouts' combined "
+                f"remaining amount — category_lines must be empty (got sum {category_total})"
+            ),
+        )
+    categories_by_id: dict[int, LedgerCategory] = {}
+    for line in body.category_lines:
+        if line.category_id not in categories_by_id:
+            category = db.query(LedgerCategory).filter(LedgerCategory.id == line.category_id).first()
+            if not category:
+                raise HTTPException(status_code=404, detail=f"Category {line.category_id} not found")
+            categories_by_id[line.category_id] = category
 
     matched_line = None
     if body.matched_import_line_id is not None:
@@ -758,9 +796,13 @@ def book_target_payouts(
         created_by=treasurer.get("sub", "unknown"),
         created_at=datetime.now(UTC).replace(tzinfo=None),
     )
+    consumed_by_payouts = sum(attribution.values(), Decimal("0.00"))
     entry.lines = [
         LedgerEntryLine(bank_account_id=destination.id, amount=body.amount),
-        LedgerEntryLine(bank_account_id=clearing_account.id, amount=-body.amount),
+        LedgerEntryLine(bank_account_id=clearing_account.id, amount=-consumed_by_payouts),
+    ] + [
+        LedgerEntryLine(category_id=line.category_id, amount=line.amount, note=line.note)
+        for line in body.category_lines
     ]
     db.add(entry)
     db.flush()

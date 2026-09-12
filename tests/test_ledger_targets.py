@@ -428,6 +428,103 @@ def test_bundle_amount_exceeding_combined_total_rejected(treasurer_client, db, d
     assert resp.status_code == 400
 
 
+# ---------------------------------------------------------------------------
+# Topping up a payout booking with a category (Key Design Decision #42) —
+# e.g. a donation deposited together with a Kassen payout in one transfer.
+# ---------------------------------------------------------------------------
+
+def test_book_payout_excess_amount_booked_against_category(
+    treasurer_client, db, donation_target, bank_account, clearing_account, donation_category,
+):
+    txn = _make_payout(db, donation_target, amount="20.00")
+    resp = _book(
+        treasurer_client, [txn.id], bank_account.id, "50.00",
+        category_lines=[{"category_id": donation_category.id, "amount": "-30.00", "note": "Spende"}],
+    )
+    assert resp.status_code == 201
+    entry = resp.json()
+    destination_line = next(l for l in entry["lines"] if l["bank_account_id"] == bank_account.id)
+    clearing_line = next(l for l in entry["lines"] if l["bank_account_id"] == clearing_account.id)
+    category_line = next(l for l in entry["lines"] if l["category_id"] == donation_category.id)
+    assert destination_line["amount"] == "50.00"
+    assert clearing_line["amount"] == "-20.00"
+    assert category_line["amount"] == "-30.00"
+    assert category_line["note"] == "Spende"
+
+    [payout] = treasurer_client.get("/api/v1/ledger/target-payouts").json()
+    assert payout["booked"] is True
+    assert payout["booked_amount"] == "20.00"
+    assert payout["remaining_amount"] == "0.00"
+
+
+def test_book_payout_excess_without_category_lines_rejected(
+    treasurer_client, db, donation_target, bank_account, clearing_account,
+):
+    txn = _make_payout(db, donation_target, amount="20.00")
+    resp = _book(treasurer_client, [txn.id], bank_account.id, "50.00")
+    assert resp.status_code == 400
+
+
+def test_book_payout_category_lines_sum_mismatch_rejected(
+    treasurer_client, db, donation_target, bank_account, clearing_account, donation_category,
+):
+    txn = _make_payout(db, donation_target, amount="20.00")
+    resp = _book(
+        treasurer_client, [txn.id], bank_account.id, "50.00",
+        category_lines=[{"category_id": donation_category.id, "amount": "-25.00"}],
+    )
+    assert resp.status_code == 400
+
+
+def test_book_payout_category_lines_without_excess_rejected(
+    treasurer_client, db, donation_target, bank_account, clearing_account, donation_category,
+):
+    """category_lines are only meaningful once the amount exceeds the
+    selected payouts' combined remaining — supplying them for an exact-match
+    booking (the normal #38 case) is rejected rather than silently ignored."""
+    txn = _make_payout(db, donation_target, amount="20.00")
+    resp = _book(
+        treasurer_client, [txn.id], bank_account.id, "20.00",
+        category_lines=[{"category_id": donation_category.id, "amount": "-5.00"}],
+    )
+    assert resp.status_code == 400
+
+
+def test_book_payout_category_lines_unknown_category_404(
+    treasurer_client, db, donation_target, bank_account, clearing_account,
+):
+    txn = _make_payout(db, donation_target, amount="20.00")
+    resp = _book(
+        treasurer_client, [txn.id], bank_account.id, "50.00",
+        category_lines=[{"category_id": 9999, "amount": "-30.00"}],
+    )
+    assert resp.status_code == 404
+
+
+def test_book_two_payouts_excess_topped_up_with_donation(
+    treasurer_client, db, donation_target, bank_account, clearing_account, donation_category,
+):
+    """The motivating real-world case: two Kassen payouts (250/750) wired out
+    together with an extra donation received directly into the bank account,
+    all in one deposit — 1050 total, 1000 owed to the payouts, 50 donation."""
+    txn1 = _make_payout(db, donation_target, amount="250.00")
+    txn2 = _make_payout(db, donation_target, amount="750.00")
+    resp = _book(
+        treasurer_client, [txn1.id, txn2.id], bank_account.id, "1050.00",
+        category_lines=[{"category_id": donation_category.id, "amount": "-50.00"}],
+    )
+    assert resp.status_code == 201
+    entry = resp.json()
+    destination_line = next(l for l in entry["lines"] if l["bank_account_id"] == bank_account.id)
+    clearing_line = next(l for l in entry["lines"] if l["bank_account_id"] == clearing_account.id)
+    assert destination_line["amount"] == "1050.00"
+    assert clearing_line["amount"] == "-1000.00"
+
+    payouts = {p["transaction_id"]: p for p in treasurer_client.get("/api/v1/ledger/target-payouts").json()}
+    assert payouts[txn1.id]["booked"] is True
+    assert payouts[txn2.id]["booked"] is True
+
+
 def test_partial_amount_across_multiple_payouts_fills_sequentially(
     treasurer_client, db, donation_target, bank_account, clearing_account,
 ):

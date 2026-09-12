@@ -519,7 +519,7 @@
   "ledger.target_payouts_title": "Payouts",
   "ledger.target_payouts_filter_open": "Open",
   "ledger.col_status":          "Status",
-  "ledger.target_payout_amount_exceeds_hint": "Amount exceeds the combined open amount of the selected payouts.",
+  "ledger.target_payout_excess_hint": "Amount exceeds the combined open amount of the selected payouts by {amount} — book the difference against a category below (e.g. a donation deposited together with the payout).",
   "ledger.target_payouts_filter_booked": "Booked",
   "ledger.target_payouts_filter_all": "All",
   "ledger.target_payouts_empty": "No payouts with this filter.",

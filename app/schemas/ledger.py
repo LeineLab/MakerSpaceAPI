@@ -208,21 +208,41 @@ class LedgerTargetPayoutResponse(BaseModel):
     entry_ids: list[int] = []
 
 
+class TargetPayoutCategorySplit(BaseModel):
+    """A category-side top-up line for `POST /ledger/target-payouts/book`
+    (Key Design Decision #42) — used when the real bank amount is larger
+    than the selected payouts' combined remaining amount (e.g. a donation
+    deposited together with a Kassen payout in one transfer). Unlike
+    `LedgerImportLineCategorySplit`, there's no `bank_account_id` option
+    here — topping up with another transfer leg isn't a case this endpoint
+    supports, only a plain category booking."""
+    category_id: int
+    amount: Decimal = Field(examples=[Decimal("50.00")])
+    note: Optional[str] = None
+
+
 class BookTargetPayoutsRequest(BaseModel):
-    """Books one or more Kassen payouts as a single pure-transfer leg from
-    the shared Kassenbestand clearing account to `bank_account_id` — no
-    category, since the income was already recognized when the cash arrived
-    in the target(s). See Key Design Decision #38 for the allocation rule:
-    `amount` is distributed over the selected payouts smallest-remaining-
-    first, filling each one's own remaining amount before moving to the
-    next-larger one, regardless of the order given in `payout_transaction_
-    ids` — a single id with a partial amount is a split (that payout can be
-    booked again later for the rest); several ids covering their full
-    combined remaining is a bundle; an amount that lines up with neither
-    still books cleanly, leaving a partial remainder on the largest-
-    remaining payout the allocation didn't fully reach, to be finished off
-    later. 400 if `amount` exceeds the selected payouts' combined remaining
-    amount, or doesn't reach every payout selected.
+    """Books one or more Kassen payouts as a single transfer leg from the
+    shared Kassenbestand clearing account to `bank_account_id`. See Key
+    Design Decision #38 for the allocation rule: the amount actually owed to
+    the selected payouts is distributed smallest-remaining-first, filling
+    each one's own remaining amount before moving to the next-larger one,
+    regardless of the order given in `payout_transaction_ids` — a single id
+    with a partial amount is a split (that payout can be booked again later
+    for the rest); several ids covering their full combined remaining is a
+    bundle; an amount that lines up with neither still books cleanly,
+    leaving a partial remainder on the largest-remaining payout the
+    allocation didn't fully reach, to be finished off later. 400 if `amount`
+    doesn't reach every payout selected.
+
+    If `amount` exceeds the selected payouts' combined remaining amount, the
+    difference is no longer rejected outright (see #42) — it's booked
+    against `category_lines` instead (e.g. a donation deposited together
+    with a Kassen payout in one transfer), which must sum to exactly the
+    negative of that difference so the entry still balances to zero. Leave
+    `category_lines` empty when `amount` doesn't exceed the combined
+    remaining (the normal case, unchanged from #38) — 400 if they don't
+    exactly cover the excess.
 
     `entry_date`/`description` default to a generated label (the single
     payout's own date, or today for a bundle of several). `matched_import_
@@ -237,6 +257,7 @@ class BookTargetPayoutsRequest(BaseModel):
     entry_date: Optional[date] = None
     description: Optional[str] = None
     matched_import_line_id: Optional[int] = None
+    category_lines: list[TargetPayoutCategorySplit] = Field(default_factory=list)
 
 
 class LedgerAssetCreate(BaseModel):

@@ -519,7 +519,7 @@
   "ledger.target_payouts_title": "Auszahlungen",
   "ledger.target_payouts_filter_open": "Offen",
   "ledger.col_status":          "Status",
-  "ledger.target_payout_amount_exceeds_hint": "Betrag übersteigt den offenen Gesamtbetrag der ausgewählten Auszahlungen.",
+  "ledger.target_payout_excess_hint": "Betrag übersteigt den offenen Gesamtbetrag der ausgewählten Auszahlungen um {amount} — die Differenz unten gegen eine Kategorie buchen (z. B. eine mit der Auszahlung zusammen eingezahlte Spende).",
   "ledger.target_payouts_filter_booked": "Verbucht",
   "ledger.target_payouts_filter_all": "Alle",
   "ledger.target_payouts_empty": "Keine Auszahlungen mit diesem Filter.",

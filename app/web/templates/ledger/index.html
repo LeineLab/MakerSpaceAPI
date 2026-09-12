@@ -1167,9 +1167,43 @@
                class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800">
         <p x-show="bookingTargetPayouts.length > 1" class="text-xs text-gray-400 dark:text-gray-500 mt-1"
            x-text="TARGET_PAYOUT_BUNDLE_AMOUNT_TMPL.replace('{amount}', fmt(targetPayoutTotalRemaining()))"></p>
-        <p x-show="parseFloat(targetPayoutForm.amount) > targetPayoutTotalRemaining()" class="text-xs text-red-600 dark:text-red-400 mt-1">
-          {{ _('ledger.target_payout_amount_exceeds_hint') }}
-        </p>
+      </div>
+
+      <div x-show="targetPayoutExcess() > 0.005" class="mb-3">
+        <p class="text-xs text-amber-600 dark:text-amber-400 mb-2"
+           x-text="TARGET_PAYOUT_EXCESS_HINT_TMPL.replace('{amount}', fmt(targetPayoutExcess()))"></p>
+        <div class="space-y-2">
+          <template x-for="(line, idx) in targetPayoutForm.category_lines" :key="idx">
+            <div>
+              <div class="flex gap-2 items-center">
+                <select x-model="line.category_id"
+                        class="flex-1 border dark:border-gray-700 rounded px-2 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                  <option value="">{{ _('ledger.select_target') }}</option>
+                  <template x-for="c in activeCategories" :key="c.id">
+                    <option :value="c.id" x-text="c.name"></option>
+                  </template>
+                </select>
+                <input type="number" step="0.01" x-model="line.amount" placeholder="{{ _('ledger.label_amount') }}"
+                       class="w-32 border dark:border-gray-700 rounded px-2 py-2 text-sm font-mono bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                <button type="button" @click="removeTargetPayoutLine(idx)"
+                        class="text-red-600 dark:text-red-400 hover:underline text-xs shrink-0">
+                  {{ _('ledger.btn_remove_line') }}
+                </button>
+              </div>
+              <p x-show="categoryIdSignWarning(line.category_id, line.amount)" class="text-xs text-amber-600 dark:text-amber-400 mt-0.5"
+                 x-text="categoryIdSignWarning(line.category_id, line.amount)"></p>
+            </div>
+          </template>
+        </div>
+        <button type="button" @click="addTargetPayoutLine()" class="mt-2 text-blue-600 dark:text-blue-400 hover:underline text-xs">
+          {{ _('ledger.btn_add_line') }}
+        </button>
+        <div class="flex items-center justify-between text-sm border-t dark:border-gray-700 pt-2 mt-2">
+          <span class="text-gray-500 dark:text-gray-400">{{ _('ledger.sum_label') }}</span>
+          <span class="font-mono font-semibold"
+                :class="targetPayoutBalanced() ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+                x-text="fmt(targetPayoutCategoryLinesTotal()) + ' / ' + fmt(-targetPayoutExcess())"></span>
+        </div>
       </div>
 
       <div x-show="targetPayoutForm.bank_account_id" class="mb-3">
@@ -1236,7 +1270,7 @@
         <button type="button" @click="showTargetPayoutModal = false" class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">
           {{ _('common.cancel') }}
         </button>
-        <button @click="submitTargetPayoutBook()" :disabled="!targetPayoutForm.bank_account_id || !targetPayoutForm.amount || parseFloat(targetPayoutForm.amount) > targetPayoutTotalRemaining() || !cashClearingAccountConfigured || targetPayoutBookSubmitting"
+        <button @click="submitTargetPayoutBook()" :disabled="!targetPayoutForm.bank_account_id || !targetPayoutForm.amount || !targetPayoutBalanced() || !cashClearingAccountConfigured || targetPayoutBookSubmitting"
                 class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50">
           <span x-show="!targetPayoutBookSubmitting">{{ _('ledger.btn_submit_target_payout') }}</span>
           <span x-show="targetPayoutBookSubmitting">…</span>
@@ -1853,6 +1887,7 @@ const TARGET_PAYOUT_BOOKED_TMPL = {{ _('ledger.target_payout_booked_badge') | to
 const BOOK_SELECTED_TMPL = {{ _('ledger.btn_book_selected') | tojson }};
 const TARGET_PAYOUT_REMAINING_TMPL = {{ _('ledger.target_payout_remaining_hint') | tojson }};
 const TARGET_PAYOUT_BUNDLE_AMOUNT_TMPL = {{ _('ledger.target_payout_bundle_amount_hint') | tojson }};
+const TARGET_PAYOUT_EXCESS_HINT_TMPL = {{ _('ledger.target_payout_excess_hint') | tojson }};
 const NO_STATEMENT_BALANCE_L = {{ _('ledger.no_statement_balance') | tojson }};
 const RECONCILIATION_MATCH_TMPL = {{ _('ledger.reconciliation_match') | tojson }};
 const RECONCILIATION_MISMATCH_TMPL = {{ _('ledger.reconciliation_mismatch') | tojson }};
@@ -1998,7 +2033,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
 
     showTargetPayoutModal: false,
     bookingTargetPayouts: [],
-    targetPayoutForm: { bank_account_id: '', amount: '', entry_date: '', description: '', matched_import_line_id: '' },
+    targetPayoutForm: { bank_account_id: '', amount: '', entry_date: '', description: '', matched_import_line_id: '', category_lines: [] },
     targetPayoutBookError: null,
     targetPayoutBookSubmitting: false,
     targetPayoutCandidates: [],
@@ -2338,6 +2373,32 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       return this.bookingTargetPayouts.reduce((sum, p) => sum + parseFloat(p.remaining_amount), 0);
     },
 
+    // Key Design Decision #42: once the entered amount exceeds what's owed
+    // to the selected payouts, the difference is booked against
+    // targetPayoutForm.category_lines instead of being rejected — e.g. a
+    // donation deposited together with a Kassen payout in one transfer.
+    targetPayoutExcess() {
+      return (parseFloat(this.targetPayoutForm.amount) || 0) - this.targetPayoutTotalRemaining();
+    },
+
+    targetPayoutCategoryLinesTotal() {
+      return this.targetPayoutForm.category_lines.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0);
+    },
+
+    targetPayoutBalanced() {
+      if (this.targetPayoutExcess() <= 0.005) return true;
+      return Math.abs(this.targetPayoutCategoryLinesTotal() + this.targetPayoutExcess()) < 0.005
+        && this.targetPayoutForm.category_lines.every(l => l.category_id && l.amount);
+    },
+
+    addTargetPayoutLine() {
+      this.targetPayoutForm.category_lines.push({ category_id: '', amount: '', note: '' });
+    },
+
+    removeTargetPayoutLine(idx) {
+      this.targetPayoutForm.category_lines.splice(idx, 1);
+    },
+
     openTargetPayoutModal() {
       this.bookingTargetPayouts = this.targetPayouts
         .filter(p => this.selectedPayoutIds.includes(p.transaction_id))
@@ -2348,6 +2409,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         entry_date: this.defaultTargetPayoutEntryDate(),
         description: '',
         matched_import_line_id: '',
+        category_lines: [],
       };
       this.targetPayoutCandidates = [];
       this.targetPayoutSearchQuery = '';
@@ -2426,6 +2488,13 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         if (this.targetPayoutForm.entry_date) body.entry_date = this.targetPayoutForm.entry_date;
         if (this.targetPayoutForm.description) body.description = this.targetPayoutForm.description;
         if (this.targetPayoutForm.matched_import_line_id) body.matched_import_line_id = this.targetPayoutForm.matched_import_line_id;
+        if (this.targetPayoutExcess() > 0.005) {
+          body.category_lines = this.targetPayoutForm.category_lines.map(l => ({
+            category_id: parseInt(l.category_id, 10),
+            amount: parseFloat(l.amount),
+            note: l.note || null,
+          }));
+        }
         const r = await apiFetch('/api/v1/ledger/target-payouts/book', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2436,7 +2505,12 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
           this.targetPayoutBookError = data.detail || 'Error booking payout';
           return;
         }
+        const data = await r.json();
         this.showTargetPayoutModal = false;
+        // Booking a payout also creates a journal entry, visible in the
+        // Buchungen tab — insert it locally (#40's pattern) rather than
+        // leaving that already-loaded list silently stale.
+        this.insertEntryLocally(data);
         await this.loadTargetPayouts();
       } catch (e) {
         if (e !== 'unauthenticated') this.targetPayoutBookError = e.message || String(e);
