@@ -355,12 +355,32 @@ def list_entries(
             q = q.filter(LedgerEntryLine.category_id == category_id)
     q = q.distinct()
     response.headers["X-Total-Count"] = str(q.count())
-    return (
+    entries = (
         q.order_by(LedgerEntry.entry_date.desc(), LedgerEntry.id.desc())
         .offset(offset)
         .limit(limit)
         .all()
     )
+
+    # bank_purpose_text: the bank's own wording, for the treasurer/Kassenprüfer
+    # to compare against the (often reworded) manual description — sourced
+    # from whichever staged import line(s) this entry was booked from
+    # (LedgerImportLine.matched_entry_id), joined with "; " since a transfer
+    # booking can link both sides' staged lines to the same entry.
+    entry_ids = [e.id for e in entries]
+    if entry_ids:
+        purposes_by_entry: dict[int, list[str]] = {}
+        for matched_entry_id, purpose_text in (
+            db.query(LedgerImportLine.matched_entry_id, LedgerImportLine.purpose_text)
+            .filter(LedgerImportLine.matched_entry_id.in_(entry_ids), LedgerImportLine.purpose_text.isnot(None))
+            .all()
+        ):
+            purposes_by_entry.setdefault(matched_entry_id, []).append(purpose_text)
+        for e in entries:
+            texts = purposes_by_entry.get(e.id)
+            e.bank_purpose_text = "; ".join(texts) if texts else None
+
+    return entries
 
 
 @router.post("/entries", response_model=LedgerEntryResponse, status_code=201, responses={**HTTP_400, **HTTP_404})

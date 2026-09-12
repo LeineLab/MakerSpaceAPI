@@ -474,6 +474,52 @@ def test_list_entries_filters_by_paperless_document_id(treasurer_client, bank_ac
     assert treasurer_client.get("/api/v1/ledger/entries?paperless_document_id=999").json() == []
 
 
+def test_list_entries_filters_by_bank_account_id(treasurer_client, db, bank_account, income_category):
+    other = BankAccount(iban="DE89370400440532013000", name="Zweitkonto", opening_balance=Decimal("0.00"))
+    db.add(other)
+    db.commit()
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-01", "description": "Auf Vereinskonto",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "50.00"},
+                {"category_id": income_category.id, "amount": "-50.00"},
+            ],
+        },
+    )
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-02", "description": "Auf Zweitkonto",
+            "lines": [
+                {"bank_account_id": other.id, "amount": "10.00"},
+                {"category_id": income_category.id, "amount": "-10.00"},
+            ],
+        },
+    )
+
+    resp = treasurer_client.get(f"/api/v1/ledger/entries?bank_account_id={other.id}")
+    assert resp.status_code == 200
+    [entry] = resp.json()
+    assert entry["description"] == "Auf Zweitkonto"
+
+
+def test_list_entries_bank_purpose_text_none_for_manual_booking(treasurer_client, bank_account, income_category):
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-01", "description": "Manuell gebucht",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "50.00"},
+                {"category_id": income_category.id, "amount": "-50.00"},
+            ],
+        },
+    )
+    [entry] = treasurer_client.get("/api/v1/ledger/entries").json()
+    assert entry["bank_purpose_text"] is None
+
+
 def test_auditor_can_list_entries(auditor_client, treasurer_client, bank_account, income_category):
     treasurer_client.post(
         "/api/v1/ledger/entries",

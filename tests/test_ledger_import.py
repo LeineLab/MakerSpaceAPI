@@ -365,6 +365,25 @@ def test_book_import_line_success(treasurer_client, bank_account, income_categor
     assert len(entry["lines"]) == 2
 
 
+def test_booked_entry_exposes_bank_purpose_text(treasurer_client, bank_account, income_category):
+    _upload(treasurer_client, bank_account.id, _MT940_SAMPLE)
+    lines = treasurer_client.get("/api/v1/ledger/import/lines").json()
+    credit_line = next(l for l in lines if Decimal(str(l["amount"])) > 0)
+    assert credit_line["purpose_text"]  # sanity: the fixture line actually has one
+
+    entry = treasurer_client.post(
+        f"/api/v1/ledger/import/lines/{credit_line['id']}/book",
+        json={
+            "description": "Mitgliedsbeitrag Max Mustermann",
+            "category_lines": [{"category_id": income_category.id, "amount": "-50.00"}],
+        },
+    ).json()
+
+    [listed] = [e for e in treasurer_client.get("/api/v1/ledger/entries").json() if e["id"] == entry["id"]]
+    assert listed["bank_purpose_text"] == credit_line["purpose_text"]
+    assert listed["description"] == "Mitgliedsbeitrag Max Mustermann"
+
+
 def test_reversing_booked_import_line_reopens_it(treasurer_client, bank_account, income_category):
     _upload(treasurer_client, bank_account.id, _MT940_SAMPLE)
     lines = treasurer_client.get("/api/v1/ledger/import/lines").json()

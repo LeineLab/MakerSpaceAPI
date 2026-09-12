@@ -611,5 +611,12 @@
   "ledger.label_search_import_lines": "Buchung suchen",
   "ledger.placeholder_search_import_lines": "Verwendungszweck oder Name…",
   "ledger.search_no_results": "Keine Treffer",
-  "ledger.target_payout_selected_title": "Ausgewählte Auszahlungen"
+  "ledger.target_payout_selected_title": "Ausgewählte Auszahlungen",
+  "ledger.category_sign_warning_income": "Ungewöhnliches Vorzeichen für eine Einnahme-Kategorie — falls das keine Rückerstattung/Korrektur ist, Kategorie prüfen.",
+  "ledger.category_sign_warning_expense": "Ungewöhnliches Vorzeichen für eine Ausgabe-Kategorie — falls das keine Gutschrift/Korrektur ist, Kategorie prüfen.",
+  "ledger.filter_account": "Konto",
+  "ledger.filter_account_all": "Alle Konten",
+  "ledger.show_bank_purpose_text": "Original-Verwendungszweck der Bank anzeigen",
+  "ledger.bank_purpose_text_none": "kein Bank-Text vorhanden",
+  "ledger.assets_howto_hint": "Neu erfassen: im Buchungen-Tab bei einer geeigneten Ausgabe-Zeile auf 🏷 klicken."
 }

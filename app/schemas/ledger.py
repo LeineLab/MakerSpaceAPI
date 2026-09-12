@@ -149,6 +149,11 @@ class LedgerEntryResponse(BaseModel):
     created_by: str
     created_at: datetime
     lines: list[LedgerEntryLineResponse]
+    # The bank's own purpose_text(s) from whichever staged import line(s) this
+    # entry was booked from (joined with "; " if more than one — a transfer
+    # booking can link both sides' staged lines to the same entry). None if
+    # this entry was booked manually and never linked to a staged line at all.
+    bank_purpose_text: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

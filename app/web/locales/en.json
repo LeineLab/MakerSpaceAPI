@@ -611,5 +611,12 @@
   "ledger.label_search_import_lines": "Search for a booking",
   "ledger.placeholder_search_import_lines": "Purpose or name…",
   "ledger.search_no_results": "No matches",
-  "ledger.target_payout_selected_title": "Selected payouts"
+  "ledger.target_payout_selected_title": "Selected payouts",
+  "ledger.category_sign_warning_income": "Unexpected sign for an income category — check the category unless this is a refund/correction.",
+  "ledger.category_sign_warning_expense": "Unexpected sign for an expense category — check the category unless this is a credit/correction.",
+  "ledger.filter_account": "Account",
+  "ledger.filter_account_all": "All accounts",
+  "ledger.show_bank_purpose_text": "Show the bank's original purpose text",
+  "ledger.bank_purpose_text_none": "no bank text available",
+  "ledger.assets_howto_hint": "To add one: in the Buchungen tab, click 🏷 next to an eligible expense line."
 }

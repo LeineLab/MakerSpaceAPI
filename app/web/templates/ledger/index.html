@@ -57,7 +57,7 @@
   <!-- ================= Entries ================= -->
   <div x-show="activeTab === 'entries'">
     <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.filter_year') }}</label>
         <select x-model.number="filterYear" @change="loadEntries()"
                 class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
@@ -65,6 +65,18 @@
             <option :value="y" x-text="y"></option>
           </template>
         </select>
+        <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.filter_account') }}</label>
+        <select x-model.number="filterAccountId" @change="loadEntries()"
+                class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+          <option value="">{{ _('ledger.filter_account_all') }}</option>
+          <template x-for="a in accounts" :key="a.id">
+            <option :value="a.id" x-text="a.name"></option>
+          </template>
+        </select>
+        <label class="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 cursor-pointer ml-2">
+          <input type="checkbox" x-model="showBankPurposeText" class="rounded border-gray-300 dark:border-gray-600">
+          {{ _('ledger.show_bank_purpose_text') }}
+        </label>
       </div>
       <button x-show="userIsTreasurer" @click="openEntryModal()"
               class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
@@ -98,7 +110,9 @@
               <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 align-top">
                 <td class="px-4 py-3 whitespace-nowrap" x-text="e.entry_date"></td>
                 <td class="px-4 py-3">
-                  <span x-text="e.description"></span>
+                  <span x-show="!showBankPurposeText" x-text="e.description"></span>
+                  <span x-show="showBankPurposeText" x-text="e.bank_purpose_text || BANK_PURPOSE_NONE_L"
+                        :class="!e.bank_purpose_text && 'italic text-gray-400 dark:text-gray-500'"></span>
                   <span x-show="e.reverses_entry_id" class="ml-2 px-2 py-0.5 rounded text-xs font-medium bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300"
                         x-text="REVERSES_TMPL.replace('{id}', e.reverses_entry_id)"></span>
                   <span x-show="reversedByMap[e.id]" class="ml-2 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
@@ -836,6 +850,7 @@
   <div x-show="activeTab === 'assets'">
     <h2 class="text-xl font-semibold mb-1">{{ _('ledger.assets_title') }}</h2>
     <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">{{ _('ledger.assets_hint') }}</p>
+    <p class="text-xs text-gray-400 dark:text-gray-500 mb-1">{{ _('ledger.assets_howto_hint') }}</p>
     <p class="text-xs text-gray-400 dark:text-gray-500 mb-4">{{ _('ledger.asset_gwg_hint') }}</p>
 
     <div x-show="assetsError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="assetsError"></div>
@@ -1199,7 +1214,7 @@
                  class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
         </div>
 
-        <div class="relative">
+        <div class="relative" x-show="!bookForm.isTransfer">
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.paperless_search_label') }}</label>
           <input type="text" x-model="paperlessQuery" @input.debounce.400ms="searchPaperless()"
                  placeholder="{{ _('ledger.paperless_search_placeholder') }}"
@@ -1230,20 +1245,24 @@
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ _('ledger.lines_title') }}</label>
           <div class="space-y-2">
             <template x-for="(line, idx) in bookForm.category_lines" :key="idx">
-              <div class="flex gap-2 items-center">
-                <select x-model="line.category_id" :required="!bookForm.isTransfer"
-                        class="flex-1 border dark:border-gray-700 rounded px-2 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
-                  <option value="">{{ _('ledger.select_target') }}</option>
-                  <template x-for="c in activeCategories" :key="c.id">
-                    <option :value="c.id" x-text="c.name"></option>
-                  </template>
-                </select>
-                <input type="number" step="0.01" x-model="line.amount" :required="!bookForm.isTransfer" placeholder="{{ _('ledger.label_amount') }}"
-                       class="w-32 border dark:border-gray-700 rounded px-2 py-2 text-sm font-mono bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
-                <button type="button" @click="removeBookLine(idx)" x-show="bookForm.category_lines.length > 1"
-                        class="text-red-600 dark:text-red-400 hover:underline text-xs shrink-0">
-                  {{ _('ledger.btn_remove_line') }}
-                </button>
+              <div>
+                <div class="flex gap-2 items-center">
+                  <select x-model="line.category_id" :required="!bookForm.isTransfer"
+                          class="flex-1 border dark:border-gray-700 rounded px-2 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    <option value="">{{ _('ledger.select_target') }}</option>
+                    <template x-for="c in activeCategories" :key="c.id">
+                      <option :value="c.id" x-text="c.name"></option>
+                    </template>
+                  </select>
+                  <input type="number" step="0.01" x-model="line.amount" :required="!bookForm.isTransfer" placeholder="{{ _('ledger.label_amount') }}"
+                         class="w-32 border dark:border-gray-700 rounded px-2 py-2 text-sm font-mono bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                  <button type="button" @click="removeBookLine(idx)" x-show="bookForm.category_lines.length > 1"
+                          class="text-red-600 dark:text-red-400 hover:underline text-xs shrink-0">
+                    {{ _('ledger.btn_remove_line') }}
+                  </button>
+                </div>
+                <p x-show="categoryIdSignWarning(line.category_id, line.amount)" class="text-xs text-amber-600 dark:text-amber-400 mt-0.5"
+                   x-text="categoryIdSignWarning(line.category_id, line.amount)"></p>
               </div>
             </template>
           </div>
@@ -1313,13 +1332,13 @@
       <h2 class="text-lg font-bold mb-4">{{ _('ledger.entry_modal_title') }}</h2>
       <div x-show="entryError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="entryError"></div>
       <form @submit.prevent="createEntry()" class="space-y-4">
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid gap-4" :class="entryIsTransfer ? 'grid-cols-1' : 'grid-cols-2'">
           <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_date') }}</label>
             <input type="date" x-model="entryForm.entry_date" required
                    class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
           </div>
-          <div>
+          <div x-show="!entryIsTransfer">
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_paperless_id') }}</label>
             <input type="text" x-model="entryForm.paperless_document_id" placeholder="{{ _('ledger.placeholder_paperless_id') }}"
                    @input.debounce.400ms="checkPaperlessDuplicate(entryForm.paperless_document_id)"
@@ -1337,27 +1356,31 @@
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ _('ledger.lines_title') }}</label>
           <div class="space-y-2">
             <template x-for="(line, idx) in entryForm.lines" :key="idx">
-              <div class="flex gap-2 items-center">
-                <select x-model="line.ref" required
-                        class="flex-1 border dark:border-gray-700 rounded px-2 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
-                  <option value="">{{ _('ledger.select_target') }}</option>
-                  <optgroup label="{{ _('ledger.optgroup_accounts') }}">
-                    <template x-for="a in trackedAccounts" :key="'a' + a.id">
-                      <option :value="'account:' + a.id" x-text="a.name"></option>
-                    </template>
-                  </optgroup>
-                  <optgroup label="{{ _('ledger.optgroup_categories') }}">
-                    <template x-for="c in activeCategories" :key="'c' + c.id">
-                      <option :value="'category:' + c.id" x-text="c.name"></option>
-                    </template>
-                  </optgroup>
-                </select>
-                <input type="number" step="0.01" x-model="line.amount" required placeholder="{{ _('ledger.label_amount') }}"
-                       class="w-32 border dark:border-gray-700 rounded px-2 py-2 text-sm font-mono bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
-                <button type="button" @click="removeLine(idx)" x-show="entryForm.lines.length > 2"
-                        class="text-red-600 dark:text-red-400 hover:underline text-xs shrink-0">
-                  {{ _('ledger.btn_remove_line') }}
-                </button>
+              <div>
+                <div class="flex gap-2 items-center">
+                  <select x-model="line.ref" required
+                          class="flex-1 border dark:border-gray-700 rounded px-2 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    <option value="">{{ _('ledger.select_target') }}</option>
+                    <optgroup label="{{ _('ledger.optgroup_accounts') }}">
+                      <template x-for="a in trackedAccounts" :key="'a' + a.id">
+                        <option :value="'account:' + a.id" x-text="a.name"></option>
+                      </template>
+                    </optgroup>
+                    <optgroup label="{{ _('ledger.optgroup_categories') }}">
+                      <template x-for="c in activeCategories" :key="'c' + c.id">
+                        <option :value="'category:' + c.id" x-text="c.name"></option>
+                      </template>
+                    </optgroup>
+                  </select>
+                  <input type="number" step="0.01" x-model="line.amount" required placeholder="{{ _('ledger.label_amount') }}"
+                         class="w-32 border dark:border-gray-700 rounded px-2 py-2 text-sm font-mono bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                  <button type="button" @click="removeLine(idx)" x-show="entryForm.lines.length > 2"
+                          class="text-red-600 dark:text-red-400 hover:underline text-xs shrink-0">
+                    {{ _('ledger.btn_remove_line') }}
+                  </button>
+                </div>
+                <p x-show="categoryLineSignWarning(line.ref, line.amount)" class="text-xs text-amber-600 dark:text-amber-400 mt-0.5"
+                   x-text="categoryLineSignWarning(line.ref, line.amount)"></p>
               </div>
             </template>
           </div>
@@ -1754,6 +1777,7 @@ const CATEGORY_SIGN_WARNING_L = {
   income: {{ _('ledger.category_sign_warning_income') | tojson }},
   expense: {{ _('ledger.category_sign_warning_expense') | tojson }},
 };
+const BANK_PURPOSE_NONE_L = {{ _('ledger.bank_purpose_text_none') | tojson }};
 const SUM_L = { balanced: {{ _('ledger.sum_balanced') | tojson }}, unbalanced: {{ _('ledger.sum_unbalanced') | tojson }} };
 const IMPORT_STATUS_L = {
   new: {{ _('ledger.import_status_new') | tojson }},
@@ -1832,6 +1856,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     loadingMoreEntries: false,
     entriesError: null,
     filterYear: new Date().getFullYear(),
+    filterAccountId: '',
+    showBankPurposeText: false,
     showEntryModal: false,
     entryForm: { entry_date: '', description: '', paperless_document_id: '', lines: [] },
     entryError: null,
@@ -2068,11 +2094,17 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
     },
 
+    entriesQueryParams() {
+      let params = `year=${this.filterYear}`;
+      if (this.filterAccountId) params += `&bank_account_id=${this.filterAccountId}`;
+      return params;
+    },
+
     async loadEntries() {
       this.loadingEntries = true;
       this.entriesError = null;
       try {
-        const r = await apiFetch(`/api/v1/ledger/entries?year=${this.filterYear}&limit=${PAGE_SIZE}`);
+        const r = await apiFetch(`/api/v1/ledger/entries?${this.entriesQueryParams()}&limit=${PAGE_SIZE}`);
         if (!r.ok) throw new Error('Failed to load entries');
         this.entries = await r.json();
         this.entriesTotal = Number(r.headers.get('X-Total-Count')) || this.entries.length;
@@ -2087,7 +2119,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       this.loadingMoreEntries = true;
       try {
         const r = await apiFetch(
-          `/api/v1/ledger/entries?year=${this.filterYear}&limit=${PAGE_SIZE}&offset=${this.entries.length}`
+          `/api/v1/ledger/entries?${this.entriesQueryParams()}&limit=${PAGE_SIZE}&offset=${this.entries.length}`
         );
         if (!r.ok) throw new Error('Failed to load entries');
         this.entries = this.entries.concat(await r.json());
