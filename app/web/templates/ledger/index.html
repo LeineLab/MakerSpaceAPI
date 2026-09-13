@@ -1168,6 +1168,19 @@
     <h2 class="text-xl font-semibold mb-1">{{ _('ledger.paperless_documents_title') }}</h2>
     <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">{{ _('ledger.paperless_documents_hint') }}</p>
 
+    <div class="flex flex-wrap items-center gap-2 mb-4">
+      <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.col_status') }}</label>
+      <select x-model="paperlessFilterStatus" @change="paperlessDocumentsPage = 1; loadPaperlessDocuments()"
+              class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+        <option value="">{{ _('ledger.target_payouts_filter_all') }}</option>
+        <option value="linked">{{ _('ledger.paperless_filter_linked') }}</option>
+        <option value="unlinked">{{ _('ledger.target_payouts_filter_open') }}</option>
+      </select>
+      <input type="text" x-model="paperlessFilterQuery" @input.debounce.400ms="paperlessDocumentsPage = 1; loadPaperlessDocuments()"
+             placeholder="{{ _('ledger.placeholder_search_paperless_documents') }}"
+             class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+    </div>
+
     <div x-show="paperlessDocumentsError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="paperlessDocumentsError"></div>
 
     <template x-if="loadingPaperlessDocuments">
@@ -2263,6 +2276,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     paperlessDocumentsPage: 1,
     loadingPaperlessDocuments: false,
     paperlessDocumentsError: null,
+    paperlessFilterStatus: '',
+    paperlessFilterQuery: '',
 
     showPaperlessDocSearchModal: false,
     paperlessDocSearchDoc: null,
@@ -3463,7 +3478,10 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       this.paperlessDocumentsError = null;
       try {
         const offset = (this.paperlessDocumentsPage - 1) * PAGE_SIZE;
-        const r = await apiFetch(`/api/v1/ledger/paperless/documents?limit=${PAGE_SIZE}&offset=${offset}`);
+        let params = `limit=${PAGE_SIZE}&offset=${offset}`;
+        if (this.paperlessFilterStatus) params += `&status=${this.paperlessFilterStatus}`;
+        if (this.paperlessFilterQuery) params += `&q=${encodeURIComponent(this.paperlessFilterQuery)}`;
+        const r = await apiFetch(`/api/v1/ledger/paperless/documents?${params}`);
         if (!r.ok) throw new Error('Failed to load documents');
         this.paperlessDocuments = await r.json();
         this.paperlessDocumentsTotal = Number(r.headers.get('X-Total-Count')) || this.paperlessDocuments.length;

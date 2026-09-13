@@ -57,29 +57,40 @@ def _document_type_ids() -> list[str]:
     return [part.strip() for part in raw.split(",") if part.strip()]
 
 
-def list_documents(limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
+def list_documents(q: str | None = None, limit: int = 500) -> list[dict]:
     """List Paperless documents, newest first, for the Belege overview.
 
     Optionally restricted to `PAPERLESS_DOCUMENT_TYPE_IDS` (e.g. only
     "Rechnung"/"Beleg", excluding other document types Paperless might also
     hold) via the same `document_type__id__in` filter Paperless's own web UI
-    uses. Returns `(documents, total_count)` — `total_count` is Paperless's
-    own reported count for the filtered set, matching this app's own
-    `X-Total-Count` paging convention (see `GET /ledger/entries` etc.).
+    uses, and/or `q` (Paperless's own full-text search, the same `query`
+    param `search_documents()` uses — it searches document content, not just
+    the title, which this app can't replicate on its own).
 
-    Returns `([], 0)` if Paperless isn't configured or is unreachable — same
+    Unlike `search_documents()`, this fetches up to `limit` documents in one
+    request rather than paginating against Paperless — the caller
+    (`GET /ledger/paperless/documents`) needs the *entire* matching set
+    up front to filter by its own computed "linked" status before applying
+    its own offset/limit, so Paperless-side paging wouldn't help here. 500
+    is a practical bound, not a hard guarantee of completeness — plenty for
+    a Verein-scale document set restricted to a couple of Dokumenttypen, but
+    a Paperless instance with more matching documents than that would only
+    ever show the newest 500 here.
+
+    Returns `[]` if Paperless isn't configured or is unreachable — same
     fail-open convention as `search_documents()`, since a down/misconfigured
     Paperless must never block the rest of the ledger from working.
     """
     if not is_configured():
-        return [], 0
+        return []
 
     url = settings.PAPERLESS_URL.rstrip("/") + "/api/documents/"
     params: dict = {
-        "page": offset // limit + 1,
         "page_size": limit,
         "ordering": "-created",
     }
+    if q:
+        params["query"] = q
     type_ids = _document_type_ids()
     if type_ids:
         params["document_type__id__in"] = ",".join(type_ids)
@@ -96,9 +107,9 @@ def list_documents(limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
         response.raise_for_status()
         data = response.json()
     except (httpx.HTTPError, ValueError):
-        return [], 0
+        return []
 
-    documents = [
+    return [
         {
             "id": doc["id"],
             "title": doc.get("title") or f"Dokument {doc['id']}",
@@ -106,4 +117,3 @@ def list_documents(limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
         }
         for doc in data.get("results", [])
     ]
-    return documents, data.get("count", 0)

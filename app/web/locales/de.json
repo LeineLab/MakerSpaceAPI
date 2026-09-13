@@ -646,5 +646,7 @@
   "ledger.col_created": "Erstellt",
   "ledger.paperless_linked_badge": "Verknüpft ({count})",
   "ledger.btn_find_matching_transaction": "Passende Transaktion suchen",
-  "ledger.paperless_doc_search_modal_title": "Passende Transaktion suchen"
+  "ledger.paperless_doc_search_modal_title": "Passende Transaktion suchen",
+  "ledger.paperless_filter_linked": "Verknüpft",
+  "ledger.placeholder_search_paperless_documents": "Beleg durchsuchen…"
 }

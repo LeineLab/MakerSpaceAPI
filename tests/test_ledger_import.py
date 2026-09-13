@@ -945,6 +945,82 @@ def test_paperless_documents_marks_unlinked_and_linked(
     assert docs[99]["linked_entry_ids"] == []
 
 
+def test_paperless_documents_status_filter_linked_unlinked(
+    auditor_client, treasurer_client, monkeypatch, bank_account, expense_category,
+):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "PAPERLESS_URL", "https://paperless.example.com")
+    monkeypatch.setattr(settings, "PAPERLESS_API_TOKEN", "test-token")
+
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-01",
+            "description": "Bueromaterial",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "-20.00"},
+                {"category_id": expense_category.id, "amount": "20.00", "paperless_document_id": "42"},
+            ],
+        },
+    )
+
+    fake_response = {
+        "results": [
+            {"id": 42, "title": "Rechnung Bueromarkt", "created": "2026-03-01"},
+            {"id": 99, "title": "Rechnung Getraenke", "created": "2026-02-15"},
+        ],
+    }
+    with patch("app.services.paperless.httpx.get") as mock_get:
+        mock_get.return_value = httpx.Response(
+            200, json=fake_response, request=httpx.Request("GET", "https://paperless.example.com/api/documents/"),
+        )
+        linked = auditor_client.get("/api/v1/ledger/paperless/documents?status=linked")
+        unlinked = auditor_client.get("/api/v1/ledger/paperless/documents?status=unlinked")
+
+    assert [d["id"] for d in linked.json()] == [42]
+    assert linked.headers["X-Total-Count"] == "1"
+    assert [d["id"] for d in unlinked.json()] == [99]
+    assert unlinked.headers["X-Total-Count"] == "1"
+
+
+def test_paperless_documents_search_query_passed_through(auditor_client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "PAPERLESS_URL", "https://paperless.example.com")
+    monkeypatch.setattr(settings, "PAPERLESS_API_TOKEN", "test-token")
+
+    with patch("app.services.paperless.httpx.get") as mock_get:
+        mock_get.return_value = httpx.Response(
+            200, json={"results": []},
+            request=httpx.Request("GET", "https://paperless.example.com/api/documents/"),
+        )
+        auditor_client.get("/api/v1/ledger/paperless/documents?q=baumarkt")
+
+    assert mock_get.call_args.kwargs["params"]["query"] == "baumarkt"
+
+
+def test_paperless_documents_pagination_applies_after_filtering(auditor_client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "PAPERLESS_URL", "https://paperless.example.com")
+    monkeypatch.setattr(settings, "PAPERLESS_API_TOKEN", "test-token")
+
+    fake_response = {
+        "results": [
+            {"id": i, "title": f"Beleg {i}", "created": "2026-03-01"} for i in range(1, 6)
+        ],
+    }
+    with patch("app.services.paperless.httpx.get") as mock_get:
+        mock_get.return_value = httpx.Response(
+            200, json=fake_response, request=httpx.Request("GET", "https://paperless.example.com/api/documents/"),
+        )
+        resp = auditor_client.get("/api/v1/ledger/paperless/documents?limit=2&offset=2")
+
+    assert [d["id"] for d in resp.json()] == [3, 4]
+    assert resp.headers["X-Total-Count"] == "5"
+
+
 def test_paperless_documents_restricted_to_configured_document_types(auditor_client, monkeypatch):
     from app.config import settings
 

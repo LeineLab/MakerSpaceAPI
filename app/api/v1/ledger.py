@@ -4,7 +4,7 @@ from dataclasses import asdict
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
@@ -2126,9 +2126,14 @@ def search_paperless(
     return paperless.search_documents(q)
 
 
+_PAPERLESS_BULK_FETCH_LIMIT = 500
+
+
 @router.get("/paperless/documents", response_model=list[PaperlessDocumentOverviewItem])
 def list_paperless_documents(
     response: Response,
+    status: Optional[Literal["linked", "unlinked"]] = Query(default=None),
+    q: Optional[str] = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _viewer: dict = Depends(require_ledger_viewer_user),
@@ -2138,12 +2143,21 @@ def list_paperless_documents(
     PAPERLESS_DOCUMENT_TYPE_IDS, e.g. only "Rechnung"/"Beleg"), newest
     first, alongside whether it's already linked to a booked entry line —
     so open invoices can be spotted and booked without checking each one
-    individually. `X-Total-Count` follows the same paging convention as
+    individually. `q` is Paperless's own full-text search (content, not just
+    title). `status=linked`/`unlinked` filters by that computed link state.
+
+    Both filters are applied here, not by Paperless, since "linked" is this
+    app's own concept — `paperless.list_documents()` fetches up to
+    `_PAPERLESS_BULK_FETCH_LIMIT` matching documents in one bulk call (see
+    its own docstring for why Paperless-side paging doesn't fit this), and
+    `limit`/`offset` here paginate the *filtered* result instead.
+    `X-Total-Count` reflects that filtered count, same paging convention as
     GET /ledger/entries and GET /ledger/import/lines."""
-    documents, total = paperless.list_documents(limit=limit, offset=offset)
-    response.headers["X-Total-Count"] = str(total)
+    documents = paperless.list_documents(q=q, limit=_PAPERLESS_BULK_FETCH_LIMIT)
     if not documents:
+        response.headers["X-Total-Count"] = "0"
         return []
+
     doc_ids = [str(d["id"]) for d in documents]
     linked_by_doc: dict[str, list[int]] = {}
     for doc_id, entry_id in (
@@ -2152,13 +2166,21 @@ def list_paperless_documents(
         .all()
     ):
         linked_by_doc.setdefault(doc_id, []).append(entry_id)
-    return [
+
+    items = [
         PaperlessDocumentOverviewItem(
             id=d["id"], title=d["title"], created=d["created"],
             linked_entry_ids=linked_by_doc.get(str(d["id"]), []),
         )
         for d in documents
     ]
+    if status == "linked":
+        items = [item for item in items if item.linked_entry_ids]
+    elif status == "unlinked":
+        items = [item for item in items if not item.linked_entry_ids]
+
+    response.headers["X-Total-Count"] = str(len(items))
+    return items[offset:offset + limit]
 
 
 # --- FinTS bank presets (server/BLZ/name only — never login/PIN) ---
