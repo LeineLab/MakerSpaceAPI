@@ -130,10 +130,12 @@
                       <span x-text="lineTargetName(l)"></span>:
                       <span :class="parseFloat(l.amount) < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'"
                             x-text="fmtSigned(l.amount)"></span>
-                      <button x-show="userIsTreasurer && isCapitalizableLine(l) && !assetLineIds.has(l.id)"
-                              @click.stop="openCapitalizeModal(l, e)" :title="CAPITALIZE_L"
+                      <button x-show="userIsTreasurer && isCapitalizableLine(l) && lineRemainingCapitalizable(l) > 0.005"
+                              @click.stop="openCapitalizeModal(l, e)"
+                              :title="capitalizedAmountByLineId.has(l.id) ? CAPITALIZE_PARTIAL_L : CAPITALIZE_L"
                               class="ml-1 text-blue-600 dark:text-blue-400 hover:underline">🏷</button>
-                      <span x-show="assetLineIds.has(l.id)" :title="CAPITALIZE_L" class="ml-1">🏷</span>
+                      <span x-show="isCapitalizableLine(l) && lineRemainingCapitalizable(l) <= 0.005 && capitalizedAmountByLineId.has(l.id)"
+                            :title="CAPITALIZE_L" class="ml-1">🏷</span>
                       <a x-show="l.paperless_document_id && config.paperless_url" :href="paperlessDocUrl(l.paperless_document_id)"
                          target="_blank" rel="noopener" @click.stop :title="l.paperless_document_id" class="ml-1 text-blue-600 dark:text-blue-400 hover:underline">📎</a>
                       <span x-show="l.paperless_document_id && !config.paperless_url" :title="l.paperless_document_id" class="ml-1">📎</span>
@@ -967,7 +969,11 @@
           <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
             <template x-for="a in assets" :key="a.id">
               <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
-                <td class="px-4 py-3 font-medium" x-text="a.name"></td>
+                <td class="px-4 py-3 font-medium">
+                  <span x-text="a.name"></span>
+                  <span x-show="a.components.length > 1" class="ml-1 text-xs text-gray-400 dark:text-gray-500"
+                        x-text="ASSET_COMPONENT_COUNT_TMPL.replace('{count}', a.components.length)"></span>
+                </td>
                 <td class="px-4 py-3 whitespace-nowrap" x-text="a.acquisition_date"></td>
                 <td class="px-4 py-3 text-right font-mono" x-text="fmt(a.acquisition_cost)"></td>
                 <td class="px-4 py-3 text-right" x-text="a.useful_life_years"></td>
@@ -990,6 +996,77 @@
         </div>
       </div>
     </template>
+
+    <!-- Anlagenspiegel (#50): the fixed-asset-register columns needed for
+         the tax return, per year — reuses the same per-component AfA math
+         as the live table above, so the two can never disagree. -->
+    <div class="mt-10">
+      <h2 class="text-xl font-semibold mb-1">{{ _('ledger.anlagenspiegel_title') }}</h2>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">{{ _('ledger.anlagenspiegel_hint') }}</p>
+      <div class="flex items-center gap-2 mb-4">
+        <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.report_year') }}</label>
+        <select x-model.number="anlagenspiegelYear" @change="loadAnlagenspiegel()"
+                class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+          <template x-for="y in yearOptions" :key="y">
+            <option :value="y" x-text="y"></option>
+          </template>
+        </select>
+      </div>
+
+      <div x-show="anlagenspiegelError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="anlagenspiegelError"></div>
+
+      <template x-if="loadingAnlagenspiegel">
+        <div class="text-gray-400 dark:text-gray-500 text-sm">Loading…</div>
+      </template>
+      <template x-if="!loadingAnlagenspiegel && anlagenspiegel && anlagenspiegel.rows.length === 0">
+        <p class="text-gray-400 dark:text-gray-500">{{ _('ledger.anlagenspiegel_empty') }}</p>
+      </template>
+      <template x-if="!loadingAnlagenspiegel && anlagenspiegel && anlagenspiegel.rows.length > 0">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+          <div class="overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
+              <tr>
+                <th class="px-4 py-3 text-left">{{ _('common.name') }}</th>
+                <th class="px-4 py-3 text-left">{{ _('ledger.label_afa_category') }}</th>
+                <th class="px-4 py-3 text-right">{{ _('ledger.col_acquisition_cost') }}</th>
+                <th class="px-4 py-3 text-right">{{ _('ledger.col_opening_value') }}</th>
+                <th class="px-4 py-3 text-right">{{ _('ledger.col_zugang') }}</th>
+                <th class="px-4 py-3 text-right">{{ _('ledger.col_abgang') }}</th>
+                <th class="px-4 py-3 text-right">{{ _('ledger.col_afa') }}</th>
+                <th class="px-4 py-3 text-right">{{ _('ledger.col_closing_value') }}</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+              <template x-for="row in anlagenspiegel.rows" :key="row.asset_id">
+                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <td class="px-4 py-3 font-medium" x-text="row.name"></td>
+                  <td class="px-4 py-3" x-text="row.category ? row.category.name : '—'"></td>
+                  <td class="px-4 py-3 text-right font-mono" x-text="fmt(row.acquisition_cost_end_of_year)"></td>
+                  <td class="px-4 py-3 text-right font-mono" x-text="fmt(row.opening_book_value)"></td>
+                  <td class="px-4 py-3 text-right font-mono" x-text="fmt(row.zugang)"></td>
+                  <td class="px-4 py-3 text-right font-mono" x-text="fmt(row.abgang)"></td>
+                  <td class="px-4 py-3 text-right font-mono" x-text="fmt(row.afa)"></td>
+                  <td class="px-4 py-3 text-right font-mono" x-text="fmt(row.closing_book_value)"></td>
+                </tr>
+              </template>
+            </tbody>
+            <tfoot x-show="anlagenspiegelTotals" class="border-t-2 border-gray-200 dark:border-gray-700 font-semibold">
+              <tr>
+                <td class="px-4 py-3" colspan="2">{{ _('ledger.row_total') }}</td>
+                <td class="px-4 py-3 text-right font-mono" x-text="fmt(anlagenspiegelTotals.acquisition_cost_end_of_year)"></td>
+                <td class="px-4 py-3 text-right font-mono" x-text="fmt(anlagenspiegelTotals.opening_book_value)"></td>
+                <td class="px-4 py-3 text-right font-mono" x-text="fmt(anlagenspiegelTotals.zugang)"></td>
+                <td class="px-4 py-3 text-right font-mono" x-text="fmt(anlagenspiegelTotals.abgang)"></td>
+                <td class="px-4 py-3 text-right font-mono" x-text="fmt(anlagenspiegelTotals.afa)"></td>
+                <td class="px-4 py-3 text-right font-mono" x-text="fmt(anlagenspiegelTotals.closing_book_value)"></td>
+              </tr>
+            </tfoot>
+          </table>
+          </div>
+        </div>
+      </template>
+    </div>
   </div>
 
   <!-- ================= Rücklagen & Mittelverwendung ================= -->
@@ -1787,52 +1864,126 @@
   <!-- ============ Asset (Anlagevermögen) Modal ============ -->
   <div x-show="showAssetModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
        @mousedown.self="modalMousedownOutside = true">
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6"
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6" style="max-height: 90vh; overflow-y: auto;"
          @mousedown="modalMousedownOutside = false" @click.outside="if (modalMousedownOutside) showAssetModal = false">
       <h2 class="text-lg font-bold mb-4" x-text="editingAssetId ? ASSET_MODAL_TITLE_EDIT_L : ASSET_MODAL_TITLE_CREATE_L"></h2>
       <p x-show="assetSourceLabel" class="text-xs text-gray-500 dark:text-gray-400 mb-3 font-mono" x-text="assetSourceLabel"></p>
       <div x-show="assetError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="assetError"></div>
       <form @submit.prevent="submitAsset()" class="space-y-4">
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('common.name') }}</label>
-          <input type="text" x-model="assetForm.name" required
-                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_acquisition_date') }}</label>
-            <input type="date" x-model="assetForm.acquisition_date" required
-                   class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+        <!-- Mode toggle + amount (#49): only relevant when capitalizing a
+             line, not when editing an already-existing asset's own fields. -->
+        <div x-show="!editingAssetId" class="space-y-3">
+          <div class="flex gap-4 text-sm">
+            <label class="inline-flex items-center gap-2 cursor-pointer">
+              <input type="radio" value="new" x-model="assetCapitalizeMode" class="border-gray-300 dark:border-gray-600">
+              {{ _('ledger.asset_mode_new') }}
+            </label>
+            <label class="inline-flex items-center gap-2 cursor-pointer" :class="assets.length === 0 && 'opacity-50'">
+              <input type="radio" value="existing" x-model="assetCapitalizeMode" :disabled="assets.length === 0"
+                     class="border-gray-300 dark:border-gray-600">
+              {{ _('ledger.asset_mode_existing') }}
+            </label>
           </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_useful_life_years') }}</label>
-            <input type="number" min="1" step="1" x-model.number="assetForm.useful_life_years" required
-                   class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_capitalized_amount') }}</label>
+              <input type="number" step="0.01" x-model="assetForm.component_amount" required
+                     class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm font-mono bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+            <div>
+              <!-- This component's own acquisition date (#50) — a component
+                   added long after the rest (nachträgliche Anschaffungs-
+                   kosten) depreciates from here, never backdated to another
+                   component's date. -->
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_acquisition_date') }}</label>
+              <input type="date" x-model="assetForm.component_acquisition_date" required
+                     class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+          </div>
+          <p class="text-xs text-gray-400 dark:text-gray-500">{{ _('ledger.asset_partial_amount_hint') }}</p>
+          <div x-show="assetCapitalizeMode === 'existing'">
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.asset_mode_existing') }}</label>
+            <select x-model.number="assetForm.target_asset_id" :required="assetCapitalizeMode === 'existing'"
+                    class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+              <option value="">{{ _('ledger.select_asset') }}</option>
+              <template x-for="a in assets" :key="a.id">
+                <option :value="a.id" x-text="a.name + ' (' + fmt(a.acquisition_cost) + ')'"></option>
+              </template>
+            </select>
           </div>
         </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_afa_category') }}</label>
-          <select x-model.number="assetForm.category_id" required
-                  class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
-            <option value="">{{ _('ledger.select_afa_category') }}</option>
-            <template x-for="c in afaCategories" :key="c.id">
-              <option :value="c.id" x-text="c.name"></option>
-            </template>
-          </select>
-        </div>
+
+        <template x-if="editingAssetId || assetCapitalizeMode === 'new'">
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('common.name') }}</label>
+              <input type="text" x-model="assetForm.name" required
+                     class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_useful_life_years') }}</label>
+              <input type="number" min="1" step="1" x-model.number="assetForm.useful_life_years" required
+                     class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_afa_category') }}</label>
+              <select x-model.number="assetForm.category_id" required
+                      class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                <option value="">{{ _('ledger.select_afa_category') }}</option>
+                <template x-for="c in afaCategories" :key="c.id">
+                  <option :value="c.id" x-text="c.name"></option>
+                </template>
+              </select>
+            </div>
+          </div>
+        </template>
+
+        <!-- Components (#50): each has its own acquisition/disposal date,
+             independent of the asset's other components — e.g. only the
+             graphics card can be marked disposed while the rest stays in
+             service. -->
         <div x-show="editingAssetId">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_disposed_at') }}</label>
-          <div class="flex gap-2">
-            <input type="date" x-model="assetForm.disposed_at"
-                   class="flex-1 border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
-            <button type="button" x-show="assetForm.disposed_at" @click="assetForm.disposed_at = ''"
-                    class="px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200">
-              {{ _('ledger.btn_clear_disposed') }}
-            </button>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.asset_components_title') }}</label>
+          <div class="space-y-1">
+            <template x-for="c in editingAssetObj.components" :key="c.id">
+              <div class="text-sm bg-gray-50 dark:bg-gray-900 rounded px-2 py-1.5">
+                <div class="flex justify-between items-center">
+                  <div>
+                    <div x-text="c.entry_date + ' — ' + c.description"></div>
+                    <div class="text-xs text-gray-400 dark:text-gray-500">
+                      <span x-text="ASSET_COMPONENT_SINCE_TMPL.replace('{date}', c.acquisition_date)"></span>
+                      <span x-show="c.disposed_at" x-text="ASSET_COMPONENT_DISPOSED_TMPL.replace('{date}', c.disposed_at)"></span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2 shrink-0">
+                    <span class="font-mono" x-text="fmt(c.amount)"></span>
+                    <button type="button" x-show="!c.disposed_at && disposingComponentId !== c.id"
+                            @click="startDisposeComponent(c)"
+                            class="text-amber-600 dark:text-amber-400 hover:underline text-xs">{{ _('ledger.btn_dispose_component') }}</button>
+                    <button type="button" x-show="c.disposed_at" @click="clearComponentDisposal(editingAssetObj, c)"
+                            class="text-blue-600 dark:text-blue-400 hover:underline text-xs">{{ _('ledger.btn_restore_component') }}</button>
+                    <button type="button" @click="removeAssetComponent(editingAssetObj, c)"
+                            x-show="editingAssetObj.components.length > 1"
+                            class="text-red-600 dark:text-red-400 hover:underline text-xs">{{ _('common.remove') }}</button>
+                  </div>
+                </div>
+                <div x-show="disposingComponentId === c.id" class="mt-1.5">
+                  <div class="flex items-center gap-2">
+                    <input type="date" x-model="disposeDate"
+                           class="border dark:border-gray-700 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800">
+                    <button type="button" @click="confirmDisposeComponent(editingAssetObj)"
+                            class="text-xs text-blue-600 dark:text-blue-400 hover:underline">{{ _('common.confirm') }}</button>
+                    <button type="button" @click="disposingComponentId = null"
+                            class="text-xs text-gray-500 dark:text-gray-400 hover:underline">{{ _('common.cancel') }}</button>
+                  </div>
+                  <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">{{ _('ledger.asset_component_dispose_hint') }}</p>
+                </div>
+              </div>
+            </template>
           </div>
-          <p x-show="assetForm.disposed_at" class="text-xs text-gray-400 dark:text-gray-500 mt-1">{{ _('ledger.asset_disposed_hint') }}</p>
         </div>
-        <div>
+
+        <div x-show="editingAssetId || assetCapitalizeMode === 'new'">
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_notes') }}</label>
           <input type="text" x-model="assetForm.notes"
                  class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
@@ -2091,9 +2242,14 @@ const NO_STATEMENT_BALANCE_L = {{ _('ledger.no_statement_balance') | tojson }};
 const RECONCILIATION_MATCH_TMPL = {{ _('ledger.reconciliation_match') | tojson }};
 const RECONCILIATION_MISMATCH_TMPL = {{ _('ledger.reconciliation_mismatch') | tojson }};
 const CAPITALIZE_L = {{ _('ledger.btn_capitalize') | tojson }};
+const CAPITALIZE_PARTIAL_L = {{ _('ledger.btn_capitalize_partial') | tojson }};
 const ASSET_MODAL_TITLE_CREATE_L = {{ _('ledger.asset_modal_title_create') | tojson }};
 const ASSET_MODAL_TITLE_EDIT_L = {{ _('ledger.asset_modal_title_edit') | tojson }};
 const ASSET_REMOVE_CONFIRM_L = {{ _('ledger.asset_remove_confirm') | tojson }};
+const ASSET_COMPONENT_REMOVE_CONFIRM_L = {{ _('ledger.asset_component_remove_confirm') | tojson }};
+const ASSET_COMPONENT_COUNT_TMPL = {{ _('ledger.asset_component_count') | tojson }};
+const ASSET_COMPONENT_SINCE_TMPL = {{ _('ledger.asset_component_since') | tojson }};
+const ASSET_COMPONENT_DISPOSED_TMPL = {{ _('ledger.asset_component_disposed') | tojson }};
 const SAVE_L = {{ _('common.save') | tojson }};
 const RESERVE_MODAL_TITLE_CREATE_L = {{ _('ledger.reserve_modal_title_create') | tojson }};
 const RESERVE_MODAL_TITLE_EDIT_L = {{ _('ledger.reserve_modal_title_edit') | tojson }};
@@ -2249,12 +2405,30 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     assets: [],
     loadingAssets: true,
     assetsError: null,
+    anlagenspiegelYear: new Date().getFullYear(),
+    anlagenspiegel: null,
+    loadingAnlagenspiegel: false,
+    anlagenspiegelError: null,
     showAssetModal: false,
     editingAssetId: null,
     assetSourceLabel: '',
-    assetForm: { name: '', entry_line_id: '', useful_life_years: '', category_id: '', acquisition_date: '', disposed_at: '', notes: '' },
+    assetSourceLine: null,
+    // 'new' = capitalize into a brand-new asset; 'existing' = add as another
+    // component of an already-existing asset (#49) — e.g. a graphics card
+    // bought weeks after the rest of a PC, which only forms one
+    // Wirtschaftsgut together with it. Irrelevant while editing.
+    assetCapitalizeMode: 'new',
+    assetForm: {
+      name: '', component_amount: '', component_acquisition_date: '', target_asset_id: '',
+      useful_life_years: '', category_id: '', notes: '',
+    },
     assetError: null,
     assetSubmitting: false,
+    expandedAssetId: null,
+    // Per-component disposal (#50) — inline within the edit-asset modal's
+    // components list, one component at a time.
+    disposingComponentId: null,
+    disposeDate: '',
 
     reserves: [],
     loadingReserves: true,
@@ -2312,8 +2486,26 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       return this.activeCategories.filter(c => c.kind === 'expense');
     },
 
-    get assetLineIds() {
-      return new Set(this.assets.map(a => a.entry_line_id));
+    get editingAssetObj() {
+      return this.assets.find(a => a.id === this.editingAssetId) || { components: [] };
+    },
+
+    // How much of each entry line is already claimed by some asset's
+    // component(s) (#49) — a line can be partially capitalized, so this is
+    // an amount per line, not just a boolean "is it capitalized" set.
+    get capitalizedAmountByLineId() {
+      const m = new Map();
+      for (const a of this.assets) {
+        for (const c of a.components) {
+          m.set(c.entry_line_id, (m.get(c.entry_line_id) || 0) + parseFloat(c.amount));
+        }
+      }
+      return m;
+    },
+
+    lineRemainingCapitalizable(l) {
+      const already = this.capitalizedAmountByLineId.get(l.id) || 0;
+      return parseFloat(l.amount) - already;
     },
 
     get trackedAccounts() {
@@ -2376,7 +2568,10 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         this.loadImportLines();
         if (this.config.fints_enabled) this.loadFintsPresets();
       }
-      if (tab === 'assets') this.loadAssets();
+      if (tab === 'assets') {
+        this.loadAssets();
+        if (!this.anlagenspiegel) this.loadAnlagenspiegel();
+      }
       if (tab === 'targets') {
         this.loadTargets();
         this.loadTargetPayouts();
@@ -3806,12 +4001,59 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
     },
 
+    // Any asset/component mutation (create, edit, delete, dispose) can
+    // change the Anlagenspiegel too — refresh both together rather than
+    // leaving that already-loaded section silently stale (same lesson as
+    // #36's Rücklagen/Mittelverwendung pairing). Skips the Anlagenspiegel
+    // fetch if it was never loaded yet (tab not visited this session).
+    async reloadAssetsAndSpiegel() {
+      const tasks = [this.loadAssets()];
+      if (this.anlagenspiegel) tasks.push(this.loadAnlagenspiegel());
+      await Promise.all(tasks);
+    },
+
+    async loadAnlagenspiegel() {
+      this.loadingAnlagenspiegel = true;
+      this.anlagenspiegelError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/report/anlagenspiegel?year=${this.anlagenspiegelYear}`);
+        if (!r.ok) throw new Error('Failed to load Anlagenspiegel');
+        this.anlagenspiegel = await r.json();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.anlagenspiegelError = e.message || String(e);
+      } finally {
+        this.loadingAnlagenspiegel = false;
+      }
+    },
+
+    get anlagenspiegelTotals() {
+      if (!this.anlagenspiegel || this.anlagenspiegel.rows.length === 0) return null;
+      const sum = (key) => this.anlagenspiegel.rows.reduce((s, r) => s + parseFloat(r[key]), 0);
+      return {
+        acquisition_cost_end_of_year: sum('acquisition_cost_end_of_year'),
+        opening_book_value: sum('opening_book_value'),
+        zugang: sum('zugang'),
+        abgang: sum('abgang'),
+        afa: sum('afa'),
+        closing_book_value: sum('closing_book_value'),
+      };
+    },
+
+    // Opens the shared asset modal to capitalize `line` — either into a
+    // brand-new asset, or as another component of an already-existing one
+    // (#49, e.g. a graphics card bought weeks after the rest of a PC).
+    // `component_amount` defaults to whatever's left uncapitalized on this
+    // line (its full amount, the common case, unless part of it was already
+    // claimed elsewhere) but is freely editable for a partial capitalization.
     openCapitalizeModal(line, entry) {
       this.editingAssetId = null;
+      this.assetCapitalizeMode = 'new';
+      this.assetSourceLine = { entry_line_id: line.id };
+      const remaining = this.lineRemainingCapitalizable(line);
       this.assetSourceLabel = `${entry.description}: ${this.fmtSigned(line.amount)}`;
       this.assetForm = {
-        name: entry.description, entry_line_id: line.id, useful_life_years: '',
-        category_id: '', acquisition_date: entry.entry_date, disposed_at: '', notes: '',
+        name: entry.description, component_amount: remaining.toFixed(2), component_acquisition_date: entry.entry_date,
+        target_asset_id: '', useful_life_years: '', category_id: '', notes: '',
       };
       this.assetError = null;
       this.showAssetModal = true;
@@ -3820,10 +4062,11 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     openEditAssetModal(asset) {
       this.editingAssetId = asset.id;
       this.assetSourceLabel = '';
+      this.assetSourceLine = null;
+      this.disposingComponentId = null;
       this.assetForm = {
-        name: asset.name, entry_line_id: asset.entry_line_id, useful_life_years: asset.useful_life_years,
-        category_id: asset.category_id, acquisition_date: asset.acquisition_date,
-        disposed_at: asset.disposed_at || '', notes: asset.notes || '',
+        name: asset.name, component_amount: '', component_acquisition_date: '', target_asset_id: '',
+        useful_life_years: asset.useful_life_years, category_id: asset.category_id, notes: asset.notes || '',
       };
       this.assetError = null;
       this.showAssetModal = true;
@@ -3833,29 +4076,43 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       this.assetSubmitting = true;
       this.assetError = null;
       try {
-        const common = {
-          name: this.assetForm.name,
-          useful_life_years: Number(this.assetForm.useful_life_years),
-          category_id: Number(this.assetForm.category_id),
-          acquisition_date: this.assetForm.acquisition_date,
-          notes: this.assetForm.notes || null,
-        };
         let r;
         if (this.editingAssetId) {
           r = await apiFetch(`/api/v1/ledger/assets/${this.editingAssetId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              ...common,
-              disposed_at: this.assetForm.disposed_at || null,
-              clear_disposed_at: !this.assetForm.disposed_at,
+              name: this.assetForm.name,
+              useful_life_years: Number(this.assetForm.useful_life_years),
+              category_id: Number(this.assetForm.category_id),
+              notes: this.assetForm.notes || null,
+            }),
+          });
+        } else if (this.assetCapitalizeMode === 'existing') {
+          r = await apiFetch(`/api/v1/ledger/assets/${this.assetForm.target_asset_id}/components`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              entry_line_id: this.assetSourceLine.entry_line_id,
+              amount: this.assetForm.component_amount,
+              acquisition_date: this.assetForm.component_acquisition_date,
             }),
           });
         } else {
           r = await apiFetch('/api/v1/ledger/assets', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...common, entry_line_id: this.assetForm.entry_line_id }),
+            body: JSON.stringify({
+              name: this.assetForm.name,
+              components: [{
+                entry_line_id: this.assetSourceLine.entry_line_id,
+                amount: this.assetForm.component_amount,
+                acquisition_date: this.assetForm.component_acquisition_date,
+              }],
+              useful_life_years: Number(this.assetForm.useful_life_years),
+              category_id: Number(this.assetForm.category_id),
+              notes: this.assetForm.notes || null,
+            }),
           });
         }
         const data = await r.json();
@@ -3864,11 +4121,75 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
           return;
         }
         this.showAssetModal = false;
-        await this.loadAssets();
+        await this.reloadAssetsAndSpiegel();
       } catch (e) {
         if (e !== 'unauthenticated') this.assetError = e.message || String(e);
       } finally {
         this.assetSubmitting = false;
+      }
+    },
+
+    async removeAssetComponent(asset, component) {
+      if (asset.components.length <= 1) return;
+      if (!confirm(ASSET_COMPONENT_REMOVE_CONFIRM_L)) return;
+      this.assetsError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/assets/${asset.id}/components/${component.id}`, { method: 'DELETE' });
+        if (!r.ok) {
+          const data = await r.json();
+          this.assetsError = data.detail || 'Error removing component';
+          return;
+        }
+        await this.reloadAssetsAndSpiegel();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.assetsError = e.message || String(e);
+      }
+    },
+
+    // --- per-component disposal (#50): independent of the asset's other
+    // components — e.g. only the graphics card of a multi-part asset gets
+    // marked disposed while the rest stays in service.
+    startDisposeComponent(component) {
+      this.disposingComponentId = component.id;
+      this.disposeDate = new Date().toISOString().slice(0, 10);
+    },
+
+    async confirmDisposeComponent(asset) {
+      this.assetsError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/assets/${asset.id}/components/${this.disposingComponentId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ disposed_at: this.disposeDate }),
+        });
+        if (!r.ok) {
+          const data = await r.json();
+          this.assetsError = data.detail || 'Error disposing component';
+          return;
+        }
+        this.disposingComponentId = null;
+        await this.reloadAssetsAndSpiegel();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.assetsError = e.message || String(e);
+      }
+    },
+
+    async clearComponentDisposal(asset, component) {
+      this.assetsError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/assets/${asset.id}/components/${component.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clear_disposed_at: true }),
+        });
+        if (!r.ok) {
+          const data = await r.json();
+          this.assetsError = data.detail || 'Error restoring component';
+          return;
+        }
+        await this.reloadAssetsAndSpiegel();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.assetsError = e.message || String(e);
       }
     },
 
@@ -3882,7 +4203,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
           this.assetsError = data.detail || 'Error removing asset';
           return;
         }
-        await this.loadAssets();
+        await this.reloadAssetsAndSpiegel();
       } catch (e) {
         if (e !== 'unauthenticated') this.assetsError = e.message || String(e);
       }

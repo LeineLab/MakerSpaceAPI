@@ -279,41 +279,79 @@ class BookTargetPayoutsRequest(BaseModel):
     category_lines: list[TargetPayoutCategorySplit] = Field(default_factory=list)
 
 
-class LedgerAssetCreate(BaseModel):
-    """Links an already-booked, category-side ledger_entry_line (found via the
-    entries list) as a capital asset. `acquisition_cost` is taken from the
-    line's own amount, not re-typed. `category_id` is the AfA target
-    category (e.g. "Abschreibungen") — may differ from whatever category the
-    purchase itself was originally booked against. `acquisition_date`
-    defaults to the entry's own `entry_date`."""
-    name: str = Field(examples=["Lasercutter Speedy 400"])
+class LedgerAssetComponentCreate(BaseModel):
+    """One booked-line contribution toward a LedgerAsset's cost (Key Design
+    Decision #49). `amount` need not be the line's full amount — a purchase
+    can be partially capitalized, the remainder staying a normal one-off
+    expense — and must not exceed that line's own remaining capitalizable
+    amount (its amount minus whatever other assets already claim).
+    `acquisition_date` defaults to the entry's own `entry_date`; it's this
+    component's own depreciation start (#50), not backdated to the asset's
+    other components — a component added long after the rest (nachträgliche
+    Anschaffungskosten) depreciates from its own date, not retroactively."""
     entry_line_id: int
+    amount: Decimal = Field(gt=0, examples=[Decimal("450.00")])
+    acquisition_date: Optional[date] = None
+
+
+class LedgerAssetCreate(BaseModel):
+    """Capitalizes one or more already-booked, category-side entry lines (or
+    a partial amount of each) as a single capital asset. More than one
+    component covers a purchase that's split across several booked lines,
+    or several separate purchases that only have functional value together
+    (e.g. a computer's individually-bought parts — see #49). `category_id`
+    is the AfA target category (e.g. "Abschreibungen") — may differ from
+    whatever category the purchase(s) were originally booked against."""
+    name: str = Field(examples=["Lasercutter Speedy 400"])
+    components: list[LedgerAssetComponentCreate] = Field(min_length=1)
     useful_life_years: int = Field(gt=0, examples=[7])
     category_id: int
-    acquisition_date: Optional[date] = None
     notes: Optional[str] = None
 
 
-class LedgerAssetUpdate(BaseModel):
-    """`disposed_at` (set or cleared with `null`) stops future AfA after that
-    month — it does not book a write-off of any remaining book value, see
-    the model docstring. Every field may be corrected at any time; since AfA
-    is computed at report time (not stored per-year), a correction here
-    retroactively changes the AfA shown in past EÜR reports too — same as
-    fixing any other historical data."""
-    name: Optional[str] = None
-    useful_life_years: Optional[int] = Field(default=None, gt=0)
-    category_id: Optional[int] = None
+class LedgerAssetComponentUpdate(BaseModel):
+    """Every field is independently optional — provide only what's changing.
+    `disposed_at`/`clear_disposed_at` (#50) stop future AfA for just *this*
+    component after that month, without affecting the asset's other
+    components (e.g. one part of a multi-part asset sold or scrapped while
+    the rest stays in service) — it does not book a write-off of any
+    remaining book value, same as the asset-level equivalent used to."""
+    entry_line_id: Optional[int] = None
+    amount: Optional[Decimal] = Field(default=None, gt=0)
     acquisition_date: Optional[date] = None
     disposed_at: Optional[date] = None
     clear_disposed_at: bool = False
+
+
+class LedgerAssetUpdate(BaseModel):
+    """Every field may be corrected at any time; since AfA is computed at
+    report time (not stored per-year), a correction here retroactively
+    changes the AfA shown in past EÜR reports too — same as fixing any
+    other historical data. Components (including their own dates/disposal,
+    #50) are managed separately via POST/PUT/DELETE
+    /ledger/assets/{id}/components, not here."""
+    name: Optional[str] = None
+    useful_life_years: Optional[int] = Field(default=None, gt=0)
+    category_id: Optional[int] = None
     notes: Optional[str] = None
+
+
+class LedgerAssetComponentResponse(BaseModel):
+    id: int
+    entry_line_id: int
+    entry_id: int
+    amount: Decimal = Field(examples=[Decimal("450.00")])
+    acquisition_date: date
+    disposed_at: Optional[date] = None
+    entry_date: date
+    description: str
+    note: Optional[str] = None
 
 
 class LedgerAssetResponse(BaseModel):
     id: int
     name: str
-    entry_line_id: int
+    components: list[LedgerAssetComponentResponse]
     acquisition_date: date
     acquisition_cost: Decimal = Field(examples=[Decimal("3500.00")])
     useful_life_years: int
@@ -324,7 +362,30 @@ class LedgerAssetResponse(BaseModel):
     accumulated_depreciation: Decimal = Field(examples=[Decimal("500.00")])
     book_value: Decimal = Field(examples=[Decimal("3000.00")])
 
-    model_config = ConfigDict(from_attributes=True)
+
+class AnlagenspiegelRow(BaseModel):
+    """One asset's line in the Anlagenspiegel (Key Design Decision #50) —
+    the standard German fixed-asset-register columns needed for the tax
+    return: opening/closing book value, additions/disposals at cost, and
+    the year's depreciation. `acquisition_cost_end_of_year` is the gross
+    (pre-depreciation) cost still on the books at year end — components
+    acquired after year end are excluded, components already disposed of by
+    year end are excluded too."""
+    asset_id: int
+    name: str
+    category_id: int
+    category: Optional[LedgerCategoryResponse] = None
+    acquisition_cost_end_of_year: Decimal = Field(examples=[Decimal("3500.00")])
+    opening_book_value: Decimal = Field(examples=[Decimal("3000.00")])
+    zugang: Decimal = Field(examples=[Decimal("0.00")])
+    abgang: Decimal = Field(examples=[Decimal("0.00")])
+    afa: Decimal = Field(examples=[Decimal("500.00")])
+    closing_book_value: Decimal = Field(examples=[Decimal("2500.00")])
+
+
+class AnlagenspiegelResponse(BaseModel):
+    year: int
+    rows: list[AnlagenspiegelRow]
 
 
 class EuerCategoryTotal(BaseModel):

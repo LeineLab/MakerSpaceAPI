@@ -218,41 +218,106 @@ class LedgerTargetPayoutEntry(Base):
 
 
 class LedgerAsset(Base):
-    """Anlagevermögen: links an already-booked, category-side
-    `ledger_entry_lines` row (the real cash outflow at purchase) to a
-    depreciation schedule. `entry_line_id` (UNIQUE) is the line whose full
-    amount is excluded from the EÜR in its booking year once linked — see Key
-    Design Decision #35 — and replaced, at report-computation time, by the
-    linear/monatsgenau AfA amount computed from `acquisition_cost`/
-    `useful_life_years`/`acquisition_date` for each year of the asset's
+    """Anlagevermögen: a depreciation schedule backed by one or more
+    `LedgerAssetComponent` rows, each attributing some (not necessarily all)
+    of an already-booked, category-side `ledger_entry_lines` row's amount to
+    this asset. `acquisition_cost` (see the property below) is the sum of
+    its components' amounts, excluded from the EÜR in the booking year(s)
+    once linked — see Key Design Decision #35 — and replaced, at report-
+    computation time, by the linear/monatsgenau AfA amount computed per
+    component (see Key Design Decision #50) for each year of the asset's
     useful life. No yearly booking rows are ever created for this (same
     read-time-aggregation approach as the Kassen bridge, #34) — deleting a
-    `LedgerAsset` simply reverts its line to being counted normally again.
+    `LedgerAsset` simply reverts its lines' un-attributed amounts to being
+    counted normally again.
+
+    Splitting the cost across several components (#49) covers two real
+    cases: a single booked line only partially qualifying as a capital
+    asset (the remainder stays a normal one-off expense), and several
+    separately-booked purchases that only have functional value together
+    (e.g. a computer's individually-bought parts) — German tax law requires
+    treating those as one Wirtschaftsgut once combined, which a 1:1 asset-
+    to-line link couldn't represent at all. `acquisition_date`/`disposed_at`
+    live on each *component* (#50), not here — a component can be added
+    long after the asset's original acquisition (nachträgliche
+    Anschaffungskosten, e.g. a genuine upgrade — not a repair, which is
+    ordinary Erhaltungsaufwand and never capitalized at all) and must
+    depreciate from its own date, not retroactively from the asset's
+    original one; similarly only *one* component (e.g. a since-replaced
+    graphics card) might be disposed of while the rest of the asset stays
+    in service. `acquisition_date`/`disposed_at` below are read-only
+    properties derived from the components for convenience/display.
+
     `category_id` is the AfA target category (e.g. "Abschreibungen"), which
-    may differ from whatever category the original purchase was booked
-    against. `disposed_at` stops future AfA from the month after disposal;
-    it does NOT auto-book a write-off of any remaining book value — that's
-    left to the treasurer via a normal entry (see docstring on the API
-    endpoint), same as the deliberately-manual sale-proceeds handling in the
-    Kassen bridge (#34)."""
+    may differ from whatever category the original purchase(s) were booked
+    against."""
     __tablename__ = "ledger_assets"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    entry_line_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("ledger_entry_lines.id", ondelete="RESTRICT"), nullable=False, unique=True
-    )
-    acquisition_date: Mapped[date] = mapped_column(Date, nullable=False)
-    acquisition_cost: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     useful_life_years: Mapped[int] = mapped_column(Integer, nullable=False)
     category_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("ledger_categories.id", ondelete="RESTRICT"), nullable=False
     )
-    disposed_at: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
-    entry_line: Mapped["LedgerEntryLine"] = relationship("LedgerEntryLine")
     category: Mapped["LedgerCategory"] = relationship("LedgerCategory")
+    components: Mapped[list["LedgerAssetComponent"]] = relationship(
+        "LedgerAssetComponent", back_populates="asset", cascade="all, delete-orphan"
+    )
+
+    @property
+    def acquisition_cost(self) -> Decimal:
+        return sum((c.amount for c in self.components), Decimal("0.00"))
+
+    @property
+    def acquisition_date(self) -> Optional[date]:
+        """The earliest of its components' own acquisition dates — when this
+        asset, as a whole, first came into existence. `None` only for the
+        transient moment during creation before any component is attached —
+        every asset that's actually reachable through the API has at least
+        one (enforced by refusing to delete an asset's last component)."""
+        if not self.components:
+            return None
+        return min(c.acquisition_date for c in self.components)
+
+    @property
+    def disposed_at(self) -> Optional[date]:
+        """Only meaningful once *every* component has been disposed of (the
+        whole asset, not just one part) — the latest of their disposal
+        dates. `None` while any component is still in service."""
+        if not self.components or any(c.disposed_at is None for c in self.components):
+            return None
+        return max(c.disposed_at for c in self.components)
+
+
+class LedgerAssetComponent(Base):
+    """One booked-line contribution toward a LedgerAsset's acquisition cost
+    (Key Design Decision #49). `amount` need not be the line's full amount —
+    a purchase can be partially capitalized, the rest staying a normal one-
+    off expense — and a single entry line may itself contribute to more
+    than one asset (e.g. one invoice split across two separate purchases).
+
+    `acquisition_date`/`disposed_at` are per-component (#50), not on the
+    asset: a component added well after the asset's original purchase
+    (nachträgliche Anschaffungskosten) depreciates from its own date, and a
+    single component (e.g. one part of a multi-part asset) can be disposed
+    of independently of the rest."""
+    __tablename__ = "ledger_asset_components"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    asset_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("ledger_assets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    entry_line_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("ledger_entry_lines.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    acquisition_date: Mapped[date] = mapped_column(Date, nullable=False)
+    disposed_at: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+
+    asset: Mapped["LedgerAsset"] = relationship("LedgerAsset", back_populates="components")
+    entry_line: Mapped["LedgerEntryLine"] = relationship("LedgerEntryLine")
 
 
 class LedgerReserve(Base):

@@ -19,6 +19,7 @@ from app.models.ledger import (
     BankAccount,
     FintsBankPreset,
     LedgerAsset,
+    LedgerAssetComponent,
     LedgerAuditReport,
     LedgerCategory,
     LedgerCategoryKind,
@@ -38,6 +39,8 @@ from app.models.transaction import Transaction, TransactionType
 from app.schemas.booking_target import BookingTargetResponse
 from app.schemas.common import HTTP_400, HTTP_404, HTTP_409, HTTP_502, MessageResponse
 from app.schemas.ledger import (
+    AnlagenspiegelResponse,
+    AnlagenspiegelRow,
     BankAccountBalanceResponse,
     BankAccountCreate,
     BankAccountResponse,
@@ -52,6 +55,9 @@ from app.schemas.ledger import (
     FinTSTanRequest,
     FintsBankPresetCreate,
     FintsBankPresetResponse,
+    LedgerAssetComponentCreate,
+    LedgerAssetComponentResponse,
+    LedgerAssetComponentUpdate,
     LedgerAssetCreate,
     LedgerAssetResponse,
     LedgerAssetUpdate,
@@ -941,32 +947,50 @@ def book_target_payouts(
 
 # --- Anlagevermögen (capital assets / AfA) ---
 
-def _asset_months_elapsed(asset: LedgerAsset, through_year: int, through_month: int) -> int:
-    """Number of whole depreciation months from `acquisition_date` (inclusive)
-    through the end of `through_month`/`through_year` (inclusive), capped at
-    the asset's total useful-life months and at its disposal month (if any).
-    Monatsgenau per §7 Abs. 1 EStG: the acquisition month itself already
-    counts as a full depreciation month."""
-    start = asset.acquisition_date
-    total_months = asset.useful_life_years * 12
+def _component_months_elapsed(component: "LedgerAssetComponent", useful_life_years: int, through_year: int, through_month: int) -> int:
+    """Number of whole depreciation months from *this component's own*
+    `acquisition_date` (inclusive) through the end of `through_month`/
+    `through_year` (inclusive), capped at the asset's total useful-life
+    months and at this component's own disposal month (if any) — never the
+    asset's other components' dates (Key Design Decision #50: a component
+    added long after the rest, e.g. nachträgliche Anschaffungskosten, must
+    depreciate from its own start, not retroactively from an earlier one;
+    symmetrically, one component can be disposed of independently of the
+    rest). Monatsgenau per §7 Abs. 1 EStG: the acquisition month itself
+    already counts as a full depreciation month."""
+    start = component.acquisition_date
+    total_months = useful_life_years * 12
     elapsed = (through_year - start.year) * 12 + (through_month - start.month) + 1
-    if asset.disposed_at is not None:
+    if component.disposed_at is not None:
         disposal_elapsed = (
-            (asset.disposed_at.year - start.year) * 12 + (asset.disposed_at.month - start.month) + 1
+            (component.disposed_at.year - start.year) * 12 + (component.disposed_at.month - start.month) + 1
         )
         elapsed = min(elapsed, disposal_elapsed)
     return max(0, min(elapsed, total_months))
 
 
-def _asset_cumulative_depreciation(asset: LedgerAsset, through_year: int, through_month: int) -> Decimal:
-    """Total AfA recognized from acquisition through the end of `through_month`/
-    `through_year`. Computed from monthly_rate * elapsed_months (not summed
-    year-by-year) and capped at `acquisition_cost`, so rounding never drifts
-    across years — any remainder is simply absorbed in the final period."""
-    months = _asset_months_elapsed(asset, through_year, through_month)
-    monthly_rate = asset.acquisition_cost / (asset.useful_life_years * 12)
+def _component_cumulative_depreciation(component: "LedgerAssetComponent", useful_life_years: int, through_year: int, through_month: int) -> Decimal:
+    """Total AfA recognized for this one component from its own acquisition
+    through the end of `through_month`/`through_year`. Computed from
+    monthly_rate * elapsed_months (not summed year-by-year) and capped at
+    the component's own `amount`, so rounding never drifts across years —
+    any remainder is simply absorbed in the final period."""
+    months = _component_months_elapsed(component, useful_life_years, through_year, through_month)
+    monthly_rate = component.amount / (useful_life_years * 12)
     cumulative = (monthly_rate * months).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    return min(cumulative, asset.acquisition_cost)
+    return min(cumulative, component.amount)
+
+
+def _asset_cumulative_depreciation(asset: LedgerAsset, through_year: int, through_month: int) -> Decimal:
+    """Total AfA recognized across *all* of the asset's components through
+    the end of `through_month`/`through_year` — each component depreciates
+    independently from its own acquisition_date/disposed_at (#50) and the
+    results are summed, so a component added mid-life never distorts what
+    was already correctly recognized for the others."""
+    return sum(
+        (_component_cumulative_depreciation(c, asset.useful_life_years, through_year, through_month) for c in asset.components),
+        Decimal("0.00"),
+    )
 
 
 def _asset_depreciation_for_year(asset: LedgerAsset, year: int) -> Decimal:
@@ -983,19 +1007,154 @@ def _asset_book_value(asset: LedgerAsset, as_of: date) -> Decimal:
 
 
 def _asset_response(asset: LedgerAsset, as_of: date) -> LedgerAssetResponse:
+    acquisition_cost = asset.acquisition_cost
     return LedgerAssetResponse(
         id=asset.id,
         name=asset.name,
-        entry_line_id=asset.entry_line_id,
+        components=[
+            LedgerAssetComponentResponse(
+                id=c.id, entry_line_id=c.entry_line_id, entry_id=c.entry_line.entry_id,
+                amount=c.amount, acquisition_date=c.acquisition_date, disposed_at=c.disposed_at,
+                entry_date=c.entry_line.entry.entry_date,
+                description=c.entry_line.entry.description, note=c.entry_line.note,
+            )
+            for c in asset.components
+        ],
         acquisition_date=asset.acquisition_date,
-        acquisition_cost=asset.acquisition_cost,
+        acquisition_cost=acquisition_cost,
         useful_life_years=asset.useful_life_years,
         category_id=asset.category_id,
         category=asset.category,
         disposed_at=asset.disposed_at,
         notes=asset.notes,
-        accumulated_depreciation=asset.acquisition_cost - _asset_book_value(asset, as_of),
+        accumulated_depreciation=acquisition_cost - _asset_book_value(asset, as_of),
         book_value=_asset_book_value(asset, as_of),
+    )
+
+
+def _component_year_summary(component: "LedgerAssetComponent", useful_life_years: int, year: int) -> Optional[dict]:
+    """This one component's contribution to the Anlagenspiegel (#50) for
+    `year` — `None` if it's not relevant at all (not yet acquired, or
+    already gone before this year started). `abgang` is the component's
+    *remaining book value* at the moment of disposal (not its historical
+    cost) — the standard Anlagenspiegel identity is `opening + zugang -
+    abgang - afa = closing`, and this year's partial AfA up to the disposal
+    month is already accounted for in `afa`, so `abgang` only needs to
+    remove what's left after that."""
+    acquired = component.acquisition_date
+    disposed = component.disposed_at
+    if acquired.year > year:
+        return None
+    if disposed is not None and disposed.year < year:
+        return None
+
+    existed_before_year = acquired.year < year
+    acquired_this_year = acquired.year == year
+    disposed_this_year = disposed is not None and disposed.year == year
+
+    opening_cum_dep = (
+        _component_cumulative_depreciation(component, useful_life_years, year - 1, 12)
+        if existed_before_year else Decimal("0.00")
+    )
+    opening_book_value = (component.amount - opening_cum_dep) if existed_before_year else Decimal("0.00")
+
+    closing_cum_dep = _component_cumulative_depreciation(component, useful_life_years, year, 12)
+    afa = closing_cum_dep - opening_cum_dep
+
+    zugang = component.amount if acquired_this_year else Decimal("0.00")
+    abgang = (component.amount - closing_cum_dep) if disposed_this_year else Decimal("0.00")
+    closing_book_value = Decimal("0.00") if disposed_this_year else (component.amount - closing_cum_dep)
+    acquisition_cost_end_of_year = Decimal("0.00") if disposed_this_year else component.amount
+
+    return {
+        "opening_book_value": opening_book_value,
+        "zugang": zugang,
+        "abgang": abgang,
+        "afa": afa,
+        "closing_book_value": closing_book_value,
+        "acquisition_cost_end_of_year": acquisition_cost_end_of_year,
+    }
+
+
+def _compute_anlagenspiegel(db: Session, year: int) -> AnlagenspiegelResponse:
+    """Anlagenspiegel (Key Design Decision #50): the standard fixed-asset-
+    register columns needed for the tax return — Anschaffungskosten,
+    Anfangswert, Zugang, Abgang, AfA, Endwert — computed per asset for
+    `year` by summing each of its components' own year summary. Reuses the
+    same per-component depreciation functions as the EÜR/balance endpoints,
+    so it can never drift from the numbers shown elsewhere. Assets with no
+    activity relevant to `year` (not yet acquired, or fully disposed of
+    before it started) are omitted."""
+    assets = (
+        db.query(LedgerAsset)
+        .options(joinedload(LedgerAsset.category), joinedload(LedgerAsset.components))
+        .order_by(LedgerAsset.id).all()
+    )
+    rows = []
+    for asset in assets:
+        summaries = []
+        for component in asset.components:
+            summary = _component_year_summary(component, asset.useful_life_years, year)
+            if summary is not None:
+                summaries.append(summary)
+        if not summaries:
+            continue
+        rows.append(AnlagenspiegelRow(
+            asset_id=asset.id, name=asset.name, category_id=asset.category_id, category=asset.category,
+            acquisition_cost_end_of_year=sum((s["acquisition_cost_end_of_year"] for s in summaries), Decimal("0.00")),
+            opening_book_value=sum((s["opening_book_value"] for s in summaries), Decimal("0.00")),
+            zugang=sum((s["zugang"] for s in summaries), Decimal("0.00")),
+            abgang=sum((s["abgang"] for s in summaries), Decimal("0.00")),
+            afa=sum((s["afa"] for s in summaries), Decimal("0.00")),
+            closing_book_value=sum((s["closing_book_value"] for s in summaries), Decimal("0.00")),
+        ))
+    return AnlagenspiegelResponse(year=year, rows=rows)
+
+
+def _capitalizable_line_remaining(
+    db: Session, entry_line_id: int, exclude_component_id: Optional[int] = None,
+) -> tuple[LedgerEntryLine, Decimal]:
+    """Fetch and validate a line as a capitalization candidate, and return
+    how much of its amount isn't already claimed by some other asset
+    component (Key Design Decision #49) — a purchase can be split across
+    several assets' components, but never claimed twice over."""
+    line = (
+        db.query(LedgerEntryLine).options(joinedload(LedgerEntryLine.entry), joinedload(LedgerEntryLine.category))
+        .filter(LedgerEntryLine.id == entry_line_id).first()
+    )
+    if not line:
+        raise HTTPException(status_code=404, detail=f"Entry line {entry_line_id} not found")
+    if line.category_id is None:
+        raise HTTPException(status_code=400, detail="Entry line must be a category line, not a bank account line")
+    if line.category.kind != LedgerCategoryKind.expense:
+        raise HTTPException(status_code=400, detail="Entry line's category must be an expense category")
+    if line.amount <= 0:
+        raise HTTPException(status_code=400, detail="Entry line amount must be positive (a cost)")
+
+    q = db.query(func.coalesce(func.sum(LedgerAssetComponent.amount), Decimal("0.00"))).filter(
+        LedgerAssetComponent.entry_line_id == entry_line_id
+    )
+    if exclude_component_id is not None:
+        q = q.filter(LedgerAssetComponent.id != exclude_component_id)
+    already_capitalized = q.scalar()
+    return line, line.amount - already_capitalized
+
+
+def _new_asset_component(
+    db: Session, asset_id: int, entry_line_id: int, amount: Decimal, acquisition_date: Optional[date] = None,
+) -> LedgerAssetComponent:
+    line, remaining = _capitalizable_line_remaining(db, entry_line_id)
+    if amount > remaining:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Amount ({amount}) exceeds this line's remaining capitalizable amount "
+                f"of {remaining} (the rest is already capitalized elsewhere)"
+            ),
+        )
+    return LedgerAssetComponent(
+        asset_id=asset_id, entry_line_id=entry_line_id, amount=amount,
+        acquisition_date=acquisition_date or line.entry.entry_date,
     )
 
 
@@ -1007,42 +1166,39 @@ def list_assets(
 ):
     as_of = as_of or datetime.now(UTC).date()
     assets = (
-        db.query(LedgerAsset).options(joinedload(LedgerAsset.category))
-        .order_by(LedgerAsset.acquisition_date.desc()).all()
+        db.query(LedgerAsset)
+        .options(
+            joinedload(LedgerAsset.category),
+            joinedload(LedgerAsset.components).joinedload(LedgerAssetComponent.entry_line).joinedload(LedgerEntryLine.entry),
+        )
+        .all()
     )
+    # acquisition_date is now computed (earliest component), not a DB column
+    # (#50) — sorted in Python instead of via order_by().
+    assets.sort(key=lambda a: a.acquisition_date, reverse=True)
     return [_asset_response(a, as_of) for a in assets]
 
 
-@router.post("/assets", response_model=LedgerAssetResponse, status_code=201, responses={**HTTP_400, **HTTP_404, **HTTP_409})
+@router.post("/assets", response_model=LedgerAssetResponse, status_code=201, responses={**HTTP_400, **HTTP_404})
 def create_asset(
     body: LedgerAssetCreate,
     _treasurer: dict = Depends(require_treasurer_user),
     db: Session = Depends(get_db),
 ):
-    """Capitalize an already-booked purchase: links its category-side
-    `ledger_entry_lines` row as a depreciable asset instead of a one-off
-    expense. From the next EÜR report onward, that line's full amount is
-    excluded and replaced by the computed AfA schedule against `category_id`
-    (see Key Design Decision #35). Whether a given purchase is even required
-    to be capitalized (GWG threshold, currently 800€ net — and itself not
-    enforced here since it changes yearly and, without Vorsteuerabzug, the
-    threshold applies to the gross amount) is left to the treasurer's/
-    Kassenprüfer's judgment."""
-    line = (
-        db.query(LedgerEntryLine).options(joinedload(LedgerEntryLine.entry), joinedload(LedgerEntryLine.category))
-        .filter(LedgerEntryLine.id == body.entry_line_id).first()
-    )
-    if not line:
-        raise HTTPException(status_code=404, detail="Entry line not found")
-    if line.category_id is None:
-        raise HTTPException(status_code=400, detail="Entry line must be a category line, not a bank account line")
-    if line.category.kind != LedgerCategoryKind.expense:
-        raise HTTPException(status_code=400, detail="Entry line's category must be an expense category")
-    if line.amount <= 0:
-        raise HTTPException(status_code=400, detail="Entry line amount must be positive (a cost)")
-    if db.query(LedgerAsset).filter(LedgerAsset.entry_line_id == body.entry_line_id).first():
-        raise HTTPException(status_code=409, detail="This entry line is already capitalized as an asset")
-
+    """Capitalize one or more already-booked purchases (or a partial amount
+    of each) as a single depreciable asset instead of a one-off expense.
+    From the next EÜR report onward, each component line's capitalized
+    amount is excluded and replaced by the computed AfA schedule against
+    `category_id` (see Key Design Decision #35, generalized to several
+    components by #49). Whether a given purchase is even required to be
+    capitalized (GWG threshold, currently 800€ net — and itself not enforced
+    here since it changes yearly and, without Vorsteuerabzug, the threshold
+    applies to the gross amount) is left to the treasurer's/Kassenprüfer's
+    judgment — including whether several separate purchases must be combined
+    into one Wirtschaftsgut because they only have functional value together
+    (e.g. a computer's individually-bought parts). Each component defaults
+    its own `acquisition_date` to its entry's own date (#50) — no asset-
+    level date to reconcile, since each component tracks its own."""
     category = db.query(LedgerCategory).filter(LedgerCategory.id == body.category_id).first()
     if not category:
         raise HTTPException(status_code=404, detail=f"Category {body.category_id} not found")
@@ -1051,14 +1207,126 @@ def create_asset(
 
     asset = LedgerAsset(
         name=body.name,
-        entry_line_id=body.entry_line_id,
-        acquisition_date=body.acquisition_date or line.entry.entry_date,
-        acquisition_cost=line.amount,
         useful_life_years=body.useful_life_years,
         category_id=body.category_id,
         notes=body.notes,
     )
     db.add(asset)
+    db.flush()
+
+    for comp in body.components:
+        db.add(_new_asset_component(db, asset.id, comp.entry_line_id, comp.amount, comp.acquisition_date))
+
+    db.commit()
+    db.refresh(asset)
+    return _asset_response(asset, datetime.now(UTC).date())
+
+
+@router.post(
+    "/assets/{asset_id}/components", response_model=LedgerAssetResponse, status_code=201,
+    responses={**HTTP_400, **HTTP_404},
+)
+def add_asset_component(
+    asset_id: int,
+    body: LedgerAssetComponentCreate,
+    _treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    """Add another booked line (or a partial amount of it) to an already-
+    existing asset — e.g. a graphics card bought a few weeks after the rest
+    of a PC, which only forms one Wirtschaftsgut together with it (#49).
+    Depreciates from its own `acquisition_date` (defaulting to its entry's
+    own date), never backdated to the asset's other components (#50) —
+    exactly the nachträgliche-Anschaffungskosten case this was built for."""
+    asset = db.query(LedgerAsset).filter(LedgerAsset.id == asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    component = _new_asset_component(db, asset.id, body.entry_line_id, body.amount, body.acquisition_date)
+    db.add(component)
+    db.commit()
+    db.refresh(asset)
+    return _asset_response(asset, datetime.now(UTC).date())
+
+
+@router.put(
+    "/assets/{asset_id}/components/{component_id}", response_model=LedgerAssetResponse,
+    responses={**HTTP_400, **HTTP_404},
+)
+def update_asset_component(
+    asset_id: int,
+    component_id: int,
+    body: LedgerAssetComponentUpdate,
+    _treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    """Correct a component's line/amount/acquisition_date (e.g. a typo)
+    without deleting and re-adding it, or set/clear its own `disposed_at`
+    (#50) — independent of the asset's other components, so e.g. just the
+    graphics card of a multi-part asset can be marked disposed while the
+    rest stays in service. Every field is optional; only what's provided
+    changes."""
+    asset = db.query(LedgerAsset).filter(LedgerAsset.id == asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    component = db.query(LedgerAssetComponent).filter(
+        LedgerAssetComponent.id == component_id, LedgerAssetComponent.asset_id == asset_id,
+    ).first()
+    if not component:
+        raise HTTPException(status_code=404, detail="Component not found on this asset")
+
+    if body.entry_line_id is not None or body.amount is not None:
+        new_entry_line_id = body.entry_line_id if body.entry_line_id is not None else component.entry_line_id
+        new_amount = body.amount if body.amount is not None else component.amount
+        _line, remaining = _capitalizable_line_remaining(db, new_entry_line_id, exclude_component_id=component_id)
+        if new_amount > remaining:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Amount ({new_amount}) exceeds this line's remaining capitalizable amount "
+                    f"of {remaining} (the rest is already capitalized elsewhere)"
+                ),
+            )
+        component.entry_line_id = new_entry_line_id
+        component.amount = new_amount
+    if body.acquisition_date is not None:
+        component.acquisition_date = body.acquisition_date
+    if body.clear_disposed_at:
+        component.disposed_at = None
+    elif body.disposed_at is not None:
+        if body.disposed_at < component.acquisition_date:
+            raise HTTPException(
+                status_code=400, detail="disposed_at cannot be before this component's own acquisition_date",
+            )
+        component.disposed_at = body.disposed_at
+
+    db.commit()
+    db.refresh(asset)
+    return _asset_response(asset, datetime.now(UTC).date())
+
+
+@router.delete("/assets/{asset_id}/components/{component_id}", response_model=LedgerAssetResponse, responses={**HTTP_400, **HTTP_404})
+def delete_asset_component(
+    asset_id: int,
+    component_id: int,
+    _treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    """Remove one component from an asset — 400 if it's the last one (delete
+    the whole asset instead via DELETE /ledger/assets/{id} in that case)."""
+    asset = db.query(LedgerAsset).filter(LedgerAsset.id == asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    component = db.query(LedgerAssetComponent).filter(
+        LedgerAssetComponent.id == component_id, LedgerAssetComponent.asset_id == asset_id,
+    ).first()
+    if not component:
+        raise HTTPException(status_code=404, detail="Component not found on this asset")
+    if len(asset.components) <= 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot remove an asset's last remaining component — delete the whole asset instead",
+        )
+    db.delete(component)
     db.commit()
     db.refresh(asset)
     return _asset_response(asset, datetime.now(UTC).date())
@@ -1090,14 +1358,6 @@ def update_asset(
         asset.name = body.name
     if body.useful_life_years is not None:
         asset.useful_life_years = body.useful_life_years
-    if body.acquisition_date is not None:
-        asset.acquisition_date = body.acquisition_date
-    if body.clear_disposed_at:
-        asset.disposed_at = None
-    elif body.disposed_at is not None:
-        if body.disposed_at < asset.acquisition_date:
-            raise HTTPException(status_code=400, detail="disposed_at cannot be before acquisition_date")
-        asset.disposed_at = body.disposed_at
     if body.notes is not None:
         asset.notes = body.notes
 
@@ -1152,13 +1412,18 @@ def _compute_euer_report(db: Session, year: int, cumulative: bool = False) -> Eu
     shortfall (a negative `booking_target_adjustment` amount) contributes
     positive (less income, i.e. a write-off).
 
-    Also excludes any line capitalized as an Anlagevermögen (`ledger_assets.
-    entry_line_id`, see Key Design Decision #35) from this normal per-line
-    aggregation — in every year, not just the purchase year, though it can
-    only ever appear in the one year it was booked. Its full cost is instead
-    replaced by the linear, monatsgenau AfA amount computed for `year` against
-    the asset's own target category, which may differ from whatever category
-    the purchase itself was originally booked against.
+    Also excludes any amount capitalized as an Anlagevermögen (`ledger_asset_
+    components`, see Key Design Decision #35, generalized to partial-line and
+    multi-line components by #49) from this normal per-line aggregation — in
+    every year, not just the purchase year, though it can only ever appear in
+    the one year it was booked. Since a component can cover only *part* of a
+    line's amount, the remainder (if any) still counts normally — only a
+    fully-capitalized line is excluded outright, same net effect as before
+    #49 for the common one-line-fully-capitalized case. The capitalized
+    amount is instead replaced by the linear, monatsgenau AfA amount computed
+    for `year` against the asset's own target category, which may differ
+    from whatever category the purchase itself was originally booked
+    against.
 
     `cumulative=True` sums everything from the beginning of the ledger's
     history through 31.12 of `year` instead of just that calendar year (an
@@ -1166,7 +1431,11 @@ def _compute_euer_report(db: Session, year: int, cumulative: bool = False) -> Eu
     than one year's installment) — used by the Mittelverwendungsrechnung
     (#36) to get a running Vortrag without a second aggregation
     implementation that could drift out of sync with this one."""
-    asset_entry_line_ids = {row[0] for row in db.query(LedgerAsset.entry_line_id).all()}
+    capitalized_by_line: dict[int, Decimal] = {}
+    for entry_line_id, amount in db.query(
+        LedgerAssetComponent.entry_line_id, func.sum(LedgerAssetComponent.amount)
+    ).group_by(LedgerAssetComponent.entry_line_id).all():
+        capitalized_by_line[entry_line_id] = amount
 
     lines_query = (
         db.query(LedgerEntryLine)
@@ -1185,9 +1454,10 @@ def _compute_euer_report(db: Session, year: int, cumulative: bool = False) -> Eu
     raw_totals: dict[int, Decimal] = {}
     categories: dict[int, LedgerCategory] = {}
     for line in lines:
-        if line.id in asset_entry_line_ids:
+        remaining = line.amount - capitalized_by_line.get(line.id, Decimal("0.00"))
+        if remaining == 0:
             continue
-        raw_totals[line.category_id] = raw_totals.get(line.category_id, Decimal("0.00")) + line.amount
+        raw_totals[line.category_id] = raw_totals.get(line.category_id, Decimal("0.00")) + remaining
         categories[line.category_id] = line.category
 
     assets = db.query(LedgerAsset).options(joinedload(LedgerAsset.category)).all()
@@ -1549,6 +1819,20 @@ def mittelverwendung_report(
         available_funds=relevant_net - zufuehrungen + aufloesungen,
         reserves=[_reserve_response(db, r, year_end) for r in reserves],
     )
+
+
+@router.get("/report/anlagenspiegel", response_model=AnlagenspiegelResponse)
+def anlagenspiegel_report(
+    year: int = Query(...),
+    _viewer: dict = Depends(require_ledger_viewer_user),
+    db: Session = Depends(get_db),
+):
+    """Anlagenspiegel (Key Design Decision #50) — the fixed-asset-register
+    columns needed for the tax return, per asset for `year`: Anschaffungs-
+    kosten (gross cost still on the books at year end), Anfangswert, Zugang,
+    Abgang, AfA, Endwert. See `_compute_anlagenspiegel()`'s own docstring for
+    the per-component computation this is built from."""
+    return _compute_anlagenspiegel(db, year)
 
 
 # --- Kassenprüfungsprotokolle (audit reports) ---
