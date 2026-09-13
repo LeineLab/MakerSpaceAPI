@@ -1632,11 +1632,29 @@
                    x-text="categoryLineSignWarning(line.ref, line.amount)"></p>
                 <!-- Per-line document (#44): several invoices paid in one
                      bank debit each get their own — only meaningful on a
-                     category line, same gating as the sign warning above. -->
-                <div x-show="line.ref && line.ref.startsWith('category:')" class="mt-1">
-                  <input type="text" x-model="line.paperless_document_id" placeholder="{{ _('ledger.placeholder_paperless_id') }}"
-                         @input.debounce.400ms="checkPaperlessDuplicateForLine(line)"
+                     category line, same gating as the sign warning above.
+                     Same search-with-picker UI as the Book Import Line
+                     Modal (reuses searchPaperlessForLine()/
+                     pickPaperlessDocForLine(), already generic over any
+                     line object) — a manual entry is the only way to book
+                     an offline-account payment (no staging line exists for
+                     one), so it needs the same search, not just an ID
+                     field. -->
+                <div class="relative mt-1" x-show="line.ref && line.ref.startsWith('category:')">
+                  <input type="text" x-model="line.paperlessQuery" @input.debounce.400ms="searchPaperlessForLine(line)"
+                         placeholder="{{ _('ledger.paperless_search_placeholder') }}"
                          class="w-full border dark:border-gray-700 rounded px-2 py-1.5 text-xs bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                  <template x-if="line.paperlessResults.length > 0">
+                    <div class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border dark:border-gray-700 rounded shadow max-h-40 overflow-y-auto">
+                      <template x-for="doc in line.paperlessResults" :key="doc.id">
+                        <div @click="pickPaperlessDocForLine(line, doc)"
+                             class="px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer" x-text="doc.title"></div>
+                      </template>
+                    </div>
+                  </template>
+                  <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5" x-show="line.paperless_document_id">
+                    <span x-text="'ID: ' + line.paperless_document_id"></span>
+                  </p>
                   <p x-show="line.paperlessDuplicateWarning" class="text-xs text-amber-600 dark:text-amber-400 mt-0.5" x-text="line.paperlessDuplicateWarning"></p>
                 </div>
               </div>
@@ -2777,21 +2795,31 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     },
 
     // --- entries ---
+    // Same shape searchPaperlessForLine()/pickPaperlessDocForLine() already
+    // expect on a Book Import Line Modal category line — reused as-is here
+    // so the New Entry Modal gets the same search-with-picker UI instead of
+    // a plain ID field (found missing by the user: an offline-account
+    // payment can only ever be booked here, since there's no staging line
+    // to book from, so it had no way to search for a document at all).
+    newEntryLine() {
+      return {
+        ref: '', amount: '',
+        paperless_document_id: '', paperlessQuery: '', paperlessResults: [], paperlessDuplicateWarning: null,
+      };
+    },
+
     openEntryModal() {
       this.entryForm = {
         entry_date: new Date().toISOString().slice(0, 10),
         description: '',
-        lines: [
-          { ref: '', amount: '', paperless_document_id: '', paperlessDuplicateWarning: null },
-          { ref: '', amount: '', paperless_document_id: '', paperlessDuplicateWarning: null },
-        ],
+        lines: [this.newEntryLine(), this.newEntryLine()],
       };
       this.entryError = null;
       this.showEntryModal = true;
     },
 
     addLine() {
-      this.entryForm.lines.push({ ref: '', amount: '', paperless_document_id: '', paperlessDuplicateWarning: null });
+      this.entryForm.lines.push(this.newEntryLine());
     },
 
     removeLine(idx) {
