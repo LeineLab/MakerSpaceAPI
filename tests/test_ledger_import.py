@@ -522,6 +522,69 @@ def test_book_import_line_rejects_unbalanced_split(treasurer_client, bank_accoun
 
 
 # ---------------------------------------------------------------------------
+# Real bug found in production, 2026-09-13: booking a staging line auto-fills
+# the resulting entry's description and the bank leg's note from the staging
+# line's own purpose_text (VARCHAR(500)) — but ledger_entries.description and
+# ledger_entry_lines.note were both only VARCHAR(255). A genuine, long bank
+# purpose text (a SEPA-Rücklastschrift's verbose Rückgabegrund message,
+# easily past 255 chars) overflowed the column on MariaDB (errno 1406, "Data
+# too long"), invisible on SQLite since it never enforces VARCHAR length —
+# exactly why the test suite never caught it. Fixed by widening both columns
+# to 500 (migration 0018) and adding matching max_length=500 validation.
+# ---------------------------------------------------------------------------
+
+_LONG_PURPOSE_TEXT = (
+    "SEPA Basislastschrift Ruckgabe/Widerspruch vom 01.01.1970, "
+    "Ruckgabegrund: AM04 Deckung ungenugend ENTG: Entgelt 1,50 EUR fur "
+    "zuruckgegebene SEPA Basislastschrift vom 01.01.1970 uber "
+    "Auftragsbetrag 12,34 EUR: DE00000000000000000000 BIC: TESTBIC1XXX "
+    "ANAM: TESTFIRMA XY"
+)
+
+
+def test_book_import_line_long_description_over_255_chars_succeeds(treasurer_client, bank_account, expense_category, db):
+    assert 255 < len(_LONG_PURPOSE_TEXT) <= 500  # sanity: exercises exactly the fixed range
+    batch = LedgerImportBatch(bank_account_id=bank_account.id, source=LedgerImportSource.file, imported_by="tester")
+    db.add(batch)
+    db.flush()
+    staged = LedgerImportLine(
+        batch_id=batch.id, bank_account_id=bank_account.id, booking_date=date(2026, 4, 16),
+        amount=Decimal("-1.50"), purpose_text=_LONG_PURPOSE_TEXT,
+        dedup_hash="testhash-long-description", status=LedgerImportStatus.new,
+    )
+    db.add(staged)
+    db.commit()
+
+    resp = treasurer_client.post(
+        f"/api/v1/ledger/import/lines/{staged.id}/book",
+        json={
+            "description": _LONG_PURPOSE_TEXT,
+            "category_lines": [{"category_id": expense_category.id, "amount": "1.50"}],
+        },
+    )
+    assert resp.status_code == 201
+    entry = resp.json()
+    assert entry["description"] == _LONG_PURPOSE_TEXT
+    bank_line = next(l for l in entry["lines"] if l["bank_account_id"] == bank_account.id)
+    assert bank_line["note"] == _LONG_PURPOSE_TEXT
+
+
+def test_create_entry_rejects_description_over_500_chars(treasurer_client, bank_account, expense_category):
+    resp = treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "1970-01-01",
+            "description": "x" * 501,
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "-1.50"},
+                {"category_id": expense_category.id, "amount": "1.50"},
+            ],
+        },
+    )
+    assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
 # Booking an import line as a transfer to another account
 # ---------------------------------------------------------------------------
 

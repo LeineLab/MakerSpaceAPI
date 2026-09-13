@@ -135,7 +135,11 @@ class LedgerEntry(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     entry_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
-    description: Mapped[str] = mapped_column(String(255), nullable=False)
+    # 500, not 255: often auto-filled from a staging line's own purpose_text
+    # (see ledger_import_lines.purpose_text, also 500) — a genuine, unedited
+    # bank purpose text (e.g. a SEPA-Rücklastschrift's verbose Rückgabegrund
+    # message) can run past 255 chars, see migration 0018.
+    description: Mapped[str] = mapped_column(String(500), nullable=False)
     # Set on a reversal entry (created by POST /ledger/entries/{id}/reverse) to
     # the original entry it cancels out — entries are otherwise immutable, so
     # "undoing" a booking means posting an offsetting entry, not editing/
@@ -173,7 +177,10 @@ class LedgerEntryLine(Base):
         Integer, ForeignKey("ledger_categories.id", ondelete="RESTRICT"), nullable=True
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
-    note: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # 500, not 255 — same reasoning as LedgerEntry.description (migration
+    # 0018): book_import_line() copies the bank leg's note straight from
+    # ledger_import_lines.purpose_text (also 500).
+    note: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     # Moved here (migration 0016) from ledger_entries — a single entry-level
     # field couldn't represent several invoices paid in one bank debit, one
     # ledger_entry_lines row per invoice. Only meaningful on a category-side

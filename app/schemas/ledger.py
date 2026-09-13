@@ -130,7 +130,7 @@ class LedgerEntryLineCreate(BaseModel):
     bank_account_id: Optional[int] = None
     category_id: Optional[int] = None
     amount: Decimal = Field(examples=[Decimal("-42.00")])
-    note: Optional[str] = None
+    note: Optional[str] = Field(default=None, max_length=500)
     paperless_document_id: Optional[str] = None
 
 
@@ -152,7 +152,7 @@ class LedgerEntryCreate(BaseModel):
     paperless_document_id lives on each line (LedgerEntryLineCreate), not
     here — see migration 0016."""
     entry_date: date
-    description: str = Field(examples=["Wareneinkauf Getränke"])
+    description: str = Field(max_length=500, examples=["Wareneinkauf Getränke"])
     lines: list[LedgerEntryLineCreate] = Field(min_length=2)
 
 
@@ -237,7 +237,7 @@ class TargetPayoutCategorySplit(BaseModel):
     supports, only a plain category booking."""
     category_id: int
     amount: Decimal = Field(examples=[Decimal("50.00")])
-    note: Optional[str] = None
+    note: Optional[str] = Field(default=None, max_length=500)
 
 
 class BookTargetPayoutsRequest(BaseModel):
@@ -274,7 +274,7 @@ class BookTargetPayoutsRequest(BaseModel):
     bank_account_id: int
     amount: Decimal = Field(gt=0, examples=[Decimal("20.00")])
     entry_date: Optional[date] = None
-    description: Optional[str] = None
+    description: Optional[str] = Field(default=None, max_length=500)
     matched_import_line_id: Optional[int] = None
     category_lines: list[TargetPayoutCategorySplit] = Field(default_factory=list)
 
@@ -484,7 +484,7 @@ class LedgerImportLineCategorySplit(BaseModel):
     category_id: Optional[int] = None
     bank_account_id: Optional[int] = None
     amount: Decimal = Field(examples=[Decimal("50.00")])
-    note: Optional[str] = None
+    note: Optional[str] = Field(default=None, max_length=500)
     paperless_document_id: Optional[str] = None
 
 
@@ -504,7 +504,7 @@ class LedgerImportLineBookRequest(BaseModel):
     amount match (a plain transfer moves the full amount, no partial). That
     line is booked too, linked to the same entry, instead of being left to
     show up again (and get double-booked) once reviewed on its own."""
-    description: str = Field(examples=["Mitgliedsbeitrag Max Mustermann"])
+    description: str = Field(max_length=500, examples=["Mitgliedsbeitrag Max Mustermann"])
     category_lines: list[LedgerImportLineCategorySplit] = Field(min_length=1)
     matched_import_line_id: Optional[int] = None
 
