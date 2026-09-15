@@ -78,6 +78,9 @@
             <option :value="a.id" x-text="a.name"></option>
           </template>
         </select>
+        <input type="text" x-model="filterQuery" @input.debounce.400ms="entriesPage = 1; loadEntries()"
+               placeholder="{{ _('ledger.placeholder_search_entries') }}"
+               class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
         <label class="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 cursor-pointer ml-2">
           <input type="checkbox" x-model="showBankPurposeText" class="rounded border-gray-300 dark:border-gray-600">
           {{ _('ledger.show_bank_purpose_text') }}
@@ -2444,12 +2447,14 @@ const LEDGER_TAB_QUERY = {
       const p = {};
       if (app.filterYear) p.jahr = app.filterYear;
       if (app.filterAccountId) p.konto = app.filterAccountId;
+      if (app.filterQuery) p.suche = app.filterQuery;
       if (app.entriesPage > 1) p.seite = app.entriesPage;
       return p;
     },
     apply(app, params) {
       if (params.has('jahr')) app.filterYear = parseInt(params.get('jahr'), 10) || new Date().getFullYear();
       if (params.has('konto')) app.filterAccountId = parseInt(params.get('konto'), 10) || '';
+      if (params.has('suche')) app.filterQuery = params.get('suche');
       if (params.has('seite')) app.entriesPage = parseInt(params.get('seite'), 10) || 1;
     },
   },
@@ -2512,6 +2517,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     entriesError: null,
     filterYear: new Date().getFullYear(),
     filterAccountId: '',
+    filterQuery: '',
     showBankPurposeText: false,
     expandedEntryId: null,
     showEntryModal: false,
@@ -2895,6 +2901,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     entriesQueryParams() {
       let params = `year=${this.filterYear}`;
       if (this.filterAccountId) params += `&bank_account_id=${this.filterAccountId}`;
+      if (this.filterQuery) params += `&q=${encodeURIComponent(this.filterQuery)}`;
       return params;
     },
 
@@ -2941,6 +2948,20 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       const year = parseInt(entry.entry_date.slice(0, 4), 10);
       if (year !== this.filterYear) return false;
       if (this.filterAccountId && !entry.lines.some(l => l.bank_account_id === this.filterAccountId)) return false;
+      if (this.filterQuery) {
+        // Client-side mirror of the backend's q search scope (description,
+        // line notes, linked import line purpose/counterparty) — only used
+        // to decide whether a just-created/reversed entry belongs in the
+        // locally-spliced view (see insertEntryLocally() below), not a
+        // second search implementation the server's results depend on.
+        const needle = this.filterQuery.toLowerCase();
+        const haystack = [
+          entry.description || '',
+          ...(entry.lines || []).map(l => l.note || ''),
+          ...(entry.matched_import_lines || []).flatMap(l => [l.purpose_text || '', l.counterparty_name || '']),
+        ].join(' ').toLowerCase();
+        if (!haystack.includes(needle)) return false;
+      }
       return true;
     },
 

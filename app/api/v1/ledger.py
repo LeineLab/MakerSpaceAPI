@@ -688,6 +688,7 @@ def list_entries(
     bank_account_id: Optional[int] = Query(default=None),
     category_id: Optional[int] = Query(default=None),
     paperless_document_id: Optional[str] = Query(default=None),
+    q: Optional[str] = Query(default=None),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     _viewer: dict = Depends(require_ledger_viewer_user),
@@ -695,31 +696,57 @@ def list_entries(
 ):
     """`X-Total-Count` on the response tells the frontend whether more pages
     exist beyond this `limit`/`offset` window — the list itself stays a bare
-    JSON array (not an envelope) so existing callers are unaffected."""
-    q = db.query(LedgerEntry).options(
+    JSON array (not an envelope) so existing callers are unaffected.
+
+    `q` (free-text, case-insensitive substring) matches the entry's own
+    description, any of its lines' notes, or — via the staged import
+    line(s) it was booked from, if any — that line's bank purpose text or
+    counterparty name, so a booking can be found by what the bank actually
+    called it even when the treasurer typed something different (or
+    nothing) into the description. Matched via `.in_()` subqueries rather
+    than additional joins on the main query, so it composes cleanly with
+    the existing conditional `bank_account_id`/`category_id`/
+    `paperless_document_id` join below without affecting row multiplicity.
+    Same substring-match convention as the import staging queue's own `q`
+    filter (#38)."""
+    query = db.query(LedgerEntry).options(
         joinedload(LedgerEntry.lines).joinedload(LedgerEntryLine.bank_account),
         joinedload(LedgerEntry.lines).joinedload(LedgerEntryLine.category),
     )
     if year is not None:
-        q = q.filter(
+        query = query.filter(
             LedgerEntry.entry_date >= f"{year}-01-01", LedgerEntry.entry_date <= f"{year}-12-31"
         )
     if bank_account_id is not None or category_id is not None or paperless_document_id is not None:
-        q = q.join(LedgerEntryLine)
+        query = query.join(LedgerEntryLine)
         if bank_account_id is not None:
-            q = q.filter(LedgerEntryLine.bank_account_id == bank_account_id)
+            query = query.filter(LedgerEntryLine.bank_account_id == bank_account_id)
         if category_id is not None:
-            q = q.filter(LedgerEntryLine.category_id == category_id)
+            query = query.filter(LedgerEntryLine.category_id == category_id)
         if paperless_document_id is not None:
             # paperless_document_id lives per line (migration 0016) — used by
             # the frontend to warn (not block — partial payments against the
             # same invoice are a legitimate reason to link it more than once)
             # when a document is about to be linked a second time.
-            q = q.filter(LedgerEntryLine.paperless_document_id == paperless_document_id)
-    q = q.distinct()
-    response.headers["X-Total-Count"] = str(q.count())
+            query = query.filter(LedgerEntryLine.paperless_document_id == paperless_document_id)
+    if q:
+        like = f"%{q}%"
+        line_note_entry_ids = db.query(LedgerEntryLine.entry_id).filter(LedgerEntryLine.note.ilike(like))
+        import_line_entry_ids = db.query(LedgerImportLine.matched_entry_id).filter(
+            LedgerImportLine.matched_entry_id.isnot(None),
+            or_(LedgerImportLine.purpose_text.ilike(like), LedgerImportLine.counterparty_name.ilike(like)),
+        )
+        query = query.filter(
+            or_(
+                LedgerEntry.description.ilike(like),
+                LedgerEntry.id.in_(line_note_entry_ids),
+                LedgerEntry.id.in_(import_line_entry_ids),
+            )
+        )
+    query = query.distinct()
+    response.headers["X-Total-Count"] = str(query.count())
     entries = (
-        q.order_by(LedgerEntry.entry_date.desc(), LedgerEntry.id.desc())
+        query.order_by(LedgerEntry.entry_date.desc(), LedgerEntry.id.desc())
         .offset(offset)
         .limit(limit)
         .all()

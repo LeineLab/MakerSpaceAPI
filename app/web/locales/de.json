@@ -647,6 +647,7 @@
   "ledger.target_payout_bundle_amount_hint": "Wird bei mehreren ausgewählten Auszahlungen auf diese verteilt — kleinste zuerst vollständig auffüllen, dann die nächstgrößere — maximal {amount}. Reicht der Betrag nicht für alle aus, bleibt der Rest der größten offen für eine spätere Buchung.",
   "ledger.label_search_import_lines": "Buchung suchen",
   "ledger.placeholder_search_import_lines": "Verwendungszweck oder Name…",
+  "ledger.placeholder_search_entries": "Buchungstext, Notiz oder Bank-Verwendungszweck…",
   "ledger.search_no_results": "Keine Treffer",
   "ledger.target_payout_selected_title": "Ausgewählte Auszahlungen",
   "ledger.category_sign_warning_income": "Ungewöhnliches Vorzeichen für eine Einnahme-Kategorie — falls das keine Rückerstattung/Korrektur ist, Kategorie prüfen.",

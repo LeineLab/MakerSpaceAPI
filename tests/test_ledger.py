@@ -710,6 +710,94 @@ def test_list_entries_filters_by_bank_account_id(treasurer_client, db, bank_acco
     assert entry["description"] == "Auf Zweitkonto"
 
 
+def test_list_entries_search_matches_description(treasurer_client, bank_account, income_category):
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-01", "description": "Mitgliedsbeitrag Erika Musterfrau",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "50.00"},
+                {"category_id": income_category.id, "amount": "-50.00"},
+            ],
+        },
+    )
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-02", "description": "Wareneinkauf",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "-10.00"},
+                {"category_id": income_category.id, "amount": "10.00"},
+            ],
+        },
+    )
+
+    resp = treasurer_client.get("/api/v1/ledger/entries?q=musterfrau")
+    assert resp.status_code == 200
+    [entry] = resp.json()
+    assert entry["description"] == "Mitgliedsbeitrag Erika Musterfrau"
+
+
+def test_list_entries_search_matches_line_note(treasurer_client, bank_account, income_category):
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-01", "description": "Beitrag",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "50.00"},
+                {"category_id": income_category.id, "amount": "-50.00", "note": "Rechnungsnummer RE-2026-042"},
+            ],
+        },
+    )
+
+    resp = treasurer_client.get("/api/v1/ledger/entries?q=RE-2026-042")
+    assert resp.status_code == 200
+    assert len(resp.json()) == 1
+
+
+def test_list_entries_search_matches_bank_purpose_text_of_booked_line(treasurer_client, db, bank_account, expense_category):
+    batch = LedgerImportBatch(bank_account_id=bank_account.id, source=LedgerImportSource.file, imported_by="tester")
+    db.add(batch)
+    db.flush()
+    staged = LedgerImportLine(
+        batch_id=batch.id, bank_account_id=bank_account.id, booking_date=date(2026, 3, 5),
+        amount=Decimal("-25.00"), purpose_text="Buerobedarf Schreibwaren GmbH", counterparty_name="Schreibwaren GmbH",
+        dedup_hash="search-test-hash", status=LedgerImportStatus.new,
+    )
+    db.add(staged)
+    db.commit()
+
+    book_resp = treasurer_client.post(
+        f"/api/v1/ledger/import/lines/{staged.id}/book",
+        json={
+            "description": "Buero",
+            "category_lines": [{"category_id": expense_category.id, "amount": "25.00"}],
+        },
+    )
+    assert book_resp.status_code == 201
+
+    resp = treasurer_client.get("/api/v1/ledger/entries?q=schreibwaren")
+    assert resp.status_code == 200
+    assert len(resp.json()) == 1
+
+
+def test_list_entries_search_no_match_returns_empty(treasurer_client, bank_account, income_category):
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-01", "description": "Beitrag",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "50.00"},
+                {"category_id": income_category.id, "amount": "-50.00"},
+            ],
+        },
+    )
+
+    resp = treasurer_client.get("/api/v1/ledger/entries?q=nonexistent-search-term")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
 def test_list_entries_matched_import_lines_empty_for_manual_booking(treasurer_client, bank_account, income_category):
     treasurer_client.post(
         "/api/v1/ledger/entries",

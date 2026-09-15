@@ -647,6 +647,7 @@
   "ledger.target_payout_bundle_amount_hint": "With several selected payouts, this is allocated to them smallest first — filling the smallest completely before moving to the next-larger one — up to {amount}. If the amount doesn't cover all of them, the remainder of the largest stays open for a later booking.",
   "ledger.label_search_import_lines": "Search for a booking",
   "ledger.placeholder_search_import_lines": "Purpose or name…",
+  "ledger.placeholder_search_entries": "Description, note, or bank purpose text…",
   "ledger.search_no_results": "No matches",
   "ledger.target_payout_selected_title": "Selected payouts",
   "ledger.category_sign_warning_income": "Unexpected sign for an income category — check the category unless this is a refund/correction.",
