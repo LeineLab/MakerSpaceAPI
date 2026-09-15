@@ -254,6 +254,7 @@
               <th class="px-4 py-3 text-left">{{ _('ledger.col_last_transaction') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_tracked') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_cash_clearing') }}</th>
+              <th class="px-4 py-3 text-left" x-show="userIsTreasurer"></th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -297,6 +298,12 @@
                            class="border-gray-300 dark:border-gray-600">
                   </label>
                   <span x-show="!a.is_offline" class="text-gray-300 dark:text-gray-600">—</span>
+                </td>
+                <td class="px-4 py-3" x-show="userIsTreasurer">
+                  <button x-show="!a.is_offline" @click="openSyncTokensModal(a)"
+                          class="text-blue-600 dark:text-blue-400 hover:underline text-xs whitespace-nowrap">
+                    {{ _('ledger.btn_manage_sync_tokens') }}
+                  </button>
                 </td>
               </tr>
             </template>
@@ -2158,6 +2165,88 @@
     </div>
   </div>
 
+  <!-- ============ Ledger Sync Tokens Modal (#52) ============ -->
+  <div x-show="showSyncTokensModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+       @mousedown.self="modalMousedownOutside = true">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg p-6" style="max-height: 90vh; overflow-y: auto;"
+         @mousedown="modalMousedownOutside = false" @click.outside="if (modalMousedownOutside) showSyncTokensModal = false">
+      <h2 class="text-lg font-bold mb-1" x-text="syncTokensAccount ? SYNC_TOKENS_MODAL_TITLE_TMPL.replace('{name}', syncTokensAccount.name) : ''"></h2>
+      <p class="text-xs text-gray-400 dark:text-gray-500 mb-4">{{ _('ledger.sync_tokens_hint') }}</p>
+
+      <div x-show="syncTokensError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="syncTokensError"></div>
+
+      <template x-if="loadingSyncTokens">
+        <div class="text-gray-400 dark:text-gray-500 text-sm mb-4">Loading…</div>
+      </template>
+      <template x-if="!loadingSyncTokens && syncTokens.length === 0">
+        <p class="text-gray-400 dark:text-gray-500 text-sm mb-4">{{ _('ledger.sync_tokens_empty') }}</p>
+      </template>
+      <template x-if="!loadingSyncTokens && syncTokens.length > 0">
+        <div class="mb-4 max-h-64 overflow-y-auto border dark:border-gray-700 rounded divide-y divide-gray-100 dark:divide-gray-700">
+          <template x-for="t in syncTokens" :key="t.id">
+            <div class="px-3 py-2 text-sm">
+              <div class="flex items-center justify-between">
+                <div>
+                  <span class="font-medium" x-text="t.name"></span>
+                  <span x-show="!t.active" class="ml-2 px-1.5 py-0.5 rounded text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                    {{ _('ledger.sync_token_inactive_badge') }}
+                  </span>
+                  <span x-show="t.paused" class="ml-2 px-1.5 py-0.5 rounded text-xs bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+                    {{ _('ledger.sync_token_paused_badge') }}
+                  </span>
+                </div>
+                <div class="flex gap-2 shrink-0 ml-2">
+                  <button x-show="t.paused" @click="resumeSyncToken(t)" class="text-blue-600 dark:text-blue-400 hover:underline text-xs">
+                    {{ _('ledger.btn_resume') }}
+                  </button>
+                  <button @click="toggleSyncTokenActive(t)" class="text-gray-500 dark:text-gray-400 hover:underline text-xs"
+                          x-text="t.active ? DEACTIVATE_L : ACTIVATE_L"></button>
+                  <button @click="deleteSyncToken(t)" class="text-red-600 dark:text-red-400 hover:underline text-xs">{{ _('common.remove') }}</button>
+                </div>
+              </div>
+              <p x-show="t.paused" class="text-xs text-amber-600 dark:text-amber-400 mt-1"
+                 x-text="SYNC_TOKEN_PAUSED_TMPL.replace('{count}', t.consecutive_failures).replace('{error}', t.last_error || '')"></p>
+              <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                <span x-text="t.last_success_at ? t.last_success_at : SYNC_TOKEN_NEVER_USED_L"></span>
+              </p>
+            </div>
+          </template>
+        </div>
+      </template>
+
+      <template x-if="justCreatedSyncToken">
+        <div class="mb-4 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded p-3">
+          <p class="text-xs text-amber-700 dark:text-amber-300 mb-2">{{ _('ledger.sync_token_shown_once_hint') }}</p>
+          <code class="block text-xs font-mono bg-white dark:bg-gray-900 border dark:border-gray-700 rounded p-2 break-all select-all" x-text="justCreatedSyncToken"></code>
+          <button type="button" @click="justCreatedSyncToken = null" class="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline">
+            {{ _('ledger.sync_token_dismiss') }}
+          </button>
+        </div>
+      </template>
+
+      <form @submit.prevent="createSyncToken()" class="space-y-3 border-t dark:border-gray-700 pt-4">
+        <div x-show="syncTokenCreateError" class="bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="syncTokenCreateError"></div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_sync_token_name') }}</label>
+          <input type="text" x-model="newSyncTokenName" required placeholder="{{ _('ledger.sync_token_name_placeholder') }}"
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div class="flex justify-end gap-3 pt-1">
+          <button type="submit" :disabled="syncTokenCreating"
+                  class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
+            <span x-show="!syncTokenCreating">{{ _('ledger.btn_create_sync_token') }}</span>
+            <span x-show="syncTokenCreating">…</span>
+          </button>
+        </div>
+      </form>
+
+      <div class="flex justify-end pt-4">
+        <button type="button" @click="showSyncTokensModal = false"
+                class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.close') }}</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ============ Audit Report (Kassenprüfungsprotokoll) Modal ============ -->
   <div x-show="showAuditReportModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
        @mousedown.self="modalMousedownOutside = true">
@@ -2287,6 +2376,13 @@ const CATEGORY_BTN_CREATE_L = {{ _('ledger.btn_create_category') | tojson }};
 const MOVEMENT_REMOVE_CONFIRM_L = {{ _('ledger.movement_remove_confirm') | tojson }};
 const MOVEMENTS_MODAL_TITLE_TMPL = {{ _('ledger.movements_modal_title') | tojson }};
 const ADD_MOVEMENT_L = {{ _('ledger.btn_add_movement') | tojson }};
+const SYNC_TOKENS_MODAL_TITLE_TMPL = {{ _('ledger.sync_tokens_modal_title') | tojson }};
+const SYNC_TOKEN_REMOVE_CONFIRM_L = {{ _('ledger.sync_token_remove_confirm') | tojson }};
+const SYNC_TOKEN_SHOWN_ONCE_HINT_L = {{ _('ledger.sync_token_shown_once_hint') | tojson }};
+const SYNC_TOKEN_PAUSED_TMPL = {{ _('ledger.sync_token_paused_hint') | tojson }};
+const SYNC_TOKEN_NEVER_USED_L = {{ _('ledger.sync_token_never_used') | tojson }};
+const ACTIVATE_L = {{ _('ledger.btn_activate') | tojson }};
+const DEACTIVATE_L = {{ _('ledger.btn_deactivate') | tojson }};
 const RESERVE_KIND_L = {
   frei: {{ _('ledger.reserve_kind_frei') | tojson }},
   zweckgebunden: {{ _('ledger.reserve_kind_zweckgebunden') | tojson }},
@@ -2480,6 +2576,18 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     movementForm: { movement_date: '', amount: '', note: '' },
     movementError: null,
     movementSubmitting: false,
+
+    // Ledger sync tokens (#52): unattended external FinTS-sync script auth,
+    // managed per bank account from the Bankkonten tab.
+    showSyncTokensModal: false,
+    syncTokensAccount: null,
+    syncTokens: [],
+    loadingSyncTokens: false,
+    syncTokensError: null,
+    newSyncTokenName: '',
+    syncTokenCreating: false,
+    syncTokenCreateError: null,
+    justCreatedSyncToken: null,
 
     auditReports: [],
     loadingAuditReports: true,
@@ -4441,6 +4549,103 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         await this.loadMittelverwendung();
       } catch (e) {
         if (e !== 'unauthenticated') this.movementsError = e.message || String(e);
+      }
+    },
+
+    // --- Ledger sync tokens (#52) ---
+    async openSyncTokensModal(account) {
+      this.syncTokensAccount = account;
+      this.newSyncTokenName = '';
+      this.syncTokenCreateError = null;
+      this.justCreatedSyncToken = null;
+      this.syncTokensError = null;
+      this.showSyncTokensModal = true;
+      await this.loadSyncTokens();
+    },
+
+    async loadSyncTokens() {
+      this.loadingSyncTokens = true;
+      this.syncTokensError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/sync-tokens?bank_account_id=${this.syncTokensAccount.id}`);
+        if (!r.ok) throw new Error('Failed to load sync tokens');
+        this.syncTokens = await r.json();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.syncTokensError = e.message || String(e);
+      } finally {
+        this.loadingSyncTokens = false;
+      }
+    },
+
+    async createSyncToken() {
+      this.syncTokenCreating = true;
+      this.syncTokenCreateError = null;
+      this.justCreatedSyncToken = null;
+      try {
+        const r = await apiFetch('/api/v1/ledger/sync-tokens', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: this.newSyncTokenName, bank_account_id: this.syncTokensAccount.id }),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          this.syncTokenCreateError = data.detail || 'Error creating sync token';
+          return;
+        }
+        // Shown exactly once — the API never returns it again after this response.
+        this.justCreatedSyncToken = data.token;
+        this.newSyncTokenName = '';
+        await this.loadSyncTokens();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.syncTokenCreateError = e.message || String(e);
+      } finally {
+        this.syncTokenCreating = false;
+      }
+    },
+
+    async toggleSyncTokenActive(token) {
+      this.syncTokensError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/sync-tokens/${token.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ active: !token.active }),
+        });
+        if (!r.ok) { const data = await r.json(); this.syncTokensError = data.detail || 'Error updating sync token'; return; }
+        await this.loadSyncTokens();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.syncTokensError = e.message || String(e);
+      }
+    },
+
+    async resumeSyncToken(token) {
+      this.syncTokensError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/sync-tokens/${token.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ resume: true }),
+        });
+        if (!r.ok) { const data = await r.json(); this.syncTokensError = data.detail || 'Error resuming sync token'; return; }
+        await this.loadSyncTokens();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.syncTokensError = e.message || String(e);
+      }
+    },
+
+    async deleteSyncToken(token) {
+      if (!confirm(SYNC_TOKEN_REMOVE_CONFIRM_L)) return;
+      this.syncTokensError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/sync-tokens/${token.id}`, { method: 'DELETE' });
+        if (!r.ok && r.status !== 404) {
+          const data = await r.json();
+          this.syncTokensError = data.detail || 'Error removing sync token';
+          return;
+        }
+        await this.loadSyncTokens();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.syncTokensError = e.message || String(e);
       }
     },
 

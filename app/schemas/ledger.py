@@ -539,6 +539,84 @@ class LedgerImportSummary(BaseModel):
     total_count: int
 
 
+# --- Ledger sync tokens (#52): narrowly-scoped auth for the external,
+# unattended FinTS-sync script — see Key Design Decision #52. ---
+
+class LedgerSyncTokenCreate(BaseModel):
+    name: str = Field(examples=["Vereinskonto Cron-Sync"])
+    bank_account_id: int
+
+
+class LedgerSyncTokenUpdate(BaseModel):
+    """`resume: true` clears `paused` and resets `consecutive_failures` to 0
+    — the treasurer's explicit "I've looked into it, try again" action after
+    several sync failures auto-paused the token. `active: false` is a
+    separate, permanent revoke (distinct from a transient pause)."""
+    name: Optional[str] = None
+    active: Optional[bool] = None
+    resume: bool = False
+
+
+class LedgerSyncTokenResponse(BaseModel):
+    id: int
+    name: str
+    bank_account_id: int
+    active: bool
+    paused: bool
+    consecutive_failures: int
+    last_used_at: Optional[datetime] = None
+    last_success_at: Optional[datetime] = None
+    last_error: Optional[str] = None
+    created_by: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LedgerSyncTokenCreateResponse(LedgerSyncTokenResponse):
+    """The plaintext token, shown exactly once — never retrievable again,
+    same convention as a machine's api_token (POST /machines)."""
+    token: str
+
+
+class LedgerSyncAccountResponse(BaseModel):
+    """What the external script's very first call learns: which account it's
+    scoped to, and how far the ledger's own import history already reaches
+    for it — the basis for the script's own date_from computation (mirrors
+    fintsDefaultDatesForAccount() in ledger/index.html, see #51)."""
+    id: int
+    iban: str
+    name: str
+    last_transaction_date: Optional[date] = None
+
+
+class LedgerSyncImportLine(BaseModel):
+    """One already-fetched-from-FinTS transaction, in the same shape as
+    ParsedStatementLine (app/services/bank_statement.py) — the script does
+    its own FinTS parsing (reusing lines_from_mt940_transactions(), so the
+    #19 sign/IBAN fixes apply identically) and hands over already-normalized
+    lines, not raw FinTS data."""
+    booking_date: date
+    amount: Decimal = Field(examples=[Decimal("-12.34")])
+    purpose_text: Optional[str] = Field(default=None, max_length=500)
+    counterparty_name: Optional[str] = Field(default=None, max_length=255)
+    counterparty_iban: Optional[str] = Field(default=None, max_length=34)
+    bank_reference: Optional[str] = Field(default=None, max_length=100)
+
+
+class LedgerSyncImportRequest(BaseModel):
+    lines: list[LedgerSyncImportLine]
+
+
+class LedgerSyncReportErrorRequest(BaseModel):
+    """The script calls this when it couldn't complete a sync — a FinTS
+    connection error, a TAN/SCA challenge it can't resolve unattended, etc.
+    Never the actual bank error text verbatim if that could contain
+    sensitive detail; a short, human-readable summary is enough to show the
+    treasurer why it stopped."""
+    message: str = Field(max_length=500)
+
+
 class LedgerImportLineCategorySplit(BaseModel):
     """Exactly one of category_id/bank_account_id must be set (checked in the
     endpoint). bank_account_id books a transfer leg to another account

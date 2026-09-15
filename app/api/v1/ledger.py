@@ -8,10 +8,12 @@ from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth.deps import require_auditor_writer_user, require_ledger_viewer_user, require_treasurer_user
+from app.auth.tokens import generate_api_token, verify_api_token
 from app.config import settings
 from app.database import get_db
 from app.models.booking_target import BookingTarget
@@ -33,11 +35,12 @@ from app.models.ledger import (
     LedgerReserveKind,
     LedgerReserveMovement,
     LedgerSphere,
+    LedgerSyncToken,
     LedgerTargetPayoutEntry,
 )
 from app.models.transaction import Transaction, TransactionType
 from app.schemas.booking_target import BookingTargetResponse
-from app.schemas.common import HTTP_400, HTTP_404, HTTP_409, HTTP_502, MessageResponse
+from app.schemas.common import HTTP_400, HTTP_403, HTTP_404, HTTP_409, HTTP_502, MessageResponse
 from app.schemas.ledger import (
     AnlagenspiegelResponse,
     AnlagenspiegelRow,
@@ -79,6 +82,13 @@ from app.schemas.ledger import (
     LedgerReserveMovementUpdate,
     LedgerReserveResponse,
     LedgerReserveUpdate,
+    LedgerSyncAccountResponse,
+    LedgerSyncImportRequest,
+    LedgerSyncReportErrorRequest,
+    LedgerSyncTokenCreate,
+    LedgerSyncTokenCreateResponse,
+    LedgerSyncTokenResponse,
+    LedgerSyncTokenUpdate,
     LedgerTargetPayoutResponse,
     LedgerTargetUpdate,
     MittelverwendungReportResponse,
@@ -88,6 +98,7 @@ from app.schemas.ledger import (
 from app.services import fints_client, paperless
 from app.services.bank_statement import (
     CsvColumnMapping,
+    ParsedStatementLine,
     UnsupportedStatementFormat,
     account_identifier_matches,
     guess_csv_mapping,
@@ -98,6 +109,11 @@ from app.services.bank_statement import (
 from app.web.i18n import get_translator
 
 router = APIRouter()
+
+# Separate HTTPBearer instance from the one used for device tokens — same
+# scheme, just a distinct auth boundary (#52's sync tokens are validated
+# against LedgerSyncToken.token_hash, never against machines.api_token_hash).
+_sync_bearer = HTTPBearer(auto_error=False)
 
 
 @router.get("/config", response_model=LedgerConfigResponse)
@@ -303,6 +319,213 @@ def update_account(
     db.commit()
     db.refresh(account)
     return account
+
+
+# --- Ledger sync tokens (#52): narrowly-scoped, unattended FinTS-sync auth ---
+#
+# Deliberately a separate, much smaller auth surface than the treasurer's own
+# OIDC session: a sync token can only ever act for the ONE bank account it
+# was minted for, and only ever do two things — read that account's
+# last_transaction_date, and submit newly-fetched transactions into the
+# existing staging/dedup pipeline. It can never read anything else in the
+# ledger, book anything, or read itself back once issued (hashed at rest,
+# same as machines.api_token_hash). Management (create/list/update/delete)
+# still requires the normal treasurer session; only the three /sync/* routes
+# below accept a sync token instead.
+
+# Consecutive report-error calls before a token auto-pauses (see
+# LedgerSyncToken.paused's docstring) — deliberately small: an unattended
+# script hammering a broken FinTS connection for days before anyone notices
+# is worse than a treasurer having to click "resume" a little eagerly.
+_SYNC_PAUSE_THRESHOLD = 3
+
+
+@router.post(
+    "/sync-tokens", response_model=LedgerSyncTokenCreateResponse, status_code=201,
+    responses={**HTTP_404},
+)
+def create_sync_token(
+    body: LedgerSyncTokenCreate,
+    treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    account = db.query(BankAccount).filter(BankAccount.id == body.bank_account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Bank account not found")
+    plaintext_token, token_hash = generate_api_token()
+    token = LedgerSyncToken(
+        name=body.name, token_hash=token_hash, bank_account_id=account.id,
+        created_by=treasurer.get("sub", "unknown"),
+    )
+    db.add(token)
+    db.commit()
+    db.refresh(token)
+    return LedgerSyncTokenCreateResponse(**LedgerSyncTokenResponse.model_validate(token).model_dump(), token=plaintext_token)
+
+
+@router.get("/sync-tokens", response_model=list[LedgerSyncTokenResponse])
+def list_sync_tokens(
+    bank_account_id: Optional[int] = Query(default=None),
+    _treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    q = db.query(LedgerSyncToken)
+    if bank_account_id is not None:
+        q = q.filter(LedgerSyncToken.bank_account_id == bank_account_id)
+    return q.order_by(LedgerSyncToken.created_at.desc()).all()
+
+
+@router.put("/sync-tokens/{token_id}", response_model=LedgerSyncTokenResponse, responses={**HTTP_404})
+def update_sync_token(
+    token_id: int,
+    body: LedgerSyncTokenUpdate,
+    _treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    token = db.query(LedgerSyncToken).filter(LedgerSyncToken.id == token_id).first()
+    if not token:
+        raise HTTPException(status_code=404, detail="Sync token not found")
+    if body.name is not None:
+        token.name = body.name
+    if body.active is not None:
+        token.active = body.active
+    if body.resume:
+        token.paused = False
+        token.consecutive_failures = 0
+    db.commit()
+    db.refresh(token)
+    return token
+
+
+@router.delete("/sync-tokens/{token_id}", status_code=204, responses={**HTTP_404})
+def delete_sync_token(
+    token_id: int,
+    _treasurer: dict = Depends(require_treasurer_user),
+    db: Session = Depends(get_db),
+):
+    token = db.query(LedgerSyncToken).filter(LedgerSyncToken.id == token_id).first()
+    if not token:
+        raise HTTPException(status_code=404, detail="Sync token not found")
+    db.delete(token)
+    db.commit()
+
+
+def get_current_sync_token(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_sync_bearer),
+    db: Session = Depends(get_db),
+) -> LedgerSyncToken:
+    """Bearer-token auth for the external sync script — deliberately separate
+    from get_current_device (machines) and the treasurer OIDC session, same
+    linear-scan-over-hashes pattern as both (this table is small)."""
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Missing API token")
+    token_str = credentials.credentials
+    for candidate in db.query(LedgerSyncToken).filter(LedgerSyncToken.active.is_(True)).all():
+        if verify_api_token(token_str, candidate.token_hash):
+            candidate.last_used_at = datetime.now(UTC).replace(tzinfo=None)
+            db.commit()
+            db.refresh(candidate)
+            return candidate
+    raise HTTPException(status_code=401, detail="Invalid, revoked, or inactive sync token")
+
+
+def require_unpaused_sync_token(
+    token: LedgerSyncToken = Depends(get_current_sync_token),
+) -> LedgerSyncToken:
+    """The read/import endpoints (the ones that actually do sync work) also
+    refuse a paused token — report-error does not use this, so a script can
+    still record what went wrong even once paused."""
+    if token.paused:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Sync token '{token.name}' is paused after {token.consecutive_failures} "
+                "consecutive failures — resume it in the web UI (Bankkonten) once the "
+                "underlying problem is fixed"
+            ),
+        )
+    return token
+
+
+@router.get("/sync/account", response_model=LedgerSyncAccountResponse, responses={**HTTP_403})
+def get_sync_account(
+    token: LedgerSyncToken = Depends(require_unpaused_sync_token),
+    db: Session = Depends(get_db),
+):
+    """First call the script makes: which account, and how far the ledger's
+    own import history already reaches — the basis for the script's own
+    date_from computation (see scripts/ledger_fints_sync.py, mirrors
+    fintsDefaultDatesForAccount() in ledger/index.html, #51)."""
+    account = db.query(BankAccount).filter(BankAccount.id == token.bank_account_id).first()
+    if not account or not account.iban:
+        raise HTTPException(status_code=404, detail="Bank account not found")
+    last_dates = _last_import_line_dates(db, [account.id])
+    return LedgerSyncAccountResponse(
+        id=account.id, iban=account.iban, name=account.name,
+        last_transaction_date=last_dates.get(account.id),
+    )
+
+
+@router.post("/sync/import", response_model=LedgerImportSummary, responses={**HTTP_403})
+def sync_import(
+    body: LedgerSyncImportRequest,
+    token: LedgerSyncToken = Depends(require_unpaused_sync_token),
+    db: Session = Depends(get_db),
+):
+    """Stage already-fetched-from-FinTS transactions through the same dedup
+    pipeline as every other import path (file/CSV/manual FinTS wizard) — the
+    script has already done its own FinTS talk and normalization
+    (lines_from_mt940_transactions, same #19 fixes apply), so this is purely
+    the staging step. A successful call resets the failure counter — the
+    token proved it still works."""
+    account = db.query(BankAccount).filter(BankAccount.id == token.bank_account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Bank account not found")
+
+    parsed_lines = [
+        ParsedStatementLine(
+            booking_date=line.booking_date, amount=line.amount, purpose_text=line.purpose_text,
+            counterparty_name=line.counterparty_name, counterparty_iban=line.counterparty_iban,
+            bank_reference=line.bank_reference,
+        )
+        for line in body.lines
+    ]
+    batch = LedgerImportBatch(
+        bank_account_id=account.id, source=LedgerImportSource.fints,
+        imported_by=f"sync-token:{token.name}",
+    )
+    db.add(batch)
+    db.flush()
+    summary = _store_import_lines(db, batch, account.id, parsed_lines)
+
+    token.consecutive_failures = 0
+    token.last_success_at = datetime.now(UTC).replace(tzinfo=None)
+    db.commit()
+    return summary
+
+
+@router.post("/sync/report-error", response_model=LedgerSyncTokenResponse)
+def sync_report_error(
+    body: LedgerSyncReportErrorRequest,
+    token: LedgerSyncToken = Depends(get_current_sync_token),
+    db: Session = Depends(get_db),
+):
+    """The script calls this when it couldn't complete a sync (FinTS
+    connection error, an unresolvable TAN/SCA challenge, etc.) — deliberately
+    reachable even on an already-paused token (unlike the two endpoints
+    above), so a script that still tries once more can always at least
+    record why. Auto-pauses once _SYNC_PAUSE_THRESHOLD consecutive failures
+    are reached, per the user's own request: several problems in a row
+    should stop unattended retries until a human looks at it, not silently
+    keep failing indefinitely."""
+    token.consecutive_failures += 1
+    token.last_error = body.message
+    token.last_used_at = datetime.now(UTC).replace(tzinfo=None)
+    if token.consecutive_failures >= _SYNC_PAUSE_THRESHOLD:
+        token.paused = True
+    db.commit()
+    db.refresh(token)
+    return token
 
 
 # --- Ledger categories (Kontenrahmen) ---

@@ -386,6 +386,48 @@ class LedgerAuditReport(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
 
 
+class LedgerSyncToken(Base):
+    """A narrowly-scoped bearer token for an unattended, external FinTS-sync
+    script (Key Design Decision #52) — deliberately NOT a way to store bank
+    login/PIN in this app. The credentials that matter (the actual FinTS
+    login/PIN) never touch this table, or this app, at all: they stay on
+    whatever host the treasurer trusts to run scripts/ledger_fints_sync.py,
+    same trust boundary the treasurer already has when running the manual
+    FinTS wizard themselves. Only this token — itself just a capability to
+    call two or three narrow endpoints for ONE bank account — lives here,
+    hashed at rest exactly like machines.api_token_hash (`app/auth/tokens.py`)
+    and shown once at creation, never retrievable again.
+
+    Scoped to exactly one bank_account_id (not a whole FinTS access's worth
+    of accounts) — least privilege: a leaked token can only ever read/submit
+    for the one account it was minted for, never move across the Verein's
+    other accounts. `paused` is the "repeated sync problems -> stop until a
+    human looks at it" mechanism the user asked for directly: every report-
+    error call increments `consecutive_failures`; hitting the threshold sets
+    `paused=True`, which the read/import endpoints then reject with a clear
+    403 until a treasurer explicitly resumes it (PUT .../resume: true) — see
+    _SYNC_PAUSE_THRESHOLD in app/api/v1/ledger.py. `active=False` is a plain
+    permanent revoke, distinct from a transient pause."""
+    __tablename__ = "ledger_sync_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    bank_account_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("bank_accounts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    paused: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_success_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_error: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
+
+    bank_account: Mapped["BankAccount"] = relationship("BankAccount")
+
+
 class LedgerImportBatch(Base):
     __tablename__ = "ledger_import_batches"
 
