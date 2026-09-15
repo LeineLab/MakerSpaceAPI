@@ -43,3 +43,17 @@ def test_ledger_page_initial_tab_is_entries(treasurer_client):
 def test_ledger_tab_page_sets_initial_tab_from_slug(treasurer_client):
     resp = treasurer_client.get("/ledger/kassenpruefung")
     assert "const INITIAL_TAB = \"audit-reports\";" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Pagination/filter state reflected into the URL (#54) — light regression
+# guards that the relevant JS is actually rendered; the URL-sync/restore
+# behavior itself (query params <-> Alpine state <-> <select> DOM value) is
+# browser-verified, not practical to assert without a real browser.
+# ---------------------------------------------------------------------------
+
+def test_ledger_page_includes_tab_query_param_spec(treasurer_client):
+    resp = treasurer_client.get("/ledger")
+    assert "const LEDGER_TAB_QUERY" in resp.text
+    assert "syncUrl(push)" in resp.text
+    assert "applyUrlParams()" in resp.text

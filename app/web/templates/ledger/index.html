@@ -2424,6 +2424,66 @@ const LEDGER_TAB_SLUGS = {
   report: 'euer-bericht',
 };
 const LEDGER_SLUG_TO_TAB = Object.fromEntries(Object.entries(LEDGER_TAB_SLUGS).map(([tab, slug]) => [slug, tab]));
+
+// Per-tab filter/page state reflected into the URL's query string (German
+// param names, matching this app's German-first slugs) — only for the three
+// tabs that actually paginate (entries/import/belege); every other tab has
+// no query string at all. Deliberately a second, independent description of
+// "what this tab's list is filtered/paged by" rather than reusing
+// entriesQueryParams()/importLinesQueryParams() — those build the *API*
+// request's query string (English param names, the backend's own contract);
+// this builds the *browser's* shareable URL. Same "no shared implementation,
+// kept in sync by hand" precedent as #51/#52's JS/Python date-range mirror,
+// just JS-to-JS here for two genuinely different audiences (the API vs. the
+// person reading the address bar). `build()` omits a param entirely when
+// it's at its default (page 1, the default import status, no search/filter)
+// so the common case stays a clean URL with no query string at all.
+const LEDGER_TAB_QUERY = {
+  entries: {
+    build(app) {
+      const p = {};
+      if (app.filterYear) p.jahr = app.filterYear;
+      if (app.filterAccountId) p.konto = app.filterAccountId;
+      if (app.entriesPage > 1) p.seite = app.entriesPage;
+      return p;
+    },
+    apply(app, params) {
+      if (params.has('jahr')) app.filterYear = parseInt(params.get('jahr'), 10) || new Date().getFullYear();
+      if (params.has('konto')) app.filterAccountId = parseInt(params.get('konto'), 10) || '';
+      if (params.has('seite')) app.entriesPage = parseInt(params.get('seite'), 10) || 1;
+    },
+  },
+  import: {
+    build(app) {
+      const p = {};
+      if (app.importStatus && app.importStatus !== 'new') p.status = app.importStatus;
+      if (app.importFilterAccountId) p.konto = app.importFilterAccountId;
+      if (app.importSearchQuery) p.suche = app.importSearchQuery;
+      if (app.importLinesPage > 1) p.seite = app.importLinesPage;
+      return p;
+    },
+    apply(app, params) {
+      if (params.has('status')) app.importStatus = params.get('status');
+      if (params.has('konto')) app.importFilterAccountId = parseInt(params.get('konto'), 10) || '';
+      if (params.has('suche')) app.importSearchQuery = params.get('suche');
+      if (params.has('seite')) app.importLinesPage = parseInt(params.get('seite'), 10) || 1;
+    },
+  },
+  belege: {
+    build(app) {
+      const p = {};
+      if (app.paperlessFilterStatus) p.status = app.paperlessFilterStatus;
+      if (app.paperlessFilterQuery) p.suche = app.paperlessFilterQuery;
+      if (app.paperlessDocumentsPage > 1) p.seite = app.paperlessDocumentsPage;
+      return p;
+    },
+    apply(app, params) {
+      if (params.has('status')) app.paperlessFilterStatus = params.get('status');
+      if (params.has('suche')) app.paperlessFilterQuery = params.get('suche');
+      if (params.has('seite')) app.paperlessDocumentsPage = parseInt(params.get('seite'), 10) || 1;
+    },
+  },
+};
 // Rendered server-side from the requested URL (/ledger or /ledger/<slug>) —
 // see ledger_tab_page() in app/web/router.py. Not embedded via the x-data
 // attribute itself: tojson on a string produces literal `"..."` delimiters
@@ -2721,16 +2781,35 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     async init() {
       await this.loadConfig();
       await Promise.all([this.loadAccounts(), this.loadCategories(), this.loadAssets()]);
-      await this.loadEntries();
+      // Query params (filter/page state) apply to whichever tab is already
+      // active from the URL — must happen before that tab's own load below,
+      // or the very first fetch would use the default filter/page instead
+      // of what the URL actually asked for. $nextTick first: setting e.g.
+      // filterYear on a <select x-model.number="filterYear"> whose <option>s
+      // come from x-for MUST wait until after Alpine's first DOM render —
+      // if the options don't exist in the DOM yet when x-model tries to
+      // apply the (non-default) restored value, the browser's native
+      // <select> silently falls back to its first option and never
+      // re-syncs later, since nothing about x-for finishing re-triggers
+      // x-model's own effect. Found live: a restored ?jahr=2025 correctly
+      // updated the JS state but the year dropdown kept showing the
+      // (first-option) current year until this fix.
+      await this.$nextTick();
+      this.applyUrlParams();
       // activeTab may already be a non-default tab here (deep link, e.g.
       // /ledger/kassenpruefung, resolved server-side into INITIAL_TAB) —
       // switchTab() itself is never called for that initial load (there's
       // no click), so its lazy-loading has to be triggered explicitly here
       // too, or the tab would render empty until the user clicked away and
-      // back. A no-op for the default 'entries' tab (already loaded above).
+      // back. Entries is now handled the same lazy way as every other tab
+      // (see loadTabData()) rather than always eagerly loaded, since #54
+      // needs it to respect a page/filter restored from the URL, and
+      // nothing outside the Buchungen tab's own template reads `entries`.
       this.loadTabData(this.activeTab);
-      window.addEventListener('popstate', () => {
+      window.addEventListener('popstate', async () => {
         this.activeTab = this.tabFromLocation();
+        await this.$nextTick();
+        this.applyUrlParams();
         this.loadTabData(this.activeTab);
       });
     },
@@ -2740,10 +2819,34 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       return (slug && LEDGER_SLUG_TO_TAB[slug]) || 'entries';
     },
 
+    // Restores a tab's filter/page state from the current URL's query
+    // string — called on initial load and on popstate (browser Back/
+    // Forward), both times *before* that tab's own data is (re)loaded.
+    applyUrlParams() {
+      const spec = LEDGER_TAB_QUERY[this.activeTab];
+      if (spec) spec.apply(this, new URLSearchParams(location.search));
+    },
+
+    // Writes the current tab's path + filter/page state into the address
+    // bar. `push` creates a new history entry (used only for an actual tab
+    // switch, see switchTab()); every in-tab filter/page change instead
+    // uses replaceState (called from loadEntries()/loadImportLines()/
+    // loadPaperlessDocuments() themselves — see #54) so paging through
+    // results or typing a search query doesn't spam the browser's Back
+    // button with one entry per click/keystroke.
+    syncUrl(push) {
+      const path = this.activeTab === 'entries' ? '/ledger' : `/ledger/${LEDGER_TAB_SLUGS[this.activeTab] || 'buchungen'}`;
+      const spec = LEDGER_TAB_QUERY[this.activeTab];
+      const qs = spec ? new URLSearchParams(spec.build(this)).toString() : '';
+      const url = qs ? `${path}?${qs}` : path;
+      if (location.pathname + location.search === url) return;
+      if (push) history.pushState({ tab: this.activeTab }, '', url);
+      else history.replaceState({ tab: this.activeTab }, '', url);
+    },
+
     switchTab(tab) {
       this.activeTab = tab;
-      const path = tab === 'entries' ? '/ledger' : `/ledger/${LEDGER_TAB_SLUGS[tab] || 'buchungen'}`;
-      if (location.pathname !== path) history.pushState({ tab }, '', path);
+      this.syncUrl(true);
       this.loadTabData(tab);
     },
 
@@ -2751,6 +2854,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     // can trigger it too when landing directly on a deep-linked, non-default
     // tab (no click ever calls switchTab() in that case).
     loadTabData(tab) {
+      if (tab === 'entries') this.loadEntries();
       if (tab === 'report' && !this.report) this.loadReport();
       if (tab === 'import') {
         this.loadImportLines();
@@ -2802,6 +2906,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     // (which only ever appended) — visiting page 2 fetches and shows only
     // page 2's rows, not page 1 kept around plus page 2 tacked on.
     async loadEntries() {
+      this.syncUrl(false);
       this.loadingEntries = true;
       this.entriesError = null;
       try {
@@ -3625,6 +3730,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     },
 
     async loadImportLines() {
+      this.syncUrl(false);
       this.loadingImportLines = true;
       this.importLinesError = null;
       try {
@@ -3885,6 +3991,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     },
 
     async loadPaperlessDocuments() {
+      this.syncUrl(false);
       this.loadingPaperlessDocuments = true;
       this.paperlessDocumentsError = null;
       try {
