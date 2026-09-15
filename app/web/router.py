@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.auth.deps import (
@@ -165,15 +165,58 @@ def rentals_page(
 # Treasurer / Auditor: Ledger (Vereinsbuchhaltung)
 # ---------------------------------------------------------------------------
 
+# Deep-linkable tab URLs (e.g. /ledger/kassenpruefung) — previously every
+# sub-section only lived behind client-side Alpine state (activeTab) with no
+# URL of its own, so there was no way to bookmark or share a link straight
+# to one. ASCII slugs (no umlauts), same transliteration convention already
+# used for category/machine slugs elsewhere in this app (e.g.
+# "mitgliedsbeitraege"). Keys are the tab identifiers used by the frontend's
+# own `activeTab`/`switchTab()` — kept in sync by hand with the matching
+# LEDGER_TAB_SLUGS JS object in ledger/index.html (no shared implementation
+# is possible across Python/JS, same convention as #51/#52's date-range
+# mirroring).
+LEDGER_TAB_SLUGS = {
+    "buchungen": "entries",
+    "belege": "belege",
+    "kategorien": "categories",
+    "import": "import",
+    "kassen": "targets",
+    "bankkonten": "accounts",
+    "anlagevermoegen": "assets",
+    "ruecklagen": "reserves",
+    "kassenpruefung": "audit-reports",
+    "euer-bericht": "report",
+}
+
+
+def _render_ledger_page(request: Request, user: dict, initial_tab: str):
+    return templates.TemplateResponse(
+        request, "ledger/index.html",
+        _ctx(
+            request, user, user_is_treasurer=is_treasurer(user), user_can_write_audit_reports=is_auditor_writer(user),
+            initial_tab=initial_tab,
+        ),
+    )
+
+
 @router.get("/ledger", response_class=HTMLResponse)
 def ledger_page(
     request: Request,
     user: dict = Depends(require_ledger_viewer_user),
 ):
-    return templates.TemplateResponse(
-        request, "ledger/index.html",
-        _ctx(request, user, user_is_treasurer=is_treasurer(user), user_can_write_audit_reports=is_auditor_writer(user)),
-    )
+    return _render_ledger_page(request, user, initial_tab="entries")
+
+
+@router.get("/ledger/{tab_slug}", response_class=HTMLResponse)
+def ledger_tab_page(
+    tab_slug: str,
+    request: Request,
+    user: dict = Depends(require_ledger_viewer_user),
+):
+    initial_tab = LEDGER_TAB_SLUGS.get(tab_slug)
+    if initial_tab is None:
+        raise HTTPException(status_code=404, detail="Unknown ledger tab")
+    return _render_ledger_page(request, user, initial_tab)
 
 
 # ---------------------------------------------------------------------------

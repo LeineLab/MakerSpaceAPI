@@ -2404,11 +2404,39 @@ const CSV_FIELDS = [
   { key: 'balance_after_column', required: false, label: {{ _('ledger.csv_field_balance_after') | tojson }} },
 ];
 
+// Deep-linkable tab URLs (/ledger/<slug>) — kept in sync by hand with
+// LEDGER_TAB_SLUGS in app/web/router.py (server-side, for resolving the
+// initial page load) since there's no shared implementation possible across
+// Python/JS, same convention as #51/#52's date-range mirroring. This is the
+// tab->slug direction, used when pushState-ing a new URL on tab switch;
+// LEDGER_SLUG_TO_TAB (the reverse) is derived from it below rather than
+// duplicated by hand a second time.
+const LEDGER_TAB_SLUGS = {
+  entries: 'buchungen',
+  belege: 'belege',
+  categories: 'kategorien',
+  import: 'import',
+  targets: 'kassen',
+  accounts: 'bankkonten',
+  assets: 'anlagevermoegen',
+  reserves: 'ruecklagen',
+  'audit-reports': 'kassenpruefung',
+  report: 'euer-bericht',
+};
+const LEDGER_SLUG_TO_TAB = Object.fromEntries(Object.entries(LEDGER_TAB_SLUGS).map(([tab, slug]) => [slug, tab]));
+// Rendered server-side from the requested URL (/ledger or /ledger/<slug>) —
+// see ledger_tab_page() in app/web/router.py. Not embedded via the x-data
+// attribute itself: tojson on a string produces literal `"..."` delimiters
+// that would terminate the double-quoted HTML attribute early (see Key
+// Design Decision #16's gotcha) — safe here only because a <script> block
+// isn't HTML-attribute-parsed.
+const INITIAL_TAB = {{ initial_tab | tojson }};
+
 function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
   return {
     userIsTreasurer,
     userCanWriteAuditReports,
-    activeTab: 'entries',
+    activeTab: INITIAL_TAB,
     config: { spheres_enabled: true },
     // Shared by every modal's backdrop-click-to-close: a text-selection drag
     // that starts inside the modal and ends (mouseup) outside it still fires
@@ -2694,10 +2722,35 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       await this.loadConfig();
       await Promise.all([this.loadAccounts(), this.loadCategories(), this.loadAssets()]);
       await this.loadEntries();
+      // activeTab may already be a non-default tab here (deep link, e.g.
+      // /ledger/kassenpruefung, resolved server-side into INITIAL_TAB) —
+      // switchTab() itself is never called for that initial load (there's
+      // no click), so its lazy-loading has to be triggered explicitly here
+      // too, or the tab would render empty until the user clicked away and
+      // back. A no-op for the default 'entries' tab (already loaded above).
+      this.loadTabData(this.activeTab);
+      window.addEventListener('popstate', () => {
+        this.activeTab = this.tabFromLocation();
+        this.loadTabData(this.activeTab);
+      });
+    },
+
+    tabFromLocation() {
+      const slug = location.pathname.split('/').filter(Boolean)[1];
+      return (slug && LEDGER_SLUG_TO_TAB[slug]) || 'entries';
     },
 
     switchTab(tab) {
       this.activeTab = tab;
+      const path = tab === 'entries' ? '/ledger' : `/ledger/${LEDGER_TAB_SLUGS[tab] || 'buchungen'}`;
+      if (location.pathname !== path) history.pushState({ tab }, '', path);
+      this.loadTabData(tab);
+    },
+
+    // The actual per-tab lazy-loading, split out from switchTab() so init()
+    // can trigger it too when landing directly on a deep-linked, non-default
+    // tab (no click ever calls switchTab() in that case).
+    loadTabData(tab) {
       if (tab === 'report' && !this.report) this.loadReport();
       if (tab === 'import') {
         this.loadImportLines();
