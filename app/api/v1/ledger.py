@@ -113,12 +113,32 @@ def get_config(_viewer: dict = Depends(require_ledger_viewer_user)):
 
 # --- Bank accounts ---
 
+def _last_import_line_dates(db: Session, account_ids: list[int]) -> dict[int, date]:
+    """MAX(booking_date) per account across every staged import line (file,
+    CSV, or FinTS — any status), bulk-fetched in one query rather than N+1.
+    Used both for the accounts overview's "last transaction" column and to
+    default a FinTS pull's date_from to just past what's already imported."""
+    if not account_ids:
+        return {}
+    rows = (
+        db.query(LedgerImportLine.bank_account_id, func.max(LedgerImportLine.booking_date))
+        .filter(LedgerImportLine.bank_account_id.in_(account_ids))
+        .group_by(LedgerImportLine.bank_account_id)
+        .all()
+    )
+    return dict(rows)
+
+
 @router.get("/accounts", response_model=list[BankAccountResponse])
 def list_accounts(
     _viewer: dict = Depends(require_ledger_viewer_user),
     db: Session = Depends(get_db),
 ):
-    return db.query(BankAccount).order_by(BankAccount.name).all()
+    accounts = db.query(BankAccount).order_by(BankAccount.name).all()
+    last_dates = _last_import_line_dates(db, [a.id for a in accounts])
+    for account in accounts:
+        account.last_transaction_date = last_dates.get(account.id)
+    return accounts
 
 
 @router.post("/accounts", response_model=BankAccountResponse, status_code=201, responses={**HTTP_400, **HTTP_409})
@@ -2516,6 +2536,7 @@ def _annotate_accounts(db: Session, accounts: list[dict]) -> list[dict]:
         acc.iban: acc
         for acc in db.query(BankAccount).filter(BankAccount.iban.in_(ibans)).all()
     } if ibans else {}
+    last_dates = _last_import_line_dates(db, [acc.id for acc in known.values()])
     result = []
     for a in accounts:
         match = known.get(a.get("iban"))
@@ -2523,6 +2544,7 @@ def _annotate_accounts(db: Session, accounts: list[dict]) -> list[dict]:
             **a,
             "tracked": match.tracked if match else None,
             "bank_account_id": match.id if match else None,
+            "last_transaction_date": last_dates.get(match.id) if match else None,
         })
     return result
 

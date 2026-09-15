@@ -384,6 +384,7 @@
   "ledger.cash_clearing_hint":  "The one shared account Kassen payouts are booked against — only one can be marked at a time.",
   "ledger.col_opening_balance": "Opening Balance",
   "ledger.col_current_balance": "Current Balance",
+  "ledger.col_last_transaction": "Last Transaction",
   "ledger.no_statement_balance": "No bank statement balance known from an import — this is just the computed balance from booked lines.",
   "ledger.reconciliation_match": "Matches the bank's balance as of {date}.",
   "ledger.reconciliation_mismatch": "Differs from the bank's balance: {statement} per the last import (as of {date}). Some transactions up to that date may still be unbooked.",

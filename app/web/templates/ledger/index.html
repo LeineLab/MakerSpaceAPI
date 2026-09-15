@@ -251,6 +251,7 @@
               <th class="px-4 py-3 text-left">{{ _('ledger.col_name') }}</th>
               <th class="px-4 py-3 text-right">{{ _('ledger.col_opening_balance') }}</th>
               <th class="px-4 py-3 text-right">{{ _('ledger.col_current_balance') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_last_transaction') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_tracked') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_cash_clearing') }}</th>
             </tr>
@@ -274,6 +275,7 @@
                   </template>
                   <span x-show="!accountBalances[a.id]">…</span>
                 </td>
+                <td class="px-4 py-3 text-xs" x-text="a.last_transaction_date || '—'"></td>
                 <td class="px-4 py-3">
                   <label class="inline-flex items-center gap-2" :class="userIsTreasurer ? 'cursor-pointer' : 'opacity-60'">
                     <input type="checkbox" :checked="a.tracked" :disabled="!userIsTreasurer"
@@ -666,6 +668,7 @@
                   <tr>
                     <th class="px-2 py-2 text-left">{{ _('ledger.col_iban') }}</th>
                     <th class="px-2 py-2 text-left">{{ _('ledger.fints_col_status') }}</th>
+                    <th class="px-2 py-2 text-left">{{ _('ledger.col_last_transaction') }}</th>
                     <th class="px-2 py-2 text-left">{{ _('ledger.fints_col_from') }}</th>
                     <th class="px-2 py-2 text-left">{{ _('ledger.fints_col_to') }}</th>
                     <th class="px-2 py-2 text-left"></th>
@@ -680,6 +683,7 @@
                         <span x-show="a.tracked === false">{{ _('ledger.fints_status_ignored') }}</span>
                         <span x-show="a.tracked === null">{{ _('ledger.fints_status_unknown') }}</span>
                       </td>
+                      <td class="px-2 py-2 text-xs" x-text="a.last_transaction_date || '—'"></td>
                       <td class="px-2 py-2">
                         <input type="date" x-model="a.date_from"
                                class="border dark:border-gray-700 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800">
@@ -1535,7 +1539,10 @@
       <div x-show="bookError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="bookError"></div>
       <form @submit.prevent="submitBooking()" class="space-y-4" x-show="bookingLine">
         <div class="flex justify-between text-sm bg-gray-50 dark:bg-gray-900 rounded p-3">
-          <span class="text-gray-500 dark:text-gray-400">{{ _('ledger.book_label_bank_amount') }}</span>
+          <span class="text-gray-500 dark:text-gray-400">
+            {{ _('ledger.book_label_bank_amount') }}
+            <span class="text-gray-400 dark:text-gray-500" x-text="bookingLine && ('(' + bookingLine.booking_date + ')')"></span>
+          </span>
           <span class="font-mono font-semibold" x-text="bookingLine && fmtSigned(bookingLine.amount)"></span>
         </div>
         <div>
@@ -1587,14 +1594,24 @@
                          class="w-full border dark:border-gray-700 rounded px-2 py-1.5 text-xs bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
                   <template x-if="line.paperlessResults.length > 0">
                     <div class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border dark:border-gray-700 rounded shadow max-h-40 overflow-y-auto">
+                      <!-- Doc id shown alongside the title (not just on
+                           pick) so two documents with the same title are
+                           distinguishable before picking, not just after. -->
                       <template x-for="doc in line.paperlessResults" :key="doc.id">
                         <div @click="pickPaperlessDocForLine(line, doc)"
-                             class="px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer" x-text="doc.title"></div>
+                             class="px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
+                          <span x-text="doc.title"></span>
+                          <span class="text-gray-400 dark:text-gray-500 text-xs" x-text="'#' + doc.id"></span>
+                        </div>
                       </template>
                     </div>
                   </template>
                   <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5" x-show="line.paperless_document_id">
-                    <span x-text="'ID: ' + line.paperless_document_id"></span>
+                    <!-- Clickable so the picked document can be opened and
+                         double-checked right from the booking dialog. -->
+                    <a x-show="config.paperless_url" :href="paperlessDocUrl(line.paperless_document_id)" target="_blank" rel="noopener"
+                       class="text-blue-600 dark:text-blue-400 hover:underline" x-text="'ID: ' + line.paperless_document_id"></a>
+                    <span x-show="!config.paperless_url" x-text="'ID: ' + line.paperless_document_id"></span>
                   </p>
                   <p x-show="line.paperlessDuplicateWarning" class="text-xs text-amber-600 dark:text-amber-400 mt-0.5" x-text="line.paperlessDuplicateWarning"></p>
                 </div>
@@ -1723,14 +1740,24 @@
                          class="w-full border dark:border-gray-700 rounded px-2 py-1.5 text-xs bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
                   <template x-if="line.paperlessResults.length > 0">
                     <div class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border dark:border-gray-700 rounded shadow max-h-40 overflow-y-auto">
+                      <!-- Doc id shown alongside the title (not just on
+                           pick) so two documents with the same title are
+                           distinguishable before picking, not just after. -->
                       <template x-for="doc in line.paperlessResults" :key="doc.id">
                         <div @click="pickPaperlessDocForLine(line, doc)"
-                             class="px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer" x-text="doc.title"></div>
+                             class="px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
+                          <span x-text="doc.title"></span>
+                          <span class="text-gray-400 dark:text-gray-500 text-xs" x-text="'#' + doc.id"></span>
+                        </div>
                       </template>
                     </div>
                   </template>
                   <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5" x-show="line.paperless_document_id">
-                    <span x-text="'ID: ' + line.paperless_document_id"></span>
+                    <!-- Clickable so the picked document can be opened and
+                         double-checked right from the booking dialog. -->
+                    <a x-show="config.paperless_url" :href="paperlessDocUrl(line.paperless_document_id)" target="_blank" rel="noopener"
+                       class="text-blue-600 dark:text-blue-400 hover:underline" x-text="'ID: ' + line.paperless_document_id"></a>
+                    <span x-show="!config.paperless_url" x-text="'ID: ' + line.paperless_document_id"></span>
                   </p>
                   <p x-show="line.paperlessDuplicateWarning" class="text-xs text-amber-600 dark:text-amber-400 mt-0.5" x-text="line.paperlessDuplicateWarning"></p>
                 </div>
@@ -3768,11 +3795,40 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     },
 
     // --- FinTS live-pull (Phase 3) ---
-    fintsDefaultDates() {
-      const to = new Date();
-      const from = new Date();
-      from.setDate(from.getDate() - 3);
-      return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
+    // date_to always stops 3 days short of today — a transaction near the
+    // reporting edge may not have its final Wertstellung yet, and pulling it
+    // early just means catching it (correctly dated) on the next sync a few
+    // days later, rather than risking a wrong/incomplete pull now. date_from
+    // starts right after this account's own last imported line (see
+    // last_transaction_date, computed server-side in _annotate_accounts) —
+    // NOT a fixed lookback — so re-running a sync a day or a month later
+    // never re-fetches an already-imported range and therefore never
+    // produces the guaranteed duplicate flags a fixed rolling window did.
+    // Falls back to a 30-day lookback only when nothing has ever been
+    // imported for this account yet.
+    // Pure UTC date-string arithmetic throughout (Date.UTC + setUTCDate,
+    // never a local-time Date mutated then read back via toISOString) —
+    // mutating a local-midnight Date and reading its UTC ISO string drifts
+    // by a day in any timezone ahead of UTC (e.g. CEST), which would have
+    // silently shifted date_from by a day for exactly the users this
+    // feature is for.
+    fintsAddDaysIso(isoDate, days) {
+      const d = new Date(isoDate + 'T00:00:00Z');
+      d.setUTCDate(d.getUTCDate() + days);
+      return d.toISOString().slice(0, 10);
+    },
+
+    fintsDefaultDatesForAccount(account) {
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const to = this.fintsAddDaysIso(todayIso, -3);
+      let from;
+      if (account.last_transaction_date) {
+        from = this.fintsAddDaysIso(account.last_transaction_date, 1);
+        if (from > to) from = to;
+      } else {
+        from = this.fintsAddDaysIso(to, -30);
+      }
+      return { from, to };
     },
 
     fintsApplyStep(data) {
@@ -3781,8 +3837,10 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       this.fintsChallenge = data.challenge || null;
       if (data.status === 'accounts') {
         this.fintsStopPolling();
-        const dates = this.fintsDefaultDates();
-        this.fintsAccounts = data.accounts.map(a => ({ ...a, date_from: dates.from, date_to: dates.to }));
+        this.fintsAccounts = data.accounts.map(a => {
+          const dates = this.fintsDefaultDatesForAccount(a);
+          return { ...a, date_from: dates.from, date_to: dates.to };
+        });
       } else if (data.status === 'decoupled') {
         this.fintsStartPolling();
       } else {

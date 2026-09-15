@@ -374,6 +374,33 @@ def test_fints_start_success_annotates_known_account(treasurer_client, bank_acco
     assert data["accounts"][0]["bank_account_id"] == bank_account.id
 
 
+def test_fints_start_success_includes_last_transaction_date(treasurer_client, bank_account, db):
+    """The wizard's per-account date_from default (see fintsDefaultDatesForAccount
+    in ledger/index.html) is computed client-side from this field, so the
+    annotation step must carry it, not just `tracked`/`bank_account_id`."""
+    from app.models.ledger import LedgerImportBatch, LedgerImportLine, LedgerImportSource, LedgerImportStatus
+
+    batch = LedgerImportBatch(bank_account_id=bank_account.id, source=LedgerImportSource.file, imported_by="tester")
+    db.add(batch)
+    db.flush()
+    db.add(LedgerImportLine(
+        batch_id=batch.id, bank_account_id=bank_account.id, booking_date=date(2026, 3, 10),
+        amount=Decimal("-1.00"), dedup_hash="h1", status=LedgerImportStatus.new,
+    ))
+    db.commit()
+
+    with patch("app.services.fints_client.start_dialog") as mock_start:
+        mock_start.return_value = {
+            "session_id": "sess-1", "status": "accounts",
+            "accounts": [{"iban": bank_account.iban, "bic": None, "account_number": "1", "subaccount": None, "blz": "123"}],
+        }
+        resp = treasurer_client.post("/api/v1/ledger/fints/start", json={
+            "server": "https://bank.example/fints", "bank_identifier": "12030000", "login": "u", "pin": "1234",
+        })
+    assert resp.status_code == 200
+    assert resp.json()["accounts"][0]["last_transaction_date"] == "2026-03-10"
+
+
 def test_fints_start_success_flags_unknown_account(treasurer_client):
     with patch("app.services.fints_client.start_dialog") as mock_start:
         mock_start.return_value = {
@@ -387,6 +414,7 @@ def test_fints_start_success_flags_unknown_account(treasurer_client):
     data = resp.json()
     assert data["accounts"][0]["tracked"] is None
     assert data["accounts"][0]["bank_account_id"] is None
+    assert data["accounts"][0]["last_transaction_date"] is None
 
 
 def test_fints_start_tan_required_passthrough(treasurer_client):

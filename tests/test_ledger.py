@@ -1,8 +1,18 @@
+from datetime import date
 from decimal import Decimal
 
 import pytest
 
-from app.models.ledger import BankAccount, LedgerCategory, LedgerCategoryKind, LedgerSphere
+from app.models.ledger import (
+    BankAccount,
+    LedgerCategory,
+    LedgerCategoryKind,
+    LedgerImportBatch,
+    LedgerImportLine,
+    LedgerImportSource,
+    LedgerImportStatus,
+    LedgerSphere,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -52,6 +62,26 @@ def test_auditor_can_list_accounts(auditor_client, bank_account):
     assert resp.status_code == 200
     assert len(resp.json()) == 1
     assert resp.json()[0]["iban"] == "DE02120300000000202051"
+
+
+def test_list_accounts_last_transaction_date_none_without_imports(auditor_client, bank_account):
+    resp = auditor_client.get("/api/v1/ledger/accounts")
+    assert resp.json()[0]["last_transaction_date"] is None
+
+
+def test_list_accounts_last_transaction_date_is_max_import_line_booking_date(auditor_client, bank_account, db):
+    batch = LedgerImportBatch(bank_account_id=bank_account.id, source=LedgerImportSource.file, imported_by="tester")
+    db.add(batch)
+    db.flush()
+    for booking_date, dedup_hash in [(date(2026, 3, 1), "h1"), (date(2026, 3, 10), "h2"), (date(2026, 3, 5), "h3")]:
+        db.add(LedgerImportLine(
+            batch_id=batch.id, bank_account_id=bank_account.id, booking_date=booking_date,
+            amount=Decimal("-1.00"), dedup_hash=dedup_hash, status=LedgerImportStatus.new,
+        ))
+    db.commit()
+
+    resp = auditor_client.get("/api/v1/ledger/accounts")
+    assert resp.json()[0]["last_transaction_date"] == "2026-03-10"
 
 
 def test_auditor_cannot_create_account(auditor_client):

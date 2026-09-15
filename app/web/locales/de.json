@@ -384,6 +384,7 @@
   "ledger.cash_clearing_hint":  "Das eine gemeinsame Konto, gegen das Kassenauszahlungen verbucht werden — es kann jeweils nur eines markiert sein.",
   "ledger.col_opening_balance": "Anfangssaldo",
   "ledger.col_current_balance": "Aktueller Saldo",
+  "ledger.col_last_transaction": "Letzte Transaktion",
   "ledger.no_statement_balance": "Kein Bank-Saldo aus einem Import bekannt — nur der berechnete Saldo aus den gebuchten Zeilen.",
   "ledger.reconciliation_match": "Stimmt mit dem Bank-Saldo vom {date} überein.",
   "ledger.reconciliation_mismatch": "Weicht vom Bank-Saldo ab: {statement} laut letztem Import vom {date}. Möglicherweise sind noch nicht alle Umsätze bis zu diesem Datum verbucht.",

@@ -39,6 +39,11 @@ class BankAccountResponse(BaseModel):
     csv_mapping: Optional[dict] = None
     is_cash_clearing_account: bool = False
     created_at: datetime
+    # Most recent booking_date among this account's imported statement lines
+    # (file, CSV, or FinTS — regardless of booked/duplicate/ignored status),
+    # computed at read time and never stored. None if nothing has ever been
+    # imported for this account (an offline account, or one never synced).
+    last_transaction_date: Optional[date] = None
 
     model_config = ConfigDict(from_attributes=True)
 
