@@ -955,6 +955,116 @@ def test_auditor_cannot_reverse_entry(auditor_client, treasurer_client, bank_acc
 
 
 # ---------------------------------------------------------------------------
+# POST/DELETE /ledger/entries/{id}/review — Kassenprüfung checkoff (#56)
+# ---------------------------------------------------------------------------
+
+def test_auditor_writer_can_mark_entry_reviewed(auditor_client, treasurer_client, bank_account, income_category):
+    original = _create_entry(treasurer_client, bank_account, income_category)
+
+    resp = auditor_client.post(f"/api/v1/ledger/entries/{original['id']}/review")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["reviewed_by"] == "test-auditor-sub"
+    assert data["reviewed_at"] is not None
+
+    # persisted, not just returned once
+    listed = auditor_client.get("/api/v1/ledger/entries").json()
+    listed_entry = next(e for e in listed if e["id"] == original["id"])
+    assert listed_entry["reviewed_by"] == "test-auditor-sub"
+
+
+def test_admin_can_mark_entry_reviewed(admin_client, treasurer_client, bank_account, income_category):
+    original = _create_entry(treasurer_client, bank_account, income_category)
+    resp = admin_client.post(f"/api/v1/ledger/entries/{original['id']}/review")
+    assert resp.status_code == 200
+    assert resp.json()["reviewed_by"] is not None
+
+
+def test_treasurer_cannot_mark_entry_reviewed(treasurer_client, bank_account, income_category):
+    """A plain treasurer isn't an auditor-writer (same restriction as writing
+    a Kassenprüfungsprotokoll, see #37) — ticking off their own booking as
+    reviewed would defeat the point of an independent check."""
+    original = _create_entry(treasurer_client, bank_account, income_category)
+    resp = treasurer_client.post(f"/api/v1/ledger/entries/{original['id']}/review")
+    assert resp.status_code in (401, 403)
+
+
+def test_mark_entry_reviewed_twice_conflicts(auditor_client, treasurer_client, bank_account, income_category):
+    original = _create_entry(treasurer_client, bank_account, income_category)
+    first = auditor_client.post(f"/api/v1/ledger/entries/{original['id']}/review")
+    assert first.status_code == 200
+
+    second = auditor_client.post(f"/api/v1/ledger/entries/{original['id']}/review")
+    assert second.status_code == 409
+
+
+def test_mark_unknown_entry_reviewed_404(auditor_client):
+    resp = auditor_client.post("/api/v1/ledger/entries/999/review")
+    assert resp.status_code == 404
+
+
+def test_unmark_entry_reviewed_clears_fields(auditor_client, treasurer_client, bank_account, income_category):
+    original = _create_entry(treasurer_client, bank_account, income_category)
+    auditor_client.post(f"/api/v1/ledger/entries/{original['id']}/review")
+
+    resp = auditor_client.delete(f"/api/v1/ledger/entries/{original['id']}/review")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["reviewed_by"] is None
+    assert data["reviewed_at"] is None
+
+    # can be marked reviewed again after being un-marked
+    remark = auditor_client.post(f"/api/v1/ledger/entries/{original['id']}/review")
+    assert remark.status_code == 200
+
+
+def test_unmark_not_reviewed_entry_400(auditor_client, treasurer_client, bank_account, income_category):
+    original = _create_entry(treasurer_client, bank_account, income_category)
+    resp = auditor_client.delete(f"/api/v1/ledger/entries/{original['id']}/review")
+    assert resp.status_code == 400
+
+
+def test_treasurer_cannot_unmark_entry_reviewed(auditor_client, treasurer_client, bank_account, income_category):
+    original = _create_entry(treasurer_client, bank_account, income_category)
+    auditor_client.post(f"/api/v1/ledger/entries/{original['id']}/review")
+
+    resp = treasurer_client.delete(f"/api/v1/ledger/entries/{original['id']}/review")
+    assert resp.status_code in (401, 403)
+
+
+def test_list_entries_filter_reviewed_true(auditor_client, treasurer_client, bank_account, income_category):
+    reviewed = _create_entry(treasurer_client, bank_account, income_category, description="Geprüft")
+    _create_entry(treasurer_client, bank_account, income_category, description="Ungeprüft")
+    auditor_client.post(f"/api/v1/ledger/entries/{reviewed['id']}/review")
+
+    resp = treasurer_client.get("/api/v1/ledger/entries?reviewed=true")
+    assert resp.status_code == 200
+    ids = {e["id"] for e in resp.json()}
+    assert ids == {reviewed["id"]}
+
+
+def test_list_entries_filter_reviewed_false(auditor_client, treasurer_client, bank_account, income_category):
+    reviewed = _create_entry(treasurer_client, bank_account, income_category, description="Geprüft")
+    unreviewed = _create_entry(treasurer_client, bank_account, income_category, description="Ungeprüft")
+    auditor_client.post(f"/api/v1/ledger/entries/{reviewed['id']}/review")
+
+    resp = treasurer_client.get("/api/v1/ledger/entries?reviewed=false")
+    assert resp.status_code == 200
+    ids = {e["id"] for e in resp.json()}
+    assert ids == {unreviewed["id"]}
+
+
+def test_list_entries_without_reviewed_filter_returns_both(auditor_client, treasurer_client, bank_account, income_category):
+    reviewed = _create_entry(treasurer_client, bank_account, income_category, description="Geprüft")
+    unreviewed = _create_entry(treasurer_client, bank_account, income_category, description="Ungeprüft")
+    auditor_client.post(f"/api/v1/ledger/entries/{reviewed['id']}/review")
+
+    resp = treasurer_client.get("/api/v1/ledger/entries")
+    ids = {e["id"] for e in resp.json()}
+    assert ids == {reviewed["id"], unreviewed["id"]}
+
+
+# ---------------------------------------------------------------------------
 # GET /ledger/report/euer
 # ---------------------------------------------------------------------------
 

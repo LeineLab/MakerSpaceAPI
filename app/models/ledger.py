@@ -150,6 +150,14 @@ class LedgerEntry(Base):
     )
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
+    # Kassenprüfung checkoff (migration 0021, Key Design Decision #56): an
+    # auditor-writer "abhakt" (ticks off) this entry as checked, recording
+    # who and when. Both NULL = not yet reviewed. Not a financial fact — a
+    # review annotation on top of an already-immutable booking, freely
+    # toggleable (POST/DELETE .../review), same as LedgerReserveMovement/
+    # LedgerAuditReport aren't part of the immutable audit trail either.
+    reviewed_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     lines: Mapped[list["LedgerEntryLine"]] = relationship(
         "LedgerEntryLine", back_populates="entry", cascade="all, delete-orphan"

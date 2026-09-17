@@ -189,6 +189,11 @@ class LedgerEntryResponse(BaseModel):
     reverses_entry_id: Optional[int]
     created_by: str
     created_at: datetime
+    # Kassenprüfung checkoff (#56) — both None until an auditor-writer marks
+    # this entry reviewed via POST .../review; cleared again by DELETE
+    # .../review. Not a financial fact, just an annotation.
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
     lines: list[LedgerEntryLineResponse]
     # The staged import line(s) this entry was booked from, if any (a
     # transfer booking can link both sides' staged lines to the same entry)

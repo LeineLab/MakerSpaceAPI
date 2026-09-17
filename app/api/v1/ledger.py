@@ -689,6 +689,7 @@ def list_entries(
     category_id: Optional[int] = Query(default=None),
     paperless_document_id: Optional[str] = Query(default=None),
     q: Optional[str] = Query(default=None),
+    reviewed: Optional[bool] = Query(default=None),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     _viewer: dict = Depends(require_ledger_viewer_user),
@@ -708,7 +709,11 @@ def list_entries(
     the existing conditional `bank_account_id`/`category_id`/
     `paperless_document_id` join below without affecting row multiplicity.
     Same substring-match convention as the import staging queue's own `q`
-    filter (#38)."""
+    filter (#38).
+
+    `reviewed` (Kassenprüfung checkoff, #56/#57) filters on whether
+    `reviewed_by` is set — `true` for already-checked entries, `false` for
+    still-unchecked ones, omitted for both."""
     query = db.query(LedgerEntry).options(
         joinedload(LedgerEntry.lines).joinedload(LedgerEntryLine.bank_account),
         joinedload(LedgerEntry.lines).joinedload(LedgerEntryLine.category),
@@ -742,6 +747,10 @@ def list_entries(
                 LedgerEntry.id.in_(line_note_entry_ids),
                 LedgerEntry.id.in_(import_line_entry_ids),
             )
+        )
+    if reviewed is not None:
+        query = query.filter(
+            LedgerEntry.reviewed_by.isnot(None) if reviewed else LedgerEntry.reviewed_by.is_(None)
         )
     query = query.distinct()
     response.headers["X-Total-Count"] = str(query.count())
@@ -902,6 +911,59 @@ def reverse_entry(
     db.commit()
     db.refresh(reversal)
     return reversal
+
+
+@router.post(
+    "/entries/{entry_id}/review", response_model=LedgerEntryResponse, responses={**HTTP_404, **HTTP_409},
+)
+def review_entry(
+    entry_id: int,
+    auditor: dict = Depends(require_auditor_writer_user),
+    db: Session = Depends(get_db),
+):
+    """Kassenprüfung checkoff (Key Design Decision #56): an authorized person
+    "abhakt" this entry as checked, recording who and when. Gated by the same
+    narrower `require_auditor_writer_user` permission as writing a
+    Kassenprüfungsprotokoll (admin or explicit auditor-group membership, NOT
+    a plain treasurer, see #37) — a treasurer ticking off their own booking
+    as reviewed would defeat the point of an independent check, same
+    reasoning as #37's audit-report-writing restriction. Not a financial
+    event — this never touches the entry's lines/amounts, just annotates it."""
+    entry = db.query(LedgerEntry).filter(LedgerEntry.id == entry_id).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    if entry.reviewed_by is not None:
+        raise HTTPException(status_code=409, detail=f"Already reviewed by {entry.reviewed_by}")
+
+    entry.reviewed_by = auditor.get("sub", "unknown")
+    entry.reviewed_at = datetime.now(UTC).replace(tzinfo=None)
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+
+@router.delete(
+    "/entries/{entry_id}/review", response_model=LedgerEntryResponse, responses={**HTTP_400, **HTTP_404},
+)
+def unreview_entry(
+    entry_id: int,
+    _auditor: dict = Depends(require_auditor_writer_user),
+    db: Session = Depends(get_db),
+):
+    """Un-tick a previously checked-off entry — e.g. it was checked by
+    mistake, or a later correction means it needs re-checking. Freely
+    reversible, same as every other non-financial annotation in this module."""
+    entry = db.query(LedgerEntry).filter(LedgerEntry.id == entry_id).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    if entry.reviewed_by is None:
+        raise HTTPException(status_code=400, detail="Entry is not marked as reviewed")
+
+    entry.reviewed_by = None
+    entry.reviewed_at = None
+    db.commit()
+    db.refresh(entry)
+    return entry
 
 
 # --- Kassen bridge (legacy NFC booking_targets -> ledger) ---

@@ -81,6 +81,13 @@
         <input type="text" x-model="filterQuery" @input.debounce.400ms="entriesPage = 1; loadEntries()"
                placeholder="{{ _('ledger.placeholder_search_entries') }}"
                class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+        <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.filter_reviewed') }}</label>
+        <select x-model="filterReviewed" @change="entriesPage = 1; loadEntries()"
+                class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+          <option value="" x-text="REVIEWED_FILTER_L.all"></option>
+          <option value="true" x-text="REVIEWED_FILTER_L.reviewed"></option>
+          <option value="false" x-text="REVIEWED_FILTER_L.unreviewed"></option>
+        </select>
         <label class="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 cursor-pointer ml-2">
           <input type="checkbox" x-model="showBankPurposeText" class="rounded border-gray-300 dark:border-gray-600">
           {{ _('ledger.show_bank_purpose_text') }}
@@ -110,6 +117,7 @@
               <th class="px-4 py-3 text-left">{{ _('ledger.col_description') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_lines') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_paperless') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_reviewed') }}</th>
               <th class="px-4 py-3 text-left" x-show="userIsTreasurer">{{ _('ledger.col_actions') }}</th>
             </tr>
           </thead>
@@ -161,6 +169,26 @@
                   </template>
                   <span x-show="entryPaperlessDocs(e).length === 0">—</span>
                 </td>
+                <td class="px-4 py-3 whitespace-nowrap">
+                  <!-- Kassenprüfung checkoff (#56): informational for every
+                       viewer, but only an auditor-writer (admin or explicit
+                       auditor-group member — same permission as writing a
+                       Kassenprüfungsprotokoll, see #37) can tick/untick it —
+                       a treasurer checking off their own booking would
+                       defeat the point of an independent review. -->
+                  <span x-show="e.reviewed_by" :title="reviewedLabel(e)" class="inline-flex items-center gap-1 text-green-600 dark:text-green-400">
+                    <span>✓</span>
+                    <button x-show="userCanWriteAuditReports" @click.stop="unmarkEntryReviewed(e)"
+                            class="text-xs text-gray-400 dark:text-gray-500 hover:underline">
+                      {{ _('ledger.btn_unmark_reviewed') }}
+                    </button>
+                  </span>
+                  <button x-show="!e.reviewed_by && userCanWriteAuditReports" @click.stop="markEntryReviewed(e)"
+                          class="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                    {{ _('ledger.btn_mark_reviewed') }}
+                  </button>
+                  <span x-show="!e.reviewed_by && !userCanWriteAuditReports" class="text-gray-300 dark:text-gray-600">—</span>
+                </td>
                 <td class="px-4 py-3" x-show="userIsTreasurer">
                   <!-- A Storno (e.reverses_entry_id set) can't itself be reversed
                        — that link only ever lives on the original entry, so
@@ -173,12 +201,17 @@
                 </td>
               </tr>
               <tr x-show="expandedEntryId === e.id" class="bg-gray-50 dark:bg-gray-900">
-                <td colspan="5" class="px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
+                <td colspan="6" class="px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
                   <div class="grid sm:grid-cols-2 gap-3">
                     <div>
                       <p><span class="text-gray-400 dark:text-gray-500">{{ _('ledger.detail_id') }}:</span> <span x-text="e.id"></span></p>
                       <p><span class="text-gray-400 dark:text-gray-500">{{ _('ledger.detail_created_by') }}:</span> <span x-text="e.created_by"></span></p>
                       <p><span class="text-gray-400 dark:text-gray-500">{{ _('ledger.detail_created_at') }}:</span> <span x-text="fmtDateTime(e.created_at)"></span></p>
+                      <p>
+                        <span class="text-gray-400 dark:text-gray-500">{{ _('ledger.detail_reviewed') }}:</span>
+                        <span x-show="e.reviewed_by" class="text-green-600 dark:text-green-400" x-text="reviewedLabel(e)"></span>
+                        <span x-show="!e.reviewed_by" class="text-gray-400 dark:text-gray-500">{{ _('ledger.detail_not_reviewed') }}</span>
+                      </p>
                       <template x-for="l in e.lines.filter(l => l.note)" :key="'note' + l.id">
                         <p><span class="text-gray-400 dark:text-gray-500" x-text="lineTargetName(l) + ':'"></span> <span x-text="l.note"></span></p>
                       </template>
@@ -2342,6 +2375,12 @@ const FINTS_DECOUPLED_HINT = {{ _('ledger.fints_decoupled_hint') | tojson }};
 const FINTS_PRESET_DELETE_L = {{ _('ledger.fints_preset_delete') | tojson }};
 const REVERSES_TMPL = {{ _('ledger.reverses_badge') | tojson }};
 const REVERSE_CONFIRM_L = {{ _('ledger.reverse_confirm') | tojson }};
+const REVIEWED_TMPL = {{ _('ledger.reviewed_by_tmpl') | tojson }};
+const REVIEWED_FILTER_L = {
+  all: {{ _('ledger.filter_reviewed_all') | tojson }},
+  reviewed: {{ _('ledger.filter_reviewed_reviewed') | tojson }},
+  unreviewed: {{ _('ledger.filter_reviewed_unreviewed') | tojson }},
+};
 const PAPERLESS_DUPLICATE_TMPL = {{ _('ledger.paperless_duplicate_warning') | tojson }};
 const DUPLICATE_HINT_L = {{ _('ledger.import_duplicate_hint') | tojson }};
 const TRANSFER_AMOUNT_HINT_L = {{ _('ledger.book_transfer_amount_hint') | tojson }};
@@ -2448,6 +2487,7 @@ const LEDGER_TAB_QUERY = {
       if (app.filterYear) p.jahr = app.filterYear;
       if (app.filterAccountId) p.konto = app.filterAccountId;
       if (app.filterQuery) p.suche = app.filterQuery;
+      if (app.filterReviewed) p.geprueft = app.filterReviewed;
       if (app.entriesPage > 1) p.seite = app.entriesPage;
       return p;
     },
@@ -2455,6 +2495,7 @@ const LEDGER_TAB_QUERY = {
       if (params.has('jahr')) app.filterYear = parseInt(params.get('jahr'), 10) || new Date().getFullYear();
       if (params.has('konto')) app.filterAccountId = parseInt(params.get('konto'), 10) || '';
       if (params.has('suche')) app.filterQuery = params.get('suche');
+      if (params.has('geprueft')) app.filterReviewed = params.get('geprueft');
       if (params.has('seite')) app.entriesPage = parseInt(params.get('seite'), 10) || 1;
     },
   },
@@ -2518,6 +2559,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     filterYear: new Date().getFullYear(),
     filterAccountId: '',
     filterQuery: '',
+    filterReviewed: '',
     showBankPurposeText: false,
     expandedEntryId: null,
     showEntryModal: false,
@@ -2902,6 +2944,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       let params = `year=${this.filterYear}`;
       if (this.filterAccountId) params += `&bank_account_id=${this.filterAccountId}`;
       if (this.filterQuery) params += `&q=${encodeURIComponent(this.filterQuery)}`;
+      if (this.filterReviewed) params += `&reviewed=${this.filterReviewed}`;
       return params;
     },
 
@@ -2962,6 +3005,13 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         ].join(' ').toLowerCase();
         if (!haystack.includes(needle)) return false;
       }
+      // A just-created/reversed entry is always freshly unreviewed
+      // (reviewed_by is only ever set after the fact via #56's checkoff) —
+      // so it only belongs in a "reviewed=true" locally-spliced view once
+      // that's no longer true, which insertEntryLocally() never handles
+      // anyway (it's for new entries, not toggling review state).
+      if (this.filterReviewed === 'true' && !entry.reviewed_by) return false;
+      if (this.filterReviewed === 'false' && entry.reviewed_by) return false;
       return true;
     },
 
@@ -2996,6 +3046,64 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         this.insertEntryLocally(data);
       } catch (e) {
         if (e !== 'unauthenticated') this.entriesError = e.message || String(e);
+      }
+    },
+
+    // Kassenprüfung checkoff (#56) — a plain in-place mutation of the
+    // already-loaded entry object, same pattern as toggleTracked()/
+    // setCashClearingAccount(): this never changes the entry's position/
+    // sort order or the page's totals, so there's nothing to re-splice or
+    // reload for, unlike insertEntryLocally()'s new-entry case.
+    reviewedLabel(e) {
+      if (!e.reviewed_by) return '';
+      return REVIEWED_TMPL.replace('{user}', e.reviewed_by).replace('{date}', this.fmtDateTime(e.reviewed_at));
+    },
+
+    async markEntryReviewed(entry) {
+      this.entriesError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/entries/${entry.id}/review`, { method: 'POST' });
+        const data = await r.json();
+        if (!r.ok) {
+          this.entriesError = data.detail || 'Error marking entry reviewed';
+          return;
+        }
+        entry.reviewed_by = data.reviewed_by;
+        entry.reviewed_at = data.reviewed_at;
+        this.removeEntryLocallyIfFilteredOut(entry);
+      } catch (e) {
+        if (e !== 'unauthenticated') this.entriesError = e.message || String(e);
+      }
+    },
+
+    async unmarkEntryReviewed(entry) {
+      this.entriesError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/entries/${entry.id}/review`, { method: 'DELETE' });
+        if (!r.ok) {
+          const data = await r.json();
+          this.entriesError = data.detail || 'Error unmarking entry reviewed';
+          return;
+        }
+        entry.reviewed_by = null;
+        entry.reviewed_at = null;
+        this.removeEntryLocallyIfFilteredOut(entry);
+      } catch (e) {
+        if (e !== 'unauthenticated') this.entriesError = e.message || String(e);
+      }
+    },
+
+    // If the "Geprüft"-filter is narrowed to reviewed-only/unreviewed-only,
+    // ticking/un-ticking an entry can make it stop matching the currently
+    // visible page right away — drop it from the local list instead of
+    // leaving a stale row until the next reload (same idea as
+    // removeImportLineLocally() for ignore/reset).
+    removeEntryLocallyIfFilteredOut(entry) {
+      if (this.entryMatchesCurrentFilters(entry)) return;
+      const idx = this.entries.findIndex(e => e.id === entry.id);
+      if (idx !== -1) {
+        this.entries.splice(idx, 1);
+        this.entriesTotal = Math.max(0, this.entriesTotal - 1);
       }
     },
 
