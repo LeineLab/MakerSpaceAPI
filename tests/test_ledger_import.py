@@ -345,6 +345,31 @@ def test_list_import_lines_reports_total_count_and_pages(treasurer_client, bank_
 
 
 # ---------------------------------------------------------------------------
+# date_from/date_to/amount_min/amount_max range filters (Key Design Decision #62)
+# ---------------------------------------------------------------------------
+
+def test_list_import_lines_date_range_filter(treasurer_client, bank_account, db):
+    early = _stage_counter_line(db, bank_account, Decimal("10.00"), booking_date=date(2026, 1, 15))
+    late = _stage_counter_line(db, bank_account, Decimal("20.00"), booking_date=date(2026, 6, 15))
+
+    resp = treasurer_client.get("/api/v1/ledger/import/lines?date_from=2026-05-01&date_to=2026-12-31")
+    ids = {l["id"] for l in resp.json()}
+    assert ids == {late.id}
+    assert early.id not in ids
+
+
+def test_list_import_lines_amount_range_filter(treasurer_client, bank_account, db):
+    small = _stage_counter_line(db, bank_account, Decimal("10.00"))
+    large = _stage_counter_line(db, bank_account, Decimal("100.00"))
+
+    above_50 = treasurer_client.get("/api/v1/ledger/import/lines?amount_min=50.00")
+    assert {l["id"] for l in above_50.json()} == {large.id}
+
+    below_50 = treasurer_client.get("/api/v1/ledger/import/lines?amount_max=50.00")
+    assert {l["id"] for l in below_50.json()} == {small.id}
+
+
+# ---------------------------------------------------------------------------
 # suggested_category_id (Key Design Decision #45) — purpose-text autofill
 # ---------------------------------------------------------------------------
 
@@ -1019,6 +1044,30 @@ def test_paperless_documents_pagination_applies_after_filtering(auditor_client, 
 
     assert [d["id"] for d in resp.json()] == [3, 4]
     assert resp.headers["X-Total-Count"] == "5"
+
+
+def test_paperless_documents_date_range_filter(auditor_client, monkeypatch):
+    """Key Design Decision #62 — date_from/date_to filter on the document's
+    own `created` date, applied here (not by Paperless) same as status/q."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "PAPERLESS_URL", "https://paperless.example.com")
+    monkeypatch.setattr(settings, "PAPERLESS_API_TOKEN", "test-token")
+
+    fake_response = {
+        "results": [
+            {"id": 1, "title": "Alt", "created": "2026-01-15"},
+            {"id": 2, "title": "Neu", "created": "2026-06-15"},
+        ],
+    }
+    with patch("app.services.paperless.httpx.get") as mock_get:
+        mock_get.return_value = httpx.Response(
+            200, json=fake_response, request=httpx.Request("GET", "https://paperless.example.com/api/documents/"),
+        )
+        resp = auditor_client.get("/api/v1/ledger/paperless/documents?date_from=2026-05-01&date_to=2026-12-31")
+
+    assert [d["id"] for d in resp.json()] == [2]
+    assert resp.headers["X-Total-Count"] == "1"
 
 
 def test_paperless_documents_restricted_to_configured_document_types(auditor_client, monkeypatch):

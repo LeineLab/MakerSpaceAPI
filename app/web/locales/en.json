@@ -709,5 +709,22 @@
   "ledger.asset_components_title": "Linked bookings",
   "ledger.select_asset": "— Select asset —",
   "ledger.asset_component_remove_confirm": "Really remove this booking from the asset? The amount will count as a normal expense again.",
-  "ledger.asset_component_count": "({count} bookings)"
+  "ledger.asset_component_count": "({count} bookings)",
+  "ledger.filter_date_from": "From",
+  "ledger.filter_date_to": "To",
+  "ledger.filter_date_range_hint": "Overrides the year filter when set",
+  "ledger.filter_has_document": "Document",
+  "ledger.filter_has_document_all": "All",
+  "ledger.filter_has_document_yes": "With document",
+  "ledger.filter_has_document_no": "Without document",
+  "ledger.filter_is_reversal": "Reversal",
+  "ledger.filter_is_reversal_all": "All",
+  "ledger.filter_is_reversal_only": "Reversals only",
+  "ledger.filter_is_reversal_exclude": "Excluding reversals",
+  "ledger.filter_amount_min": "Amount from",
+  "ledger.filter_amount_max": "Amount to",
+  "ledger.filter_asset_status_active": "Active",
+  "ledger.assets_empty_filtered": "No assets match this filter.",
+  "ledger.filter_reserve_kind_all": "All kinds",
+  "ledger.reserves_empty_filtered": "No reserves match this filter."
 }

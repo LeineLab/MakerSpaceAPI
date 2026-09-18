@@ -1217,6 +1217,37 @@ def test_list_entries_date_range_filter(treasurer_client, bank_account, income_c
     assert early["id"] not in ids
 
 
+def test_list_entries_filter_has_document(treasurer_client, bank_account, income_category):
+    with_doc = treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-01", "description": "Mit Beleg",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "50.00"},
+                {"category_id": income_category.id, "amount": "-50.00", "paperless_document_id": "INV-1"},
+            ],
+        },
+    ).json()
+    without_doc = _create_entry(treasurer_client, bank_account, income_category, description="Ohne Beleg")
+
+    has_doc = treasurer_client.get("/api/v1/ledger/entries?has_document=true")
+    assert {e["id"] for e in has_doc.json()} == {with_doc["id"]}
+
+    no_doc = treasurer_client.get("/api/v1/ledger/entries?has_document=false")
+    assert {e["id"] for e in no_doc.json()} == {without_doc["id"]}
+
+
+def test_list_entries_filter_is_reversal(treasurer_client, bank_account, income_category):
+    original = _create_entry(treasurer_client, bank_account, income_category, description="Original")
+    reversal = treasurer_client.post(f"/api/v1/ledger/entries/{original['id']}/reverse").json()
+
+    only_reversals = treasurer_client.get("/api/v1/ledger/entries?is_reversal=true")
+    assert {e["id"] for e in only_reversals.json()} == {reversal["id"]}
+
+    exclude_reversals = treasurer_client.get("/api/v1/ledger/entries?is_reversal=false")
+    assert {e["id"] for e in exclude_reversals.json()} == {original["id"]}
+
+
 # ---------------------------------------------------------------------------
 # GET /ledger/report/euer
 # ---------------------------------------------------------------------------

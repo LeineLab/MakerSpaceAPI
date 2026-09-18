@@ -694,6 +694,8 @@ def list_entries(
     q: Optional[str] = Query(default=None),
     reviewed: Optional[bool] = Query(default=None),
     has_note: Optional[bool] = Query(default=None),
+    has_document: Optional[bool] = Query(default=None),
+    is_reversal: Optional[bool] = Query(default=None),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     _viewer: dict = Depends(require_ledger_viewer_user),
@@ -731,7 +733,13 @@ def list_entries(
     discrepancy notes from an entire Kassenprüfung period (which need not
     align to `year`) into an audit report's `findings`. Composes with
     `year` rather than replacing it (both apply if both are given), though
-    in practice a caller uses one or the other."""
+    in practice a caller uses one or the other.
+
+    `has_document` (#62) filters on whether any of an entry's lines carries
+    a `paperless_document_id` (that field lives per line since #44, so this
+    checks "any line", not a single column). `is_reversal` (#62) filters on
+    whether the entry is itself a Storno (`reverses_entry_id` set) —
+    `true` for Stornos only, `false` to exclude them, omitted for both."""
     query = db.query(LedgerEntry).options(
         joinedload(LedgerEntry.lines).joinedload(LedgerEntryLine.bank_account),
         joinedload(LedgerEntry.lines).joinedload(LedgerEntryLine.category),
@@ -777,6 +785,19 @@ def list_entries(
     if has_note is not None:
         query = query.filter(
             LedgerEntry.review_note.isnot(None) if has_note else LedgerEntry.review_note.is_(None)
+        )
+    if has_document is not None:
+        doc_entry_ids = db.query(LedgerEntryLine.entry_id).filter(
+            LedgerEntryLine.paperless_document_id.isnot(None)
+        )
+        query = query.filter(
+            LedgerEntry.id.in_(doc_entry_ids) if has_document else ~LedgerEntry.id.in_(doc_entry_ids)
+        )
+    if is_reversal is not None:
+        query = query.filter(
+            LedgerEntry.reverses_entry_id.isnot(None)
+            if is_reversal
+            else LedgerEntry.reverses_entry_id.is_(None)
         )
     query = query.distinct()
     response.headers["X-Total-Count"] = str(query.count())
@@ -2574,6 +2595,10 @@ def list_import_lines(
     status: list[LedgerImportStatus] = Query(default=[LedgerImportStatus.new]),
     bank_account_id: Optional[int] = Query(default=None),
     amount: Optional[Decimal] = Query(default=None),
+    amount_min: Optional[Decimal] = Query(default=None),
+    amount_max: Optional[Decimal] = Query(default=None),
+    date_from: Optional[date] = Query(default=None),
+    date_to: Optional[date] = Query(default=None),
     q: Optional[str] = Query(default=None),
     limit: int = Query(default=200, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
@@ -2597,7 +2622,13 @@ def list_import_lines(
     counterparty_name) is the manual fallback for when exact-amount matching
     doesn't work — e.g. a split/bundled Kassen payout booking (#38), where
     a real transfer's amount deliberately doesn't equal any one payout's
-    amount."""
+    amount.
+
+    `date_from`/`date_to` (#62) filter on `booking_date`; `amount_min`/
+    `amount_max` (#62) filter on the line's own signed `amount` — unlike
+    the exact-match `amount` above (built for transfer-candidate search),
+    these are a general range filter for browsing the staging queue, e.g.
+    narrowing to a specific week or to only larger transactions."""
     query = db.query(LedgerImportLine)
     if status:
         query = query.filter(LedgerImportLine.status.in_(status))
@@ -2605,6 +2636,14 @@ def list_import_lines(
         query = query.filter(LedgerImportLine.bank_account_id == bank_account_id)
     if amount is not None:
         query = query.filter(LedgerImportLine.amount == amount)
+    if amount_min is not None:
+        query = query.filter(LedgerImportLine.amount >= amount_min)
+    if amount_max is not None:
+        query = query.filter(LedgerImportLine.amount <= amount_max)
+    if date_from is not None:
+        query = query.filter(LedgerImportLine.booking_date >= date_from)
+    if date_to is not None:
+        query = query.filter(LedgerImportLine.booking_date <= date_to)
     if q:
         like = f"%{q}%"
         query = query.filter(
@@ -2801,6 +2840,8 @@ def list_paperless_documents(
     response: Response,
     status: Optional[Literal["linked", "unlinked"]] = Query(default=None),
     q: Optional[str] = Query(default=None),
+    date_from: Optional[date] = Query(default=None),
+    date_to: Optional[date] = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _viewer: dict = Depends(require_ledger_viewer_user),
@@ -2819,7 +2860,14 @@ def list_paperless_documents(
     its own docstring for why Paperless-side paging doesn't fit this), and
     `limit`/`offset` here paginate the *filtered* result instead.
     `X-Total-Count` reflects that filtered count, same paging convention as
-    GET /ledger/entries and GET /ledger/import/lines."""
+    GET /ledger/entries and GET /ledger/import/lines.
+
+    `date_from`/`date_to` (#62) filter on the document's own `created` date
+    (a plain string comparison against its ISO date prefix — ISO dates sort
+    and compare lexically fine, no parsing needed), applied here for the
+    same reason `status` is: it's cheaper than asking Paperless to filter
+    by date on top of everything else, given the bulk-fetch-then-filter
+    approach this endpoint already uses."""
     documents = paperless.list_documents(q=q, limit=_PAPERLESS_BULK_FETCH_LIMIT)
     if not documents:
         response.headers["X-Total-Count"] = "0"
@@ -2845,6 +2893,10 @@ def list_paperless_documents(
         items = [item for item in items if item.linked_entry_ids]
     elif status == "unlinked":
         items = [item for item in items if not item.linked_entry_ids]
+    if date_from is not None:
+        items = [item for item in items if item.created[:10] >= date_from.isoformat()]
+    if date_to is not None:
+        items = [item for item in items if item.created[:10] <= date_to.isoformat()]
 
     response.headers["X-Total-Count"] = str(len(items))
     return items[offset:offset + limit]

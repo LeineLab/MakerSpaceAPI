@@ -121,6 +121,41 @@
                 <option value="noted" x-text="REVIEWED_FILTER_L.noted"></option>
               </select>
             </div>
+            <div>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ _('ledger.filter_has_document') }}</label>
+              <select x-model="filterHasDocument" @change="entriesPage = 1; loadEntries()"
+                      class="w-full border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+                <option value="">{{ _('ledger.filter_has_document_all') }}</option>
+                <option value="true">{{ _('ledger.filter_has_document_yes') }}</option>
+                <option value="false">{{ _('ledger.filter_has_document_no') }}</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ _('ledger.filter_is_reversal') }}</label>
+              <select x-model="filterIsReversal" @change="entriesPage = 1; loadEntries()"
+                      class="w-full border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+                <option value="">{{ _('ledger.filter_is_reversal_all') }}</option>
+                <option value="true">{{ _('ledger.filter_is_reversal_only') }}</option>
+                <option value="false">{{ _('ledger.filter_is_reversal_exclude') }}</option>
+              </select>
+            </div>
+            <!-- Custom date range (#62): overrides the Jahr selector rather
+                 than composing with it — entriesQueryParams()/
+                 entryMatchesCurrentFilters() send date_from/date_to instead
+                 of year whenever either is set, since a range spanning more
+                 than one year would otherwise be silently clipped back down
+                 to the single selected year. -->
+            <div class="pt-2 border-t dark:border-gray-700">
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ _('ledger.filter_date_range_hint') }}</label>
+              <div class="flex gap-2">
+                <input type="date" x-model="filterDateFrom" @change="entriesPage = 1; loadEntries()"
+                       :placeholder="'{{ _('ledger.filter_date_from') }}'"
+                       class="w-1/2 border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+                <input type="date" x-model="filterDateTo" @change="entriesPage = 1; loadEntries()"
+                       :placeholder="'{{ _('ledger.filter_date_to') }}'"
+                       class="w-1/2 border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+              </div>
+            </div>
             <label class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 cursor-pointer pt-2 border-t dark:border-gray-700">
               <input type="checkbox" x-model="showBankPurposeText" class="rounded border-gray-300 dark:border-gray-600">
               {{ _('ledger.show_bank_purpose_text') }}
@@ -819,7 +854,21 @@
           <option value="booked" x-text="IMPORT_STATUS_L.booked"></option>
           <option value="ignored" x-text="IMPORT_STATUS_L.ignored"></option>
         </select>
-        <!-- Filter panel (#61), same pattern as the Buchungen tab above. -->
+        <!-- Filter panel (#61), same pattern as the Buchungen tab above —
+             but right-anchored (right-0), not left. On the Buchungen/Belege
+             tabs this button sits near the LEFT edge of its row (the
+             filter-controls group is the left child of a justify-between
+             row there), so a left-anchored panel growing rightward stays
+             on-screen. Here the *heading* is the left child instead and
+             the filter-controls group (Status + this button) is the RIGHT
+             child, so the button itself sits near the row's right edge —
+             a left-anchored w-72 panel growing further right pushed past
+             the page edge. Anchoring to the button's right edge instead,
+             growing leftward, keeps it on-screen regardless of how far
+             right the button sits. Found live by the user, not caught by
+             this feature's own verification (#61), which only checked a
+             viewport where the Import tab's button hadn't drifted far
+             enough right yet to expose it. -->
         <div class="relative">
           <button type="button" @click.stop="showImportFilters = !showImportFilters"
                   class="inline-flex items-center gap-1.5 border dark:border-gray-700 rounded px-3 py-1.5 text-sm bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700">
@@ -828,7 +877,7 @@
                   class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-600 text-white text-xs"></span>
           </button>
           <div x-show="showImportFilters" x-cloak @click.outside="showImportFilters = false"
-               class="absolute z-20 mt-1 w-72 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded shadow-lg p-3 space-y-3">
+               class="absolute right-0 z-20 mt-1 w-72 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded shadow-lg p-3 space-y-3">
             <div>
               <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ _('ledger.filter_account') }}</label>
               <select x-model.number="importFilterAccountId" @change="importLinesPage = 1; loadImportLines()"
@@ -844,6 +893,24 @@
               <input type="text" x-model="importSearchQuery" @input.debounce.400ms="importLinesPage = 1; loadImportLines()"
                      placeholder="{{ _('ledger.placeholder_search_import_lines') }}"
                      class="w-full border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ _('ledger.filter_date_from') }} / {{ _('ledger.filter_date_to') }}</label>
+              <div class="flex gap-2">
+                <input type="date" x-model="importFilterDateFrom" @change="importLinesPage = 1; loadImportLines()"
+                       class="w-1/2 border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+                <input type="date" x-model="importFilterDateTo" @change="importLinesPage = 1; loadImportLines()"
+                       class="w-1/2 border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ _('ledger.filter_amount_min') }} / {{ _('ledger.filter_amount_max') }}</label>
+              <div class="flex gap-2">
+                <input type="number" step="0.01" x-model="importFilterAmountMin" @change="importLinesPage = 1; loadImportLines()"
+                       class="w-1/2 border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+                <input type="number" step="0.01" x-model="importFilterAmountMax" @change="importLinesPage = 1; loadImportLines()"
+                       class="w-1/2 border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+              </div>
             </div>
           </div>
         </div>
@@ -1058,6 +1125,19 @@
     <p class="text-xs text-gray-400 dark:text-gray-500 mb-1">{{ _('ledger.assets_howto_hint') }}</p>
     <p class="text-xs text-gray-400 dark:text-gray-500 mb-4">{{ _('ledger.asset_gwg_hint') }}</p>
 
+    <!-- Active/disposed filter (#62) — purely client-side, since this list
+         (unlike Buchungen/Transaktionen/Belege) never paginates and is
+         typically short enough that filtering the already-loaded array is
+         simpler than adding a backend param for it. -->
+    <div class="flex items-center gap-2 mb-4">
+      <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.col_status') }}</label>
+      <select x-model="assetStatusFilter" class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+        <option value="">{{ _('ledger.target_payouts_filter_all') }}</option>
+        <option value="active">{{ _('ledger.filter_asset_status_active') }}</option>
+        <option value="disposed">{{ _('ledger.col_disposed') }}</option>
+      </select>
+    </div>
+
     <div x-show="assetsError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="assetsError"></div>
 
     <template x-if="loadingAssets">
@@ -1066,7 +1146,10 @@
     <template x-if="!loadingAssets && assets.length === 0">
       <p class="text-gray-400 dark:text-gray-500">{{ _('ledger.assets_empty') }}</p>
     </template>
-    <template x-if="!loadingAssets && assets.length > 0">
+    <template x-if="!loadingAssets && assets.length > 0 && filteredAssets.length === 0">
+      <p class="text-gray-400 dark:text-gray-500">{{ _('ledger.assets_empty_filtered') }}</p>
+    </template>
+    <template x-if="!loadingAssets && filteredAssets.length > 0">
       <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
         <div class="overflow-x-auto">
         <table class="min-w-full text-sm">
@@ -1084,7 +1167,7 @@
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-            <template x-for="a in assets" :key="a.id">
+            <template x-for="a in filteredAssets" :key="a.id">
               <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
                 <td class="px-4 py-3 font-medium">
                   <span x-text="a.name"></span>
@@ -1236,6 +1319,19 @@
     </div>
     <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">{{ _('ledger.reserves_hint') }}</p>
 
+    <!-- Kind filter (#62) — purely client-side, same reasoning as the
+         Anlagevermögen status filter above: this list never paginates. -->
+    <div class="flex items-center gap-2 mb-4">
+      <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.col_kind') }}</label>
+      <select x-model="reserveKindFilter" class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+        <option value="">{{ _('ledger.filter_reserve_kind_all') }}</option>
+        <option value="frei" x-text="RESERVE_KIND_L.frei"></option>
+        <option value="zweckgebunden" x-text="RESERVE_KIND_L.zweckgebunden"></option>
+        <option value="betriebsmittel" x-text="RESERVE_KIND_L.betriebsmittel"></option>
+        <option value="wiederbeschaffung" x-text="RESERVE_KIND_L.wiederbeschaffung"></option>
+      </select>
+    </div>
+
     <div x-show="reservesError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="reservesError"></div>
 
     <template x-if="loadingReserves">
@@ -1244,7 +1340,10 @@
     <template x-if="!loadingReserves && reserves.length === 0">
       <p class="text-gray-400 dark:text-gray-500">{{ _('ledger.reserves_empty') }}</p>
     </template>
-    <template x-if="!loadingReserves && reserves.length > 0">
+    <template x-if="!loadingReserves && reserves.length > 0 && filteredReserves.length === 0">
+      <p class="text-gray-400 dark:text-gray-500">{{ _('ledger.reserves_empty_filtered') }}</p>
+    </template>
+    <template x-if="!loadingReserves && filteredReserves.length > 0">
       <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
         <div class="overflow-x-auto">
         <table class="min-w-full text-sm">
@@ -1260,7 +1359,7 @@
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-            <template x-for="r in reserves" :key="r.id">
+            <template x-for="r in filteredReserves" :key="r.id">
               <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
                 <td class="px-4 py-3 font-medium" x-text="r.name"></td>
                 <td class="px-4 py-3" x-text="RESERVE_KIND_L[r.kind]"></td>
@@ -1387,6 +1486,15 @@
             <input type="text" x-model="paperlessFilterQuery" @input.debounce.400ms="paperlessDocumentsPage = 1; loadPaperlessDocuments()"
                    placeholder="{{ _('ledger.placeholder_search_paperless_documents') }}"
                    class="w-full border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ _('ledger.filter_date_from') }} / {{ _('ledger.filter_date_to') }}</label>
+            <div class="flex gap-2">
+              <input type="date" x-model="paperlessFilterDateFrom" @change="paperlessDocumentsPage = 1; loadPaperlessDocuments()"
+                     class="w-1/2 border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+              <input type="date" x-model="paperlessFilterDateTo" @change="paperlessDocumentsPage = 1; loadPaperlessDocuments()"
+                     class="w-1/2 border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+            </div>
           </div>
         </div>
       </div>
@@ -2584,20 +2692,31 @@ const LEDGER_TAB_QUERY = {
   entries: {
     build(app) {
       const p = {};
-      if (app.filterYear) p.jahr = app.filterYear;
+      if (app.filterDateFrom) p.von = app.filterDateFrom;
+      if (app.filterDateTo) p.bis = app.filterDateTo;
+      // jahr is only meaningful (and only ever sent) when no custom date
+      // range is active — see entriesQueryParams()'s own von/bis-vs-jahr
+      // precedence.
+      if (!app.filterDateFrom && !app.filterDateTo && app.filterYear) p.jahr = app.filterYear;
       if (app.filterAccountId) p.konto = app.filterAccountId;
       if (app.filterCategoryId) p.kategorie = app.filterCategoryId;
       if (app.filterQuery) p.suche = app.filterQuery;
       if (app.filterReviewed) p.geprueft = app.filterReviewed;
+      if (app.filterHasDocument) p.beleg = app.filterHasDocument;
+      if (app.filterIsReversal) p.storno = app.filterIsReversal;
       if (app.entriesPage > 1) p.seite = app.entriesPage;
       return p;
     },
     apply(app, params) {
       if (params.has('jahr')) app.filterYear = parseInt(params.get('jahr'), 10) || new Date().getFullYear();
+      if (params.has('von')) app.filterDateFrom = params.get('von');
+      if (params.has('bis')) app.filterDateTo = params.get('bis');
       if (params.has('konto')) app.filterAccountId = parseInt(params.get('konto'), 10) || '';
       if (params.has('kategorie')) app.filterCategoryId = parseInt(params.get('kategorie'), 10) || '';
       if (params.has('suche')) app.filterQuery = params.get('suche');
       if (params.has('geprueft')) app.filterReviewed = params.get('geprueft');
+      if (params.has('beleg')) app.filterHasDocument = params.get('beleg');
+      if (params.has('storno')) app.filterIsReversal = params.get('storno');
       if (params.has('seite')) app.entriesPage = parseInt(params.get('seite'), 10) || 1;
     },
   },
@@ -2607,6 +2726,10 @@ const LEDGER_TAB_QUERY = {
       if (app.importStatus && app.importStatus !== 'new') p.status = app.importStatus;
       if (app.importFilterAccountId) p.konto = app.importFilterAccountId;
       if (app.importSearchQuery) p.suche = app.importSearchQuery;
+      if (app.importFilterDateFrom) p.von = app.importFilterDateFrom;
+      if (app.importFilterDateTo) p.bis = app.importFilterDateTo;
+      if (app.importFilterAmountMin) p.betrag_von = app.importFilterAmountMin;
+      if (app.importFilterAmountMax) p.betrag_bis = app.importFilterAmountMax;
       if (app.importLinesPage > 1) p.seite = app.importLinesPage;
       return p;
     },
@@ -2614,6 +2737,10 @@ const LEDGER_TAB_QUERY = {
       if (params.has('status')) app.importStatus = params.get('status');
       if (params.has('konto')) app.importFilterAccountId = parseInt(params.get('konto'), 10) || '';
       if (params.has('suche')) app.importSearchQuery = params.get('suche');
+      if (params.has('von')) app.importFilterDateFrom = params.get('von');
+      if (params.has('bis')) app.importFilterDateTo = params.get('bis');
+      if (params.has('betrag_von')) app.importFilterAmountMin = params.get('betrag_von');
+      if (params.has('betrag_bis')) app.importFilterAmountMax = params.get('betrag_bis');
       if (params.has('seite')) app.importLinesPage = parseInt(params.get('seite'), 10) || 1;
     },
   },
@@ -2622,12 +2749,16 @@ const LEDGER_TAB_QUERY = {
       const p = {};
       if (app.paperlessFilterStatus) p.status = app.paperlessFilterStatus;
       if (app.paperlessFilterQuery) p.suche = app.paperlessFilterQuery;
+      if (app.paperlessFilterDateFrom) p.von = app.paperlessFilterDateFrom;
+      if (app.paperlessFilterDateTo) p.bis = app.paperlessFilterDateTo;
       if (app.paperlessDocumentsPage > 1) p.seite = app.paperlessDocumentsPage;
       return p;
     },
     apply(app, params) {
       if (params.has('status')) app.paperlessFilterStatus = params.get('status');
       if (params.has('suche')) app.paperlessFilterQuery = params.get('suche');
+      if (params.has('von')) app.paperlessFilterDateFrom = params.get('von');
+      if (params.has('bis')) app.paperlessFilterDateTo = params.get('bis');
       if (params.has('seite')) app.paperlessDocumentsPage = parseInt(params.get('seite'), 10) || 1;
     },
   },
@@ -2663,6 +2794,10 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     filterCategoryId: '',
     filterQuery: '',
     filterReviewed: '',
+    filterHasDocument: '',
+    filterIsReversal: '',
+    filterDateFrom: '',
+    filterDateTo: '',
     showBankPurposeText: false,
     showEntriesFilters: false,
     expandedEntryId: null,
@@ -2715,6 +2850,10 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     importStatus: 'new',
     importFilterAccountId: '',
     importSearchQuery: '',
+    importFilterDateFrom: '',
+    importFilterDateTo: '',
+    importFilterAmountMin: '',
+    importFilterAmountMax: '',
     showImportFilters: false,
     importLines: [],
     importLinesTotal: 0,
@@ -2769,6 +2908,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     assets: [],
     loadingAssets: true,
     assetsError: null,
+    assetStatusFilter: '',
     anlagenspiegelYear: new Date().getFullYear(),
     anlagenspiegel: null,
     loadingAnlagenspiegel: false,
@@ -2797,6 +2937,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     reserves: [],
     loadingReserves: true,
     reservesError: null,
+    reserveKindFilter: '',
     showReserveModal: false,
     editingReserveId: null,
     reserveForm: { name: '', kind: '', sphere: '', purpose: '', target_date: '' },
@@ -2847,6 +2988,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     paperlessDocumentsError: null,
     paperlessFilterStatus: '',
     paperlessFilterQuery: '',
+    paperlessFilterDateFrom: '',
+    paperlessFilterDateTo: '',
     showPaperlessFilters: false,
 
     showPaperlessDocSearchModal: false,
@@ -2866,6 +3009,16 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
 
     get editingAssetObj() {
       return this.assets.find(a => a.id === this.editingAssetId) || { components: [] };
+    },
+
+    // Active/disposed filter (#62) — client-side, since this list never
+    // paginates (unlike Buchungen/Transaktionen/Belege); asset.disposed_at
+    // is only non-null once EVERY component is disposed (#50), so "active"
+    // here means "at least one component still in service".
+    get filteredAssets() {
+      if (this.assetStatusFilter === 'active') return this.assets.filter(a => !a.disposed_at);
+      if (this.assetStatusFilter === 'disposed') return this.assets.filter(a => a.disposed_at);
+      return this.assets;
     },
 
     // How much of each entry line is already claimed by some asset's
@@ -3048,7 +3201,18 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     },
 
     entriesQueryParams() {
-      let params = `year=${this.filterYear}`;
+      // A custom date range (#62) replaces the Jahr filter rather than
+      // composing with it — the backend would otherwise AND both together
+      // (see #58), silently clipping a range spanning more than one year
+      // back down to just the selected year.
+      let params;
+      if (this.filterDateFrom || this.filterDateTo) {
+        params = '';
+        if (this.filterDateFrom) params += `date_from=${this.filterDateFrom}`;
+        if (this.filterDateTo) params += `${params ? '&' : ''}date_to=${this.filterDateTo}`;
+      } else {
+        params = `year=${this.filterYear}`;
+      }
       if (this.filterAccountId) params += `&bank_account_id=${this.filterAccountId}`;
       if (this.filterCategoryId) params += `&category_id=${this.filterCategoryId}`;
       if (this.filterQuery) params += `&q=${encodeURIComponent(this.filterQuery)}`;
@@ -3061,6 +3225,12 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         params += `&reviewed=${this.filterReviewed}`;
       } else if (this.filterReviewed === 'noted') {
         params += '&has_note=true';
+      }
+      if (this.filterHasDocument === 'true' || this.filterHasDocument === 'false') {
+        params += `&has_document=${this.filterHasDocument}`;
+      }
+      if (this.filterIsReversal === 'true' || this.filterIsReversal === 'false') {
+        params += `&is_reversal=${this.filterIsReversal}`;
       }
       return params;
     },
@@ -3076,6 +3246,9 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       if (this.filterCategoryId) n++;
       if (this.filterQuery) n++;
       if (this.filterReviewed) n++;
+      if (this.filterHasDocument) n++;
+      if (this.filterIsReversal) n++;
+      if (this.filterDateFrom || this.filterDateTo) n++;
       return n;
     },
 
@@ -3084,6 +3257,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       if (this.importStatus && this.importStatus !== 'new') n++;
       if (this.importFilterAccountId) n++;
       if (this.importSearchQuery) n++;
+      if (this.importFilterDateFrom || this.importFilterDateTo) n++;
+      if (this.importFilterAmountMin || this.importFilterAmountMax) n++;
       return n;
     },
 
@@ -3091,6 +3266,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       let n = 0;
       if (this.paperlessFilterStatus) n++;
       if (this.paperlessFilterQuery) n++;
+      if (this.paperlessFilterDateFrom || this.paperlessFilterDateTo) n++;
       return n;
     },
 
@@ -3134,8 +3310,13 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     // the currently active year/account filters — used to decide whether a
     // new entry can be spliced into the local list or needs a real reload.
     entryMatchesCurrentFilters(entry) {
-      const year = parseInt(entry.entry_date.slice(0, 4), 10);
-      if (year !== this.filterYear) return false;
+      if (this.filterDateFrom || this.filterDateTo) {
+        if (this.filterDateFrom && entry.entry_date < this.filterDateFrom) return false;
+        if (this.filterDateTo && entry.entry_date > this.filterDateTo) return false;
+      } else {
+        const year = parseInt(entry.entry_date.slice(0, 4), 10);
+        if (year !== this.filterYear) return false;
+      }
       if (this.filterAccountId && !entry.lines.some(l => l.bank_account_id === this.filterAccountId)) return false;
       if (this.filterCategoryId && !entry.lines.some(l => l.category_id === this.filterCategoryId)) return false;
       if (this.filterQuery) {
@@ -3163,6 +3344,14 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       if (this.filterReviewed === 'true' && !entry.reviewed_by) return false;
       if (this.filterReviewed === 'false' && entry.reviewed_by) return false;
       if (this.filterReviewed === 'noted' && !entry.review_note) return false;
+      // A just-created entry is never itself a reversal (reverseEntry()
+      // inserts the *reversal*, whose own reverses_entry_id is always set —
+      // handled correctly by this same check, not a separate case).
+      const hasDoc = entry.lines.some(l => l.paperless_document_id);
+      if (this.filterHasDocument === 'true' && !hasDoc) return false;
+      if (this.filterHasDocument === 'false' && hasDoc) return false;
+      if (this.filterIsReversal === 'true' && !entry.reverses_entry_id) return false;
+      if (this.filterIsReversal === 'false' && entry.reverses_entry_id) return false;
       return true;
     },
 
@@ -4048,6 +4237,10 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       let params = `status=${this.importStatus}`;
       if (this.importFilterAccountId) params += `&bank_account_id=${this.importFilterAccountId}`;
       if (this.importSearchQuery) params += `&q=${encodeURIComponent(this.importSearchQuery)}`;
+      if (this.importFilterDateFrom) params += `&date_from=${this.importFilterDateFrom}`;
+      if (this.importFilterDateTo) params += `&date_to=${this.importFilterDateTo}`;
+      if (this.importFilterAmountMin) params += `&amount_min=${this.importFilterAmountMin}`;
+      if (this.importFilterAmountMax) params += `&amount_max=${this.importFilterAmountMax}`;
       return params;
     },
 
@@ -4321,6 +4514,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         let params = `limit=${PAGE_SIZE}&offset=${offset}`;
         if (this.paperlessFilterStatus) params += `&status=${this.paperlessFilterStatus}`;
         if (this.paperlessFilterQuery) params += `&q=${encodeURIComponent(this.paperlessFilterQuery)}`;
+        if (this.paperlessFilterDateFrom) params += `&date_from=${this.paperlessFilterDateFrom}`;
+        if (this.paperlessFilterDateTo) params += `&date_to=${this.paperlessFilterDateTo}`;
         const r = await apiFetch(`/api/v1/ledger/paperless/documents?${params}`);
         if (!r.ok) throw new Error('Failed to load documents');
         this.paperlessDocuments = await r.json();
@@ -4858,6 +5053,12 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     },
 
     // --- reserves (Rücklagen) ---
+    // Kind filter (#62) — client-side, same reasoning as filteredAssets above.
+    get filteredReserves() {
+      if (!this.reserveKindFilter) return this.reserves;
+      return this.reserves.filter(r => r.kind === this.reserveKindFilter);
+    },
+
     async loadReserves() {
       this.loadingReserves = true;
       this.reservesError = null;
