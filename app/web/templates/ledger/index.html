@@ -70,29 +70,63 @@
             <option :value="y" x-text="y"></option>
           </template>
         </select>
-        <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.filter_account') }}</label>
-        <select x-model.number="filterAccountId" @change="entriesPage = 1; loadEntries()"
-                class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
-          <option value="">{{ _('ledger.filter_account_all') }}</option>
-          <template x-for="a in accounts" :key="a.id">
-            <option :value="a.id" x-text="a.name"></option>
-          </template>
-        </select>
-        <input type="text" x-model="filterQuery" @input.debounce.400ms="entriesPage = 1; loadEntries()"
-               placeholder="{{ _('ledger.placeholder_search_entries') }}"
-               class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
-        <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.filter_reviewed') }}</label>
-        <select x-model="filterReviewed" @change="entriesPage = 1; loadEntries()"
-                class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
-          <option value="" x-text="REVIEWED_FILTER_L.all"></option>
-          <option value="true" x-text="REVIEWED_FILTER_L.reviewed"></option>
-          <option value="false" x-text="REVIEWED_FILTER_L.unreviewed"></option>
-          <option value="noted" x-text="REVIEWED_FILTER_L.noted"></option>
-        </select>
-        <label class="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 cursor-pointer ml-2">
-          <input type="checkbox" x-model="showBankPurposeText" class="rounded border-gray-300 dark:border-gray-600">
-          {{ _('ledger.show_bank_purpose_text') }}
-        </label>
+        <!-- Filter panel (#61): the less-frequently-changed filters (account,
+             category, search, Kassenprüfung status, the bank-text display
+             toggle) collapse behind one button + badge instead of sitting
+             permanently in the bar — only Jahr, the one control changed
+             often enough to be worth a permanent click, stays outside. Same
+             pattern reused verbatim on the Transaktionen/Belege tabs below. -->
+        <div class="relative">
+          <button type="button" @click.stop="showEntriesFilters = !showEntriesFilters"
+                  class="inline-flex items-center gap-1.5 border dark:border-gray-700 rounded px-3 py-1.5 text-sm bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700">
+            <span>{{ _('ledger.btn_filters') }}</span>
+            <span x-show="entriesActiveFilterCount() > 0" x-text="entriesActiveFilterCount()"
+                  class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-600 text-white text-xs"></span>
+          </button>
+          <div x-show="showEntriesFilters" x-cloak @click.outside="showEntriesFilters = false"
+               class="absolute z-20 mt-1 w-72 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded shadow-lg p-3 space-y-3">
+            <div>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ _('ledger.filter_account') }}</label>
+              <select x-model.number="filterAccountId" @change="entriesPage = 1; loadEntries()"
+                      class="w-full border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+                <option value="">{{ _('ledger.filter_account_all') }}</option>
+                <template x-for="a in accounts" :key="a.id">
+                  <option :value="a.id" x-text="a.name"></option>
+                </template>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ _('ledger.filter_category') }}</label>
+              <select x-model.number="filterCategoryId" @change="entriesPage = 1; loadEntries()"
+                      class="w-full border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+                <option value="">{{ _('ledger.filter_category_all') }}</option>
+                <template x-for="c in activeCategories" :key="c.id">
+                  <option :value="c.id" x-text="c.name"></option>
+                </template>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ _('ledger.filter_search') }}</label>
+              <input type="text" x-model="filterQuery" @input.debounce.400ms="entriesPage = 1; loadEntries()"
+                     placeholder="{{ _('ledger.placeholder_search_entries') }}"
+                     class="w-full border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ _('ledger.filter_reviewed') }}</label>
+              <select x-model="filterReviewed" @change="entriesPage = 1; loadEntries()"
+                      class="w-full border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+                <option value="" x-text="REVIEWED_FILTER_L.all"></option>
+                <option value="true" x-text="REVIEWED_FILTER_L.reviewed"></option>
+                <option value="false" x-text="REVIEWED_FILTER_L.unreviewed"></option>
+                <option value="noted" x-text="REVIEWED_FILTER_L.noted"></option>
+              </select>
+            </div>
+            <label class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 cursor-pointer pt-2 border-t dark:border-gray-700">
+              <input type="checkbox" x-model="showBankPurposeText" class="rounded border-gray-300 dark:border-gray-600">
+              {{ _('ledger.show_bank_purpose_text') }}
+            </label>
+          </div>
+        </div>
       </div>
       <button x-show="userIsTreasurer" @click="openEntryModal()"
               class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
@@ -785,17 +819,34 @@
           <option value="booked" x-text="IMPORT_STATUS_L.booked"></option>
           <option value="ignored" x-text="IMPORT_STATUS_L.ignored"></option>
         </select>
-        <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.filter_account') }}</label>
-        <select x-model.number="importFilterAccountId" @change="importLinesPage = 1; loadImportLines()"
-                class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
-          <option value="">{{ _('ledger.filter_account_all') }}</option>
-          <template x-for="a in accounts" :key="a.id">
-            <option :value="a.id" x-text="a.name"></option>
-          </template>
-        </select>
-        <input type="text" x-model="importSearchQuery" @input.debounce.400ms="importLinesPage = 1; loadImportLines()"
-               placeholder="{{ _('ledger.placeholder_search_import_lines') }}"
-               class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+        <!-- Filter panel (#61), same pattern as the Buchungen tab above. -->
+        <div class="relative">
+          <button type="button" @click.stop="showImportFilters = !showImportFilters"
+                  class="inline-flex items-center gap-1.5 border dark:border-gray-700 rounded px-3 py-1.5 text-sm bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700">
+            <span>{{ _('ledger.btn_filters') }}</span>
+            <span x-show="importActiveFilterCount() > 0" x-text="importActiveFilterCount()"
+                  class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-600 text-white text-xs"></span>
+          </button>
+          <div x-show="showImportFilters" x-cloak @click.outside="showImportFilters = false"
+               class="absolute z-20 mt-1 w-72 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded shadow-lg p-3 space-y-3">
+            <div>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ _('ledger.filter_account') }}</label>
+              <select x-model.number="importFilterAccountId" @change="importLinesPage = 1; loadImportLines()"
+                      class="w-full border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+                <option value="">{{ _('ledger.filter_account_all') }}</option>
+                <template x-for="a in accounts" :key="a.id">
+                  <option :value="a.id" x-text="a.name"></option>
+                </template>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ _('ledger.filter_search') }}</label>
+              <input type="text" x-model="importSearchQuery" @input.debounce.400ms="importLinesPage = 1; loadImportLines()"
+                     placeholder="{{ _('ledger.placeholder_search_import_lines') }}"
+                     class="w-full border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1319,9 +1370,26 @@
         <option value="linked">{{ _('ledger.paperless_filter_linked') }}</option>
         <option value="unlinked">{{ _('ledger.target_payouts_filter_open') }}</option>
       </select>
-      <input type="text" x-model="paperlessFilterQuery" @input.debounce.400ms="paperlessDocumentsPage = 1; loadPaperlessDocuments()"
-             placeholder="{{ _('ledger.placeholder_search_paperless_documents') }}"
-             class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+      <!-- Filter panel (#61), same pattern as the Buchungen/Transaktionen
+           tabs — only the search box lives inside here, since Status is
+           this tab's one primary, frequently-changed selector. -->
+      <div class="relative">
+        <button type="button" @click.stop="showPaperlessFilters = !showPaperlessFilters"
+                class="inline-flex items-center gap-1.5 border dark:border-gray-700 rounded px-3 py-1.5 text-sm bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700">
+          <span>{{ _('ledger.btn_filters') }}</span>
+          <span x-show="paperlessActiveFilterCount() > 0" x-text="paperlessActiveFilterCount()"
+                class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-600 text-white text-xs"></span>
+        </button>
+        <div x-show="showPaperlessFilters" x-cloak @click.outside="showPaperlessFilters = false"
+             class="absolute z-20 mt-1 w-72 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded shadow-lg p-3 space-y-3">
+          <div>
+            <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ _('ledger.filter_search') }}</label>
+            <input type="text" x-model="paperlessFilterQuery" @input.debounce.400ms="paperlessDocumentsPage = 1; loadPaperlessDocuments()"
+                   placeholder="{{ _('ledger.placeholder_search_paperless_documents') }}"
+                   class="w-full border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+          </div>
+        </div>
+      </div>
     </div>
 
     <div x-show="paperlessDocumentsError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="paperlessDocumentsError"></div>
@@ -2518,6 +2586,7 @@ const LEDGER_TAB_QUERY = {
       const p = {};
       if (app.filterYear) p.jahr = app.filterYear;
       if (app.filterAccountId) p.konto = app.filterAccountId;
+      if (app.filterCategoryId) p.kategorie = app.filterCategoryId;
       if (app.filterQuery) p.suche = app.filterQuery;
       if (app.filterReviewed) p.geprueft = app.filterReviewed;
       if (app.entriesPage > 1) p.seite = app.entriesPage;
@@ -2526,6 +2595,7 @@ const LEDGER_TAB_QUERY = {
     apply(app, params) {
       if (params.has('jahr')) app.filterYear = parseInt(params.get('jahr'), 10) || new Date().getFullYear();
       if (params.has('konto')) app.filterAccountId = parseInt(params.get('konto'), 10) || '';
+      if (params.has('kategorie')) app.filterCategoryId = parseInt(params.get('kategorie'), 10) || '';
       if (params.has('suche')) app.filterQuery = params.get('suche');
       if (params.has('geprueft')) app.filterReviewed = params.get('geprueft');
       if (params.has('seite')) app.entriesPage = parseInt(params.get('seite'), 10) || 1;
@@ -2590,9 +2660,11 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     entriesError: null,
     filterYear: new Date().getFullYear(),
     filterAccountId: '',
+    filterCategoryId: '',
     filterQuery: '',
     filterReviewed: '',
     showBankPurposeText: false,
+    showEntriesFilters: false,
     expandedEntryId: null,
     showEntryModal: false,
     entryForm: { entry_date: '', description: '', paperless_document_id: '', lines: [] },
@@ -2643,6 +2715,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     importStatus: 'new',
     importFilterAccountId: '',
     importSearchQuery: '',
+    showImportFilters: false,
     importLines: [],
     importLinesTotal: 0,
     importLinesPage: 1,
@@ -2774,6 +2847,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     paperlessDocumentsError: null,
     paperlessFilterStatus: '',
     paperlessFilterQuery: '',
+    showPaperlessFilters: false,
 
     showPaperlessDocSearchModal: false,
     paperlessDocSearchDoc: null,
@@ -2976,6 +3050,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     entriesQueryParams() {
       let params = `year=${this.filterYear}`;
       if (this.filterAccountId) params += `&bank_account_id=${this.filterAccountId}`;
+      if (this.filterCategoryId) params += `&category_id=${this.filterCategoryId}`;
       if (this.filterQuery) params += `&q=${encodeURIComponent(this.filterQuery)}`;
       // filterReviewed also carries a third value ('noted', #58) that isn't
       // a reviewed-state at all — it maps to the independent has_note filter
@@ -2988,6 +3063,35 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         params += '&has_note=true';
       }
       return params;
+    },
+
+    // Counts for the "Filter" button's badge (#61) — a filter panel replaces
+    // the always-visible row of selects/inputs, so the badge is the only
+    // at-a-glance sign that something is narrowing the list. filterYear is
+    // deliberately excluded — there's no "all years" option, so it's never
+    // really "off" the way the others are.
+    entriesActiveFilterCount() {
+      let n = 0;
+      if (this.filterAccountId) n++;
+      if (this.filterCategoryId) n++;
+      if (this.filterQuery) n++;
+      if (this.filterReviewed) n++;
+      return n;
+    },
+
+    importActiveFilterCount() {
+      let n = 0;
+      if (this.importStatus && this.importStatus !== 'new') n++;
+      if (this.importFilterAccountId) n++;
+      if (this.importSearchQuery) n++;
+      return n;
+    },
+
+    paperlessActiveFilterCount() {
+      let n = 0;
+      if (this.paperlessFilterStatus) n++;
+      if (this.paperlessFilterQuery) n++;
+      return n;
     },
 
     get entriesPageCount() {
@@ -3033,12 +3137,15 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       const year = parseInt(entry.entry_date.slice(0, 4), 10);
       if (year !== this.filterYear) return false;
       if (this.filterAccountId && !entry.lines.some(l => l.bank_account_id === this.filterAccountId)) return false;
+      if (this.filterCategoryId && !entry.lines.some(l => l.category_id === this.filterCategoryId)) return false;
       if (this.filterQuery) {
         // Client-side mirror of the backend's q search scope (description,
         // line notes, linked import line purpose/counterparty) — only used
         // to decide whether a just-created/reversed entry belongs in the
         // locally-spliced view (see insertEntryLocally() below), not a
         // second search implementation the server's results depend on.
+        // Deliberately excludes category name (see #60/#61) — that's a
+        // dedicated filterCategoryId dropdown instead, not folded into q.
         const needle = this.filterQuery.toLowerCase();
         const haystack = [
           entry.description || '',

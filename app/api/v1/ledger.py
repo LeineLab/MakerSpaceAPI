@@ -713,7 +713,11 @@ def list_entries(
     the existing conditional `bank_account_id`/`category_id`/
     `paperless_document_id` join below without affecting row multiplicity.
     Same substring-match convention as the import staging queue's own `q`
-    filter (#38).
+    filter (#38). Deliberately does NOT also match category name by
+    substring (see #60) — `category_id` (exact match, below) is the
+    correct tool for "show me this category's bookings" instead, since a
+    substring match against a short category name risks matching unrelated
+    entries whose free text happens to contain the same word.
 
     `reviewed` (Kassenprüfung checkoff, #56/#57) filters on whether
     `reviewed_by` is set — `true` for already-checked entries, `false` for

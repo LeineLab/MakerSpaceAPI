@@ -781,6 +781,56 @@ def test_list_entries_search_matches_bank_purpose_text_of_booked_line(treasurer_
     assert len(resp.json()) == 1
 
 
+def test_list_entries_filter_by_category_id(treasurer_client, bank_account, income_category, expense_category):
+    income_entry = treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-01", "description": "Beitrag",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "50.00"},
+                {"category_id": income_category.id, "amount": "-50.00"},
+            ],
+        },
+    ).json()
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-02", "description": "Einkauf",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "-30.00"},
+                {"category_id": expense_category.id, "amount": "30.00"},
+            ],
+        },
+    )
+
+    resp = treasurer_client.get(f"/api/v1/ledger/entries?category_id={income_category.id}")
+    assert resp.status_code == 200
+    results = resp.json()
+    assert len(results) == 1
+    assert results[0]["id"] == income_entry["id"]
+
+
+def test_list_entries_search_does_not_match_category_name(treasurer_client, bank_account, income_category):
+    """A category name is deliberately NOT part of the free-text `q` search
+    (see #60/#61) — a substring match against a short category name risks
+    pulling in unrelated entries whose own text happens to contain the same
+    word; `category_id` (exact match) is the correct tool for that instead."""
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-01", "description": "Beitrag ohne Bezug im Text",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "50.00"},
+                {"category_id": income_category.id, "amount": "-50.00"},
+            ],
+        },
+    )
+
+    resp = treasurer_client.get("/api/v1/ledger/entries?q=mitgliedsbeitr")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
 def test_list_entries_search_no_match_returns_empty(treasurer_client, bank_account, income_category):
     treasurer_client.post(
         "/api/v1/ledger/entries",
