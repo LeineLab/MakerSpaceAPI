@@ -194,6 +194,9 @@ class LedgerEntryResponse(BaseModel):
     # .../review. Not a financial fact, just an annotation.
     reviewed_by: Optional[str] = None
     reviewed_at: Optional[datetime] = None
+    # Discrepancy note (#58) — independent of reviewed_by/reviewed_at, set/
+    # cleared via PUT .../review-note; survives an un-review.
+    review_note: Optional[str] = None
     lines: list[LedgerEntryLineResponse]
     # The staged import line(s) this entry was booked from, if any (a
     # transfer booking can link both sides' staged lines to the same entry)
@@ -204,6 +207,14 @@ class LedgerEntryResponse(BaseModel):
     matched_import_lines: list[LedgerImportLineResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class LedgerEntryReviewNoteUpdate(BaseModel):
+    """Set (a string) or clear (`null`/omitted) an entry's discrepancy note
+    (#58) — a single-purpose PUT, so unlike most partial-update schemas in
+    this module there's no separate `clear_*` flag: the field's own value
+    is the entire request."""
+    note: Optional[str] = Field(default=None, max_length=500)
 
 
 class LedgerTargetUpdate(BaseModel):

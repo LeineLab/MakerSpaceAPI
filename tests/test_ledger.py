@@ -1065,6 +1065,109 @@ def test_list_entries_without_reviewed_filter_returns_both(auditor_client, treas
 
 
 # ---------------------------------------------------------------------------
+# PUT /ledger/entries/{id}/review-note — discrepancy notes (#58)
+# ---------------------------------------------------------------------------
+
+def test_auditor_writer_can_set_review_note(auditor_client, treasurer_client, bank_account, income_category):
+    entry = _create_entry(treasurer_client, bank_account, income_category)
+
+    resp = auditor_client.put(
+        f"/api/v1/ledger/entries/{entry['id']}/review-note", json={"note": "Betrag weicht vom Beleg ab"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["review_note"] == "Betrag weicht vom Beleg ab"
+
+    listed = auditor_client.get("/api/v1/ledger/entries").json()
+    listed_entry = next(e for e in listed if e["id"] == entry["id"])
+    assert listed_entry["review_note"] == "Betrag weicht vom Beleg ab"
+
+
+def test_treasurer_cannot_set_review_note(treasurer_client, bank_account, income_category):
+    entry = _create_entry(treasurer_client, bank_account, income_category)
+    resp = treasurer_client.put(f"/api/v1/ledger/entries/{entry['id']}/review-note", json={"note": "x"})
+    assert resp.status_code in (401, 403)
+
+
+def test_review_note_independent_of_reviewed_state(auditor_client, treasurer_client, bank_account, income_category):
+    """A discrepancy note can exist on an entry that's deliberately left
+    unreviewed, and un-reviewing an already-checked entry doesn't clear a
+    standing note — the two are independent annotations."""
+    entry = _create_entry(treasurer_client, bank_account, income_category)
+
+    # note without ever marking reviewed
+    resp = auditor_client.put(f"/api/v1/ledger/entries/{entry['id']}/review-note", json={"note": "Bitte prüfen"})
+    data = resp.json()
+    assert data["review_note"] == "Bitte prüfen"
+    assert data["reviewed_by"] is None
+
+    # marking reviewed afterwards doesn't touch the note
+    reviewed = auditor_client.post(f"/api/v1/ledger/entries/{entry['id']}/review").json()
+    assert reviewed["review_note"] == "Bitte prüfen"
+    assert reviewed["reviewed_by"] is not None
+
+    # un-reviewing doesn't clear the note either
+    unreviewed = auditor_client.delete(f"/api/v1/ledger/entries/{entry['id']}/review").json()
+    assert unreviewed["review_note"] == "Bitte prüfen"
+    assert unreviewed["reviewed_by"] is None
+
+
+def test_review_note_cleared_by_omitting_it(auditor_client, treasurer_client, bank_account, income_category):
+    entry = _create_entry(treasurer_client, bank_account, income_category)
+    auditor_client.put(f"/api/v1/ledger/entries/{entry['id']}/review-note", json={"note": "Bitte prüfen"})
+
+    resp = auditor_client.put(f"/api/v1/ledger/entries/{entry['id']}/review-note", json={})
+    assert resp.status_code == 200
+    assert resp.json()["review_note"] is None
+
+
+def test_set_review_note_on_unknown_entry_404(auditor_client):
+    resp = auditor_client.put("/api/v1/ledger/entries/999/review-note", json={"note": "x"})
+    assert resp.status_code == 404
+
+
+def test_list_entries_filter_has_note(auditor_client, treasurer_client, bank_account, income_category):
+    noted = _create_entry(treasurer_client, bank_account, income_category, description="Mit Anmerkung")
+    unnoted = _create_entry(treasurer_client, bank_account, income_category, description="Ohne Anmerkung")
+    auditor_client.put(f"/api/v1/ledger/entries/{noted['id']}/review-note", json={"note": "Unstimmigkeit"})
+
+    has_note = treasurer_client.get("/api/v1/ledger/entries?has_note=true")
+    assert {e["id"] for e in has_note.json()} == {noted["id"]}
+
+    no_note = treasurer_client.get("/api/v1/ledger/entries?has_note=false")
+    assert {e["id"] for e in no_note.json()} == {unnoted["id"]}
+
+
+def test_list_entries_date_range_filter(treasurer_client, bank_account, income_category):
+    early = treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-01-15",
+            "description": "Januar",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "10.00"},
+                {"category_id": income_category.id, "amount": "-10.00"},
+            ],
+        },
+    ).json()
+    late = treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-06-15",
+            "description": "Juni",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "10.00"},
+                {"category_id": income_category.id, "amount": "-10.00"},
+            ],
+        },
+    ).json()
+
+    resp = treasurer_client.get("/api/v1/ledger/entries?date_from=2026-05-01&date_to=2026-12-31")
+    ids = {e["id"] for e in resp.json()}
+    assert ids == {late["id"]}
+    assert early["id"] not in ids
+
+
+# ---------------------------------------------------------------------------
 # GET /ledger/report/euer
 # ---------------------------------------------------------------------------
 

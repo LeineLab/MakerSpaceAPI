@@ -87,6 +87,7 @@
           <option value="" x-text="REVIEWED_FILTER_L.all"></option>
           <option value="true" x-text="REVIEWED_FILTER_L.reviewed"></option>
           <option value="false" x-text="REVIEWED_FILTER_L.unreviewed"></option>
+          <option value="noted" x-text="REVIEWED_FILTER_L.noted"></option>
         </select>
         <label class="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 cursor-pointer ml-2">
           <input type="checkbox" x-model="showBankPurposeText" class="rounded border-gray-300 dark:border-gray-600">
@@ -188,6 +189,7 @@
                     {{ _('ledger.btn_mark_reviewed') }}
                   </button>
                   <span x-show="!e.reviewed_by && !userCanWriteAuditReports" class="text-gray-300 dark:text-gray-600">—</span>
+                  <span x-show="e.review_note" :title="e.review_note" class="ml-1 cursor-help">📝</span>
                 </td>
                 <td class="px-4 py-3" x-show="userIsTreasurer">
                   <!-- A Storno (e.reverses_entry_id set) can't itself be reversed
@@ -211,6 +213,23 @@
                         <span class="text-gray-400 dark:text-gray-500">{{ _('ledger.detail_reviewed') }}:</span>
                         <span x-show="e.reviewed_by" class="text-green-600 dark:text-green-400" x-text="reviewedLabel(e)"></span>
                         <span x-show="!e.reviewed_by" class="text-gray-400 dark:text-gray-500">{{ _('ledger.detail_not_reviewed') }}</span>
+                      </p>
+                      <!-- Discrepancy note (#58) — independent of the
+                           reviewed checkbox above: editable only by an
+                           auditor-writer, but its current value is shown
+                           to every viewer (a treasurer should be able to
+                           see what was flagged, just not edit it). -->
+                      <div x-show="userCanWriteAuditReports" class="mt-2">
+                        <label class="block text-gray-400 dark:text-gray-500 mb-1">{{ _('ledger.review_note_label') }}</label>
+                        <textarea x-model="e._noteDraft" rows="2" @click.stop
+                                  placeholder="{{ _('ledger.review_note_placeholder') }}"
+                                  class="w-full border dark:border-gray-700 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800"></textarea>
+                        <button @click.stop="saveEntryNote(e)" class="mt-1 text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                          {{ _('ledger.btn_save_note') }}
+                        </button>
+                      </div>
+                      <p x-show="!userCanWriteAuditReports && e.review_note" class="mt-2">
+                        <span class="text-gray-400 dark:text-gray-500">{{ _('ledger.review_note_label') }}:</span> <span x-text="e.review_note"></span>
                       </p>
                       <template x-for="l in e.lines.filter(l => l.note)" :key="'note' + l.id">
                         <p><span class="text-gray-400 dark:text-gray-500" x-text="lineTargetName(l) + ':'"></span> <span x-text="l.note"></span></p>
@@ -2314,9 +2333,17 @@
                  class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_findings') }}</label>
+          <div class="flex items-center justify-between mb-1">
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ _('ledger.label_findings') }}</label>
+            <button type="button" x-show="auditReportForm.period_start && auditReportForm.period_end"
+                    @click="importReviewNotesIntoFindings()"
+                    class="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+              {{ _('ledger.btn_import_review_notes') }}
+            </button>
+          </div>
           <textarea x-model="auditReportForm.findings" rows="4"
                     class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"></textarea>
+          <p x-show="auditReportImportNotesMessage" class="text-xs text-gray-400 dark:text-gray-500 mt-1" x-text="auditReportImportNotesMessage"></p>
         </div>
         <div>
           <label class="inline-flex items-center gap-2 cursor-pointer">
@@ -2380,7 +2407,10 @@ const REVIEWED_FILTER_L = {
   all: {{ _('ledger.filter_reviewed_all') | tojson }},
   reviewed: {{ _('ledger.filter_reviewed_reviewed') | tojson }},
   unreviewed: {{ _('ledger.filter_reviewed_unreviewed') | tojson }},
+  noted: {{ _('ledger.filter_reviewed_noted') | tojson }},
 };
+const NO_REVIEW_NOTES_IN_PERIOD_L = {{ _('ledger.no_review_notes_in_period') | tojson }};
+const REVIEW_NOTES_HEADING_L = {{ _('ledger.review_notes_heading') | tojson }};
 const PAPERLESS_DUPLICATE_TMPL = {{ _('ledger.paperless_duplicate_warning') | tojson }};
 const DUPLICATE_HINT_L = {{ _('ledger.import_duplicate_hint') | tojson }};
 const TRANSFER_AMOUNT_HINT_L = {{ _('ledger.book_transfer_amount_hint') | tojson }};
@@ -2733,6 +2763,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     auditReportForm: { period_start: '', period_end: '', audit_date: '', auditors: '', findings: '', recommends_discharge: true, paperless_document_id: '' },
     auditReportError: null,
     auditReportSubmitting: false,
+    auditReportImportNotesMessage: '',
 
     paperlessDocuments: [],
     paperlessDocumentsTotal: 0,
@@ -2944,7 +2975,16 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       let params = `year=${this.filterYear}`;
       if (this.filterAccountId) params += `&bank_account_id=${this.filterAccountId}`;
       if (this.filterQuery) params += `&q=${encodeURIComponent(this.filterQuery)}`;
-      if (this.filterReviewed) params += `&reviewed=${this.filterReviewed}`;
+      // filterReviewed also carries a third value ('noted', #58) that isn't
+      // a reviewed-state at all — it maps to the independent has_note filter
+      // instead, so 'true'/'false' and 'noted' can't both be expressed as
+      // one query param on the API side (unlike in the shareable URL, where
+      // they're all just the one `geprueft=` value, see LEDGER_TAB_QUERY).
+      if (this.filterReviewed === 'true' || this.filterReviewed === 'false') {
+        params += `&reviewed=${this.filterReviewed}`;
+      } else if (this.filterReviewed === 'noted') {
+        params += '&has_note=true';
+      }
       return params;
     },
 
@@ -3005,13 +3045,15 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         ].join(' ').toLowerCase();
         if (!haystack.includes(needle)) return false;
       }
-      // A just-created/reversed entry is always freshly unreviewed
-      // (reviewed_by is only ever set after the fact via #56's checkoff) —
-      // so it only belongs in a "reviewed=true" locally-spliced view once
-      // that's no longer true, which insertEntryLocally() never handles
-      // anyway (it's for new entries, not toggling review state).
+      // A just-created/reversed entry is always freshly unreviewed and
+      // unnoted (reviewed_by/review_note are only ever set after the fact
+      // via #56/#58's checkoff/note) — so it only belongs in a
+      // "reviewed=true"/"noted" locally-spliced view once that's no longer
+      // true, which insertEntryLocally() never handles anyway (it's for
+      // new entries, not toggling review state).
       if (this.filterReviewed === 'true' && !entry.reviewed_by) return false;
       if (this.filterReviewed === 'false' && entry.reviewed_by) return false;
+      if (this.filterReviewed === 'noted' && !entry.review_note) return false;
       return true;
     },
 
@@ -3093,11 +3135,38 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
     },
 
-    // If the "Geprüft"-filter is narrowed to reviewed-only/unreviewed-only,
-    // ticking/un-ticking an entry can make it stop matching the currently
-    // visible page right away — drop it from the local list instead of
-    // leaving a stale row until the next reload (same idea as
-    // removeImportLineLocally() for ignore/reset).
+    // Sets or clears an entry's discrepancy note (#58) — independent of the
+    // reviewed_by/reviewed_at checkoff above, same PUT-a-single-field
+    // pattern as toggleTracked()/setCashClearingAccount(). An empty/
+    // whitespace-only draft clears the note (sent as `null`) rather than
+    // storing an empty string, so "Mit Anmerkungen" never matches a blank.
+    async saveEntryNote(entry) {
+      this.entriesError = null;
+      const note = (entry._noteDraft || '').trim() || null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/entries/${entry.id}/review-note`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ note }),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          this.entriesError = data.detail || 'Error saving note';
+          return;
+        }
+        entry.review_note = data.review_note;
+        entry._noteDraft = data.review_note || '';
+        this.removeEntryLocallyIfFilteredOut(entry);
+      } catch (e) {
+        if (e !== 'unauthenticated') this.entriesError = e.message || String(e);
+      }
+    },
+
+    // If the "Geprüft"-filter is narrowed to reviewed-only/unreviewed-only/
+    // noted-only, ticking/un-ticking an entry or saving/clearing its note
+    // can make it stop matching the currently visible page right away —
+    // drop it from the local list instead of leaving a stale row until the
+    // next reload (same idea as removeImportLineLocally() for ignore/reset).
     removeEntryLocallyIfFilteredOut(entry) {
       if (this.entryMatchesCurrentFilters(entry)) return;
       const idx = this.entries.findIndex(e => e.id === entry.id);
@@ -3701,6 +3770,14 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
 
     toggleEntryDetail(entryId) {
       this.expandedEntryId = this.expandedEntryId === entryId ? null : entryId;
+      if (this.expandedEntryId === null) return;
+      // Draft state for the review-note editor (#58) lives directly on the
+      // entry object (like every other bit of per-entry UI state in this
+      // list) rather than a parallel drafts map keyed by id — initialized
+      // once on first expand so re-collapsing/re-expanding without saving
+      // doesn't lose an in-progress edit.
+      const entry = this.entries.find(e => e.id === this.expandedEntryId);
+      if (entry && entry._noteDraft === undefined) entry._noteDraft = entry.review_note || '';
     },
 
     // The bank's own purpose_text(s) for an entry, derived from
@@ -4960,6 +5037,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         findings: '', recommends_discharge: true, paperless_document_id: '',
       };
       this.auditReportError = null;
+      this.auditReportImportNotesMessage = '';
       this.showAuditReportModal = true;
     },
 
@@ -4971,7 +5049,36 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         recommends_discharge: report.recommends_discharge, paperless_document_id: report.paperless_document_id || '',
       };
       this.auditReportError = null;
+      this.auditReportImportNotesMessage = '';
       this.showAuditReportModal = true;
+    },
+
+    // Pulls every entry's discrepancy note (#58) from within the currently
+    // entered Prüfzeitraum into the Findings textarea — a convenience so
+    // the auditor doesn't have to re-type notes already left on individual
+    // bookings while reviewing them. Appends rather than overwrites, so
+    // existing free-text findings aren't clobbered; purely a one-shot text
+    // assembly, nothing links the report back to the source entries
+    // afterwards (the findings field stays plain free text, same as ever).
+    async importReviewNotesIntoFindings() {
+      this.auditReportImportNotesMessage = '';
+      try {
+        const params = `date_from=${this.auditReportForm.period_start}&date_to=${this.auditReportForm.period_end}&has_note=true&limit=500`;
+        const r = await apiFetch(`/api/v1/ledger/entries?${params}`);
+        if (!r.ok) return;
+        const noted = await r.json();
+        if (noted.length === 0) {
+          this.auditReportImportNotesMessage = NO_REVIEW_NOTES_IN_PERIOD_L;
+          return;
+        }
+        noted.sort((a, b) => (a.entry_date < b.entry_date ? -1 : a.entry_date > b.entry_date ? 1 : 0));
+        const block = noted.map(e => `- ${e.entry_date} "${e.description}": ${e.review_note}`).join('\n');
+        this.auditReportForm.findings = this.auditReportForm.findings
+          ? `${this.auditReportForm.findings}\n\n${REVIEW_NOTES_HEADING_L}\n${block}`
+          : `${REVIEW_NOTES_HEADING_L}\n${block}`;
+      } catch (e) {
+        // convenience action only — a failure here shouldn't block the report
+      }
     },
 
     async submitAuditReport() {

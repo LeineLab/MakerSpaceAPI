@@ -73,6 +73,7 @@ from app.schemas.ledger import (
     LedgerConfigResponse,
     LedgerEntryCreate,
     LedgerEntryResponse,
+    LedgerEntryReviewNoteUpdate,
     LedgerImportLineBookRequest,
     LedgerImportLineResponse,
     LedgerImportSummary,
@@ -685,11 +686,14 @@ def update_category(
 def list_entries(
     response: Response,
     year: Optional[int] = Query(default=None),
+    date_from: Optional[date] = Query(default=None),
+    date_to: Optional[date] = Query(default=None),
     bank_account_id: Optional[int] = Query(default=None),
     category_id: Optional[int] = Query(default=None),
     paperless_document_id: Optional[str] = Query(default=None),
     q: Optional[str] = Query(default=None),
     reviewed: Optional[bool] = Query(default=None),
+    has_note: Optional[bool] = Query(default=None),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     _viewer: dict = Depends(require_ledger_viewer_user),
@@ -713,7 +717,17 @@ def list_entries(
 
     `reviewed` (Kassenprüfung checkoff, #56/#57) filters on whether
     `reviewed_by` is set — `true` for already-checked entries, `false` for
-    still-unchecked ones, omitted for both."""
+    still-unchecked ones, omitted for both. `has_note` (#58) filters
+    likewise on whether `review_note` is set — independent of `reviewed`,
+    since a discrepancy note can exist whether or not the entry is
+    currently checked off.
+
+    `date_from`/`date_to` (#58) filter on `entry_date` directly, for an
+    arbitrary period rather than a calendar year — used to pull the
+    discrepancy notes from an entire Kassenprüfung period (which need not
+    align to `year`) into an audit report's `findings`. Composes with
+    `year` rather than replacing it (both apply if both are given), though
+    in practice a caller uses one or the other."""
     query = db.query(LedgerEntry).options(
         joinedload(LedgerEntry.lines).joinedload(LedgerEntryLine.bank_account),
         joinedload(LedgerEntry.lines).joinedload(LedgerEntryLine.category),
@@ -722,6 +736,10 @@ def list_entries(
         query = query.filter(
             LedgerEntry.entry_date >= f"{year}-01-01", LedgerEntry.entry_date <= f"{year}-12-31"
         )
+    if date_from is not None:
+        query = query.filter(LedgerEntry.entry_date >= date_from)
+    if date_to is not None:
+        query = query.filter(LedgerEntry.entry_date <= date_to)
     if bank_account_id is not None or category_id is not None or paperless_document_id is not None:
         query = query.join(LedgerEntryLine)
         if bank_account_id is not None:
@@ -751,6 +769,10 @@ def list_entries(
     if reviewed is not None:
         query = query.filter(
             LedgerEntry.reviewed_by.isnot(None) if reviewed else LedgerEntry.reviewed_by.is_(None)
+        )
+    if has_note is not None:
+        query = query.filter(
+            LedgerEntry.review_note.isnot(None) if has_note else LedgerEntry.review_note.is_(None)
         )
     query = query.distinct()
     response.headers["X-Total-Count"] = str(query.count())
@@ -961,6 +983,31 @@ def unreview_entry(
 
     entry.reviewed_by = None
     entry.reviewed_at = None
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+
+@router.put(
+    "/entries/{entry_id}/review-note", response_model=LedgerEntryResponse, responses={**HTTP_404},
+)
+def update_entry_review_note(
+    entry_id: int,
+    body: LedgerEntryReviewNoteUpdate,
+    _auditor: dict = Depends(require_auditor_writer_user),
+    db: Session = Depends(get_db),
+):
+    """Set (`note` given) or clear (`note` omitted/`null`) a discrepancy note
+    on an entry (Key Design Decision #58) — deliberately independent of the
+    reviewed_by/reviewed_at checkoff (#56): a note can flag something worth
+    following up on whether or not the entry is currently checked off, and
+    un-reviewing an entry via `DELETE .../review` doesn't clear a standing
+    note. Same `require_auditor_writer_user` gate as the checkoff itself."""
+    entry = db.query(LedgerEntry).filter(LedgerEntry.id == entry_id).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+
+    entry.review_note = body.note
     db.commit()
     db.refresh(entry)
     return entry

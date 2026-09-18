@@ -158,6 +158,12 @@ class LedgerEntry(Base):
     # LedgerAuditReport aren't part of the immutable audit trail either.
     reviewed_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # Discrepancy note (migration 0022, #58) — independent of reviewed_by/
+    # reviewed_at: an auditor can flag something worth following up on
+    # whether or not the entry is (currently) checked off, and un-checking
+    # it doesn't clear a standing note. Same VARCHAR(500) width convention
+    # as description/note (#48).
+    review_note: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     lines: Mapped[list["LedgerEntryLine"]] = relationship(
         "LedgerEntryLine", back_populates="entry", cascade="all, delete-orphan"
