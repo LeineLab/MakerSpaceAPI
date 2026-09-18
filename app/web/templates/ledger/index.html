@@ -1656,14 +1656,15 @@
                          class="w-full border dark:border-gray-700 rounded px-2 py-1.5 text-xs bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
                   <template x-if="line.paperlessResults.length > 0">
                     <div class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border dark:border-gray-700 rounded shadow max-h-40 overflow-y-auto">
-                      <!-- Doc id shown alongside the title (not just on
-                           pick) so two documents with the same title are
-                           distinguishable before picking, not just after. -->
+                      <!-- Doc id (and, #59, its date) shown alongside the
+                           title (not just on pick) so two documents with
+                           the same title are distinguishable before
+                           picking, not just after. -->
                       <template x-for="doc in line.paperlessResults" :key="doc.id">
                         <div @click="pickPaperlessDocForLine(line, doc)"
                              class="px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
                           <span x-text="doc.title"></span>
-                          <span class="text-gray-400 dark:text-gray-500 text-xs" x-text="'#' + doc.id"></span>
+                          <span class="text-gray-400 dark:text-gray-500 text-xs" x-text="'#' + doc.id + (doc.created ? ' · ' + paperlessDocDate(doc.created) : '')"></span>
                         </div>
                       </template>
                     </div>
@@ -1802,14 +1803,15 @@
                          class="w-full border dark:border-gray-700 rounded px-2 py-1.5 text-xs bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
                   <template x-if="line.paperlessResults.length > 0">
                     <div class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border dark:border-gray-700 rounded shadow max-h-40 overflow-y-auto">
-                      <!-- Doc id shown alongside the title (not just on
-                           pick) so two documents with the same title are
-                           distinguishable before picking, not just after. -->
+                      <!-- Doc id (and, #59, its date) shown alongside the
+                           title (not just on pick) so two documents with
+                           the same title are distinguishable before
+                           picking, not just after. -->
                       <template x-for="doc in line.paperlessResults" :key="doc.id">
                         <div @click="pickPaperlessDocForLine(line, doc)"
                              class="px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
                           <span x-text="doc.title"></span>
-                          <span class="text-gray-400 dark:text-gray-500 text-xs" x-text="'#' + doc.id"></span>
+                          <span class="text-gray-400 dark:text-gray-500 text-xs" x-text="'#' + doc.id + (doc.created ? ' · ' + paperlessDocDate(doc.created) : '')"></span>
                         </div>
                       </template>
                     </div>
@@ -3766,6 +3768,13 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     fmtDateTime(iso) {
       if (!iso) return '—';
       return iso.replace('T', ' ').slice(0, 16);
+    },
+
+    // Paperless's own `created` timestamp, date-only — shown next to the
+    // #id in a search-results dropdown so two same-titled documents are
+    // distinguishable by date too, not just id (#59).
+    paperlessDocDate(created) {
+      return created ? created.slice(0, 10) : '';
     },
 
     toggleEntryDetail(entryId) {
