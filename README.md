@@ -68,7 +68,7 @@ All settings are loaded from environment variables or a `.env` file.
 | `OIDC_LINK_UPDATE_NAME` | `false` | Set `true` to overwrite a user's display name from OIDC claims on self-service card linking |
 | `CHECKOUT_BOX_SLUGS` | *(empty)* | Comma-separated machine slugs restricted to checkout operations |
 
-For Docker Compose, also set `DB_ROOT_PASSWORD`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`.
+For Docker Compose, also set `DB_ROOT_PASSWORD`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, and optionally `BACKUP_INTERVAL_HOURS` / `BACKUP_RETENTION_DAYS` (see [Database backups](#database-backups)).
 
 > **OIDC redirect URIs:** Register both `{BASE_URL}/auth/callback` and `{BASE_URL}/auth/connect/callback` as allowed redirect URIs in your OIDC provider.
 
@@ -193,6 +193,50 @@ alembic upgrade head
 # Create a new migration after changing a model
 alembic revision --autogenerate -m "describe the change"
 ```
+
+## Database backups
+
+Docker Compose includes a `backup` service that periodically runs `mariadb-dump`
+against `db` and writes a gzip-compressed SQL file to `./backups`. It's disabled
+by default:
+
+```bash
+# .env
+BACKUP_INTERVAL_HOURS=24   # 0 = disabled (default)
+BACKUP_RETENTION_DAYS=30   # delete backups older than this; 0 = keep forever
+```
+
+`docker compose up -d` (or `restart backup` after editing `.env`) picks up the
+change. Each dump is a full logical backup (schema + data), so it can be
+restored into a database of any size or storage-engine version — not just the
+exact host it was taken on.
+
+**This only writes backups to the same Docker host.** For real disaster
+recovery (hardware failure, theft, ransomware), also sync `./backups`
+somewhere else — e.g. a cron job on the host running `rsync`/`rclone` to a
+second machine or cloud storage. That's outside this app's scope; the backup
+service just guarantees the files exist locally on a schedule.
+
+### Restoring
+
+```bash
+scripts/restore_backup.sh backups/makerspaceapi_20260101T030000Z.sql.gz
+```
+
+This overwrites every table in the running `db` service's database — it asks
+for confirmation first. For a **new installation**, restore before starting
+the app so it comes up already on the backup's data:
+
+```bash
+cp .env.example .env   # edit as usual
+docker compose up -d db
+# wait until `docker compose ps` shows db as healthy
+scripts/restore_backup.sh /path/to/backup.sql.gz
+docker compose up -d app
+```
+
+`alembic upgrade head` (run automatically on `app` startup) then only has to
+apply whatever migrations were added after the backup was taken.
 
 ## Web UI
 

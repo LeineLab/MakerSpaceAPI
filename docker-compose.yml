@@ -35,5 +35,27 @@ services:
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
+  # Periodic mariadb-dump of the database, gzip-compressed, into ./backups.
+  # BACKUP_INTERVAL_HOURS=0 (default) disables this - the container just idles.
+  # See scripts/backup.sh and scripts/restore_backup.sh, and the "Database
+  # backups" section in README.md.
+  backup:
+    image: mariadb:10.11
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_NAME: ${DB_NAME:-makerspaceapi}
+      DB_USER: ${DB_USER:-makerspace}
+      DB_PASSWORD: ${DB_PASSWORD:-makerspace}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-0}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup.sh:/backup.sh:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["sh", "/backup.sh"]
+
 volumes:
   db_data:
