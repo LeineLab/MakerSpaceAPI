@@ -4318,7 +4318,6 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       // warning and the GWG hint.
       this.bookCategorySuggested = !!line.suggested_category_id;
       if (line.suggested_category_id) {
-        firstLine.category_id = String(line.suggested_category_id);
         firstLine.amount = (-parseFloat(line.amount)).toFixed(2);
       }
       this.bookForm = {
@@ -4331,6 +4330,36 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       this.transferCandidates = [];
       this.bookError = null;
       this.showBookModal = true;
+      // Real bug (2026-09-21): the category <select>'s <option>s (a nested
+      // x-for over activeCategories) only get mounted into the DOM the
+      // moment bookForm.category_lines goes from empty to populated — the
+      // very same step this function just did above. Alpine applies a
+      // <select>'s own x-model binding before walking into its children, so
+      // setting category_id in that same synchronous pass raced the
+      // <option>s' own mount: the browser found no matching <option> yet,
+      // silently fell back to the empty placeholder, and — since nothing
+      // about the <option>s appearing a moment later re-triggers x-model's
+      // already-run effect — stayed stuck there even though the underlying
+      // state was already correct. That empty *DOM* value then tripped the
+      // <select>'s native `required` validation on submit, silently
+      // blocking the whole form (a browser-native tooltip, easy to miss) —
+      // exactly the "amount fills in, category doesn't, needs another try"
+      // the user reported, and reproduced live: the modal's first-ever open
+      // in a page session showed the placeholder despite bookForm already
+      // holding the right id; closing and reopening (now hitting the
+      // already-mounted <option>s) worked first time. Same root cause class
+      // as #54's Jahr-select bug — fixed the same way, by deferring the
+      // value-setting write to $nextTick() so the <option>s are guaranteed
+      // to exist first. Goes through the reactive `this.bookForm...` chain,
+      // not the closed-over `firstLine` reference, since mutating the raw
+      // pre-reactive object directly wouldn't trigger the DOM update at all.
+      if (line.suggested_category_id) {
+        this.$nextTick(() => {
+          if (this.bookingLine === line && this.bookForm.category_lines[0]) {
+            this.bookForm.category_lines[0].category_id = String(line.suggested_category_id);
+          }
+        });
+      }
     },
 
     onTransferToggle() {
