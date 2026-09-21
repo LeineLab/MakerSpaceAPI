@@ -903,7 +903,11 @@ def test_paperless_search_when_configured(auditor_client, monkeypatch):
         resp = auditor_client.get("/api/v1/ledger/paperless/search?q=baumarkt")
 
     assert resp.status_code == 200
-    assert resp.json() == [{"id": 42, "title": "Rechnung Baumarkt", "created": "2026-03-01"}]
+    # amount_match (#65) is always False for a plain search result — there's
+    # no target amount to compare against here, only GET .../suggestions sets it.
+    assert resp.json() == [
+        {"id": 42, "title": "Rechnung Baumarkt", "created": "2026-03-01", "amount_match": False}
+    ]
 
 
 def test_paperless_search_unreachable_returns_empty(auditor_client, monkeypatch):
@@ -1099,3 +1103,106 @@ def test_paperless_documents_unreachable_returns_empty(auditor_client, monkeypat
     assert resp.status_code == 200
     assert resp.json() == []
     assert resp.headers["X-Total-Count"] == "0"
+
+
+# ---------------------------------------------------------------------------
+# GET /ledger/paperless/suggestions (Key Design Decision #65)
+# ---------------------------------------------------------------------------
+
+def test_paperless_suggestions_disabled_by_default_returns_empty(auditor_client):
+    resp = auditor_client.get("/api/v1/ledger/paperless/suggestions?amount=50.00&target_date=2026-03-01")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_paperless_suggestions_ranked_by_date_distance_without_amount_field(auditor_client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "PAPERLESS_URL", "https://paperless.example.com")
+    monkeypatch.setattr(settings, "PAPERLESS_API_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "PAPERLESS_AMOUNT_CUSTOM_FIELD_ID", "")
+
+    fake_response = {
+        "results": [
+            {"id": 1, "title": "Weit weg", "created": "2026-01-01"},
+            {"id": 2, "title": "Naeher dran", "created": "2026-02-25"},
+            {"id": 3, "title": "Exakt", "created": "2026-03-01"},
+        ],
+    }
+    with patch("app.services.paperless.httpx.get") as mock_get:
+        mock_get.return_value = httpx.Response(
+            200, json=fake_response, request=httpx.Request("GET", "https://paperless.example.com/api/documents/"),
+        )
+        resp = auditor_client.get("/api/v1/ledger/paperless/suggestions?amount=50.00&target_date=2026-03-01")
+
+    assert resp.status_code == 200
+    ids = [d["id"] for d in resp.json()]
+    assert ids == [3, 2, 1]
+    assert all(d["amount_match"] is False for d in resp.json())
+
+
+def test_paperless_suggestions_amount_match_ranked_above_closer_date(auditor_client, monkeypatch):
+    """An exact amount match always outranks a closer-dated non-match — the
+    user's own requirement: amount has the highest precedence."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "PAPERLESS_URL", "https://paperless.example.com")
+    monkeypatch.setattr(settings, "PAPERLESS_API_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "PAPERLESS_AMOUNT_CUSTOM_FIELD_ID", "5")
+
+    fake_response = {
+        "results": [
+            {
+                "id": 1, "title": "Naeher, aber falscher Betrag", "created": "2026-03-01",
+                "custom_fields": [{"field": 5, "value": "EUR99.99"}],
+            },
+            {
+                "id": 2, "title": "Weiter weg, aber richtiger Betrag", "created": "2026-01-01",
+                "custom_fields": [{"field": 5, "value": "EUR50.00"}],
+            },
+        ],
+    }
+    with patch("app.services.paperless.httpx.get") as mock_get:
+        mock_get.return_value = httpx.Response(
+            200, json=fake_response, request=httpx.Request("GET", "https://paperless.example.com/api/documents/"),
+        )
+        resp = auditor_client.get("/api/v1/ledger/paperless/suggestions?amount=-50.00&target_date=2026-03-01")
+
+    data = resp.json()
+    assert [d["id"] for d in data] == [2, 1]
+    assert data[0]["amount_match"] is True
+    assert data[1]["amount_match"] is False
+
+
+def test_paperless_suggestions_respects_limit(auditor_client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "PAPERLESS_URL", "https://paperless.example.com")
+    monkeypatch.setattr(settings, "PAPERLESS_API_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "PAPERLESS_AMOUNT_CUSTOM_FIELD_ID", "")
+
+    fake_response = {
+        "results": [
+            {"id": i, "title": f"Beleg {i}", "created": f"2026-0{i}-01"} for i in range(1, 4)
+        ],
+    }
+    with patch("app.services.paperless.httpx.get") as mock_get:
+        mock_get.return_value = httpx.Response(
+            200, json=fake_response, request=httpx.Request("GET", "https://paperless.example.com/api/documents/"),
+        )
+        resp = auditor_client.get("/api/v1/ledger/paperless/suggestions?amount=1.00&target_date=2026-01-01&limit=1")
+
+    assert len(resp.json()) == 1
+
+
+def test_paperless_suggestions_unreachable_returns_empty(auditor_client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "PAPERLESS_URL", "https://paperless.example.com")
+    monkeypatch.setattr(settings, "PAPERLESS_API_TOKEN", "test-token")
+
+    with patch("app.services.paperless.httpx.get", side_effect=httpx.ConnectError("unreachable")):
+        resp = auditor_client.get("/api/v1/ledger/paperless/suggestions?amount=50.00&target_date=2026-03-01")
+
+    assert resp.status_code == 200
+    assert resp.json() == []

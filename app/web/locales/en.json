@@ -726,5 +726,8 @@
   "ledger.filter_asset_status_active": "Active",
   "ledger.assets_empty_filtered": "No assets match this filter.",
   "ledger.filter_reserve_kind_all": "All kinds",
-  "ledger.reserves_empty_filtered": "No reserves match this filter."
+  "ledger.reserves_empty_filtered": "No reserves match this filter.",
+  "ledger.btn_submit_booking_and_continue": "Create entry and continue",
+  "ledger.paperless_suggestions_label": "Suggestions",
+  "ledger.paperless_suggestion_amount_match": "Amount matches"
 }

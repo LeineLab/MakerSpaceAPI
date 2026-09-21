@@ -2832,6 +2832,22 @@ def search_paperless(
     return paperless.search_documents(q)
 
 
+@router.get("/paperless/suggestions", response_model=list[PaperlessDocumentResult])
+def suggest_paperless_documents(
+    amount: Decimal = Query(...),
+    target_date: date = Query(...),
+    limit: int = Query(default=3, ge=1, le=10),
+    _viewer: dict = Depends(require_ledger_viewer_user),
+):
+    """Proactive per-line document suggestions (#65) — alongside, not instead
+    of, the manual search above. Ranked by an exact match against
+    PAPERLESS_AMOUNT_CUSTOM_FIELD_ID first (if configured), then by ascending
+    distance between the document's own date and `target_date`. `amount`'s
+    sign is irrelevant (compared against a document's own always-positive
+    invoice total) — pass the line's amount exactly as typed."""
+    return paperless.suggest_documents(amount, target_date, limit=limit)
+
+
 _PAPERLESS_BULK_FETCH_LIMIT = 500
 
 

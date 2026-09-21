@@ -673,6 +673,11 @@ class PaperlessDocumentResult(BaseModel):
     id: int
     title: str
     created: Optional[str] = None
+    # Only ever set by GET /ledger/paperless/suggestions (#65) — whether this
+    # document's own PAPERLESS_AMOUNT_CUSTOM_FIELD_ID value matched the
+    # booking line's amount exactly; always False for a plain search result,
+    # which has no target amount to compare against.
+    amount_match: bool = False
 
 
 class PaperlessDocumentOverviewItem(BaseModel):

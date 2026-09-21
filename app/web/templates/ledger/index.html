@@ -1775,7 +1775,12 @@
          @mousedown="modalMousedownOutside = false" @click.outside="if (modalMousedownOutside) showBookModal = false">
       <h2 class="text-lg font-bold mb-4">{{ _('ledger.book_modal_title') }}</h2>
       <div x-show="bookError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="bookError"></div>
-      <form @submit.prevent="submitBooking()" class="space-y-4" x-show="bookingLine">
+      <!-- Two submit-type buttons (below) share this one handler — Enter in a
+           field always triggers the FIRST one ("Buchung anlegen", per the
+           HTML spec's implicit-submission rule), never "und weiter"; a real
+           button click is told apart via the native SubmitEvent.submitter,
+           which is null/undefined for an implicit (Enter-triggered) submit. -->
+      <form @submit.prevent="submitBooking($event.submitter?.dataset.continue === 'true')" class="space-y-4" x-show="bookingLine">
         <div class="flex justify-between text-sm bg-gray-50 dark:bg-gray-900 rounded p-3">
           <span class="text-gray-500 dark:text-gray-400">
             {{ _('ledger.book_label_bank_amount') }}
@@ -1814,6 +1819,7 @@
                     </template>
                   </select>
                   <input type="number" step="0.01" x-model="line.amount" :required="!bookForm.isTransfer" placeholder="{{ _('ledger.label_amount') }}"
+                         @input.debounce.500ms="suggestPaperlessForLine(line, bookingLine && bookingLine.booking_date)"
                          class="w-32 border dark:border-gray-700 rounded px-2 py-2 text-sm font-mono bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
                   <button type="button" @click="removeBookLine(idx)" x-show="bookForm.category_lines.length > 1"
                           class="text-red-600 dark:text-red-400 hover:underline text-xs shrink-0">
@@ -1827,6 +1833,24 @@
                      for a category split line, not a transfer counter-
                      account line (bank_account_id set instead). -->
                 <div class="relative mt-1" x-show="!line.bank_account_id">
+                  <!-- Proactive suggestions (#65) — alongside the manual
+                       search below, not instead of it. Ranked server-side
+                       (amount match first, then closest date); a ✓ badge
+                       marks the ones matching this line's own amount. -->
+                  <div x-show="!line.paperless_document_id && line.paperlessSuggestions.length > 0" class="mb-1 space-y-1">
+                    <p class="text-xs text-gray-400 dark:text-gray-500" x-text="PAPERLESS_SUGGESTIONS_LABEL_L + ':'"></p>
+                    <template x-for="doc in line.paperlessSuggestions" :key="doc.id">
+                      <button type="button" @click="pickPaperlessDocForLine(line, doc)"
+                              class="flex items-center justify-between gap-2 w-full text-left px-2 py-1 text-xs rounded border dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700">
+                        <span class="truncate">
+                          <span x-text="doc.title"></span>
+                          <span class="text-gray-400 dark:text-gray-500" x-text="doc.created ? ' · ' + paperlessDocDate(doc.created) : ''"></span>
+                        </span>
+                        <span x-show="doc.amount_match" class="shrink-0 px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
+                              x-text="'✓ ' + PAPERLESS_SUGGESTION_AMOUNT_MATCH_L"></span>
+                      </button>
+                    </template>
+                  </div>
                   <input type="text" x-model="line.paperlessQuery" @input.debounce.400ms="searchPaperlessForLine(line)"
                          placeholder="{{ _('ledger.paperless_search_placeholder') }}"
                          class="w-full border dark:border-gray-700 rounded px-2 py-1.5 text-xs bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
@@ -1910,6 +1934,15 @@
             <span x-show="!bookSubmitting">{{ _('ledger.btn_submit_booking') }}</span>
             <span x-show="bookSubmitting">…</span>
           </button>
+          <!-- "und weiter" (for speed working through a batch of similar
+               staging lines): jumps straight to whatever line now sits in
+               the just-booked one's spot in the current queue instead of
+               closing the modal — see submitBooking()'s `andContinue` arg. -->
+          <button type="submit" data-continue="true" :disabled="bookSubmitting || !bookBalanced"
+                  class="px-4 py-2 border border-blue-600 text-blue-600 dark:text-blue-400 text-sm rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 disabled:opacity-50">
+            <span x-show="!bookSubmitting">{{ _('ledger.btn_submit_booking_and_continue') }}</span>
+            <span x-show="bookSubmitting">…</span>
+          </button>
         </div>
       </form>
     </div>
@@ -1955,6 +1988,7 @@
                     </optgroup>
                   </select>
                   <input type="number" step="0.01" x-model="line.amount" required placeholder="{{ _('ledger.label_amount') }}"
+                         @input.debounce.500ms="suggestPaperlessForLine(line, entryForm.entry_date)"
                          class="w-32 border dark:border-gray-700 rounded px-2 py-2 text-sm font-mono bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
                   <button type="button" @click="removeLine(idx)" x-show="entryForm.lines.length > 2"
                           class="text-red-600 dark:text-red-400 hover:underline text-xs shrink-0">
@@ -1974,6 +2008,24 @@
                      one), so it needs the same search, not just an ID
                      field. -->
                 <div class="relative mt-1" x-show="line.ref && line.ref.startsWith('category:')">
+                  <!-- Proactive suggestions (#65) — see the identical block
+                       in the Book Import Line Modal above for the full
+                       explanation; here ranked against the whole entry's
+                       own typed date instead of a staging line's booking_date. -->
+                  <div x-show="!line.paperless_document_id && line.paperlessSuggestions.length > 0" class="mb-1 space-y-1">
+                    <p class="text-xs text-gray-400 dark:text-gray-500" x-text="PAPERLESS_SUGGESTIONS_LABEL_L + ':'"></p>
+                    <template x-for="doc in line.paperlessSuggestions" :key="doc.id">
+                      <button type="button" @click="pickPaperlessDocForLine(line, doc)"
+                              class="flex items-center justify-between gap-2 w-full text-left px-2 py-1 text-xs rounded border dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700">
+                        <span class="truncate">
+                          <span x-text="doc.title"></span>
+                          <span class="text-gray-400 dark:text-gray-500" x-text="doc.created ? ' · ' + paperlessDocDate(doc.created) : ''"></span>
+                        </span>
+                        <span x-show="doc.amount_match" class="shrink-0 px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
+                              x-text="'✓ ' + PAPERLESS_SUGGESTION_AMOUNT_MATCH_L"></span>
+                      </button>
+                    </template>
+                  </div>
                   <input type="text" x-model="line.paperlessQuery" @input.debounce.400ms="searchPaperlessForLine(line)"
                          placeholder="{{ _('ledger.paperless_search_placeholder') }}"
                          class="w-full border dark:border-gray-700 rounded px-2 py-1.5 text-xs bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
@@ -2590,6 +2642,8 @@ const REVIEWED_FILTER_L = {
 const NO_REVIEW_NOTES_IN_PERIOD_L = {{ _('ledger.no_review_notes_in_period') | tojson }};
 const REVIEW_NOTES_HEADING_L = {{ _('ledger.review_notes_heading') | tojson }};
 const PAPERLESS_DUPLICATE_TMPL = {{ _('ledger.paperless_duplicate_warning') | tojson }};
+const PAPERLESS_SUGGESTIONS_LABEL_L = {{ _('ledger.paperless_suggestions_label') | tojson }};
+const PAPERLESS_SUGGESTION_AMOUNT_MATCH_L = {{ _('ledger.paperless_suggestion_amount_match') | tojson }};
 const DUPLICATE_HINT_L = {{ _('ledger.import_duplicate_hint') | tojson }};
 const TRANSFER_AMOUNT_HINT_L = {{ _('ledger.book_transfer_amount_hint') | tojson }};
 const PAGE_SIZE = 50;
@@ -3789,6 +3843,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       return {
         ref: '', amount: '',
         paperless_document_id: '', paperlessQuery: '', paperlessResults: [], paperlessDuplicateWarning: null,
+        paperlessSuggestions: [],
       };
     },
 
@@ -4276,22 +4331,61 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     // The import queue's status filter is single-select, so any action that
     // changes a line's status (book/ignore/reset) always moves it away from
     // whatever status is currently being viewed — removing it from the
-    // local array avoids a full-list refetch just to reflect that. Doesn't
-    // backfill from the next page, so a page can end up with fewer than
-    // PAGE_SIZE rows until the next explicit reload — an accepted trade-off
-    // for not re-fetching on every single action.
-    removeImportLineLocally(lineId) {
+    // local array avoids a full-list refetch just to reflect that.
+    //
+    // Real bug, 2026-09-22: this used to leave the page un-backfilled, so a
+    // treasurer working through a queue would eventually "book the page
+    // empty" — fewer and fewer rows shown until an unrelated reload
+    // happened to catch it up. Fixed by re-querying with the exact same
+    // filters right after the removal, at an offset/limit computed from
+    // what's now actually missing. No separate "how many have I removed"
+    // counter is needed: a booked/ignored/reset line no longer matches the
+    // active status filter at all, so a fresh query naturally shifts in
+    // whatever would have been the next row(s) — correct even after
+    // several removals in a row.
+    //
+    // The actual fetch is serialized through backfillImportLines() below —
+    // found necessary during this feature's own verification, not
+    // theoretical: firing several removals back to back (e.g. clicking
+    // Ignorieren repeatedly, or working through a batch with "und weiter")
+    // let two backfill fetches overlap, both computing their offset from the
+    // same not-yet-updated importLines.length and pulling in the same
+    // "next" row twice — a duplicate id that Alpine's keyed x-for then
+    // silently collapsed to one DOM node, leaving fewer rows rendered than
+    // importLines.length actually held. Chaining every backfill onto one
+    // shared promise means each one's offset math only ever runs once every
+    // earlier one has actually finished mutating the array.
+    //
+    // Returns the line now sitting at the vacated index (after backfill),
+    // if any — used by "Buchung anlegen und weiter" to jump straight to it.
+    async removeImportLineLocally(lineId) {
       const idx = this.importLines.findIndex(l => l.id === lineId);
-      if (idx !== -1) {
-        this.importLines.splice(idx, 1);
-        this.importLinesTotal = Math.max(0, this.importLinesTotal - 1);
-      }
+      if (idx === -1) return null;
+      this.importLines.splice(idx, 1);
+      this.importLinesTotal = Math.max(0, this.importLinesTotal - 1);
+      await this.backfillImportLines();
+      return this.importLines[idx] || null;
+    },
+
+    backfillImportLines() {
+      this._importLinesBackfillChain = (this._importLinesBackfillChain || Promise.resolve()).then(async () => {
+        const needed = PAGE_SIZE - this.importLines.length;
+        if (needed <= 0) return;
+        const offset = (this.importLinesPage - 1) * PAGE_SIZE + this.importLines.length;
+        try {
+          const r = await apiFetch(`/api/v1/ledger/import/lines?${this.importLinesQueryParams()}&limit=${needed}&offset=${offset}`);
+          if (r.ok) this.importLines.push(...(await r.json()));
+        } catch (e) {
+          // non-critical — worst case the page stays a bit short until the next reload
+        }
+      });
+      return this._importLinesBackfillChain;
     },
 
     async ignoreImportLine(line) {
       try {
         const r = await apiFetch(`/api/v1/ledger/import/lines/${line.id}/ignore`, { method: 'POST' });
-        if (r.ok) this.removeImportLineLocally(line.id);
+        if (r.ok) await this.removeImportLineLocally(line.id);
       } catch (e) {
         // leave the line in the list on failure
       }
@@ -4300,7 +4394,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     async resetImportLine(line) {
       try {
         const r = await apiFetch(`/api/v1/ledger/import/lines/${line.id}/reset`, { method: 'POST' });
-        if (r.ok) this.removeImportLineLocally(line.id);
+        if (r.ok) await this.removeImportLineLocally(line.id);
       } catch (e) {
         // leave the line in the list on failure
       }
@@ -4330,6 +4424,14 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       this.transferCandidates = [];
       this.bookError = null;
       this.showBookModal = true;
+      // Fetch suggestions (#65) for the pre-filled amount right away — the
+      // amount input's own @input.debounce handler never fires here since
+      // this write is programmatic, not typed. A no-op if there's no
+      // suggested_category_id (amount stays empty, suggestPaperlessForLine
+      // bails out on that). Reads back through the reactive
+      // this.bookForm... chain rather than the closed-over `firstLine`,
+      // same reasoning as the category_id fix below.
+      this.suggestPaperlessForLine(this.bookForm.category_lines[0], line.booking_date);
       // Real bug (2026-09-21): the category <select>'s <option>s (a nested
       // x-for over activeCategories) only get mounted into the DOM the
       // moment bookForm.category_lines goes from empty to populated — the
@@ -4393,6 +4495,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       return {
         category_id: '', amount: '', note: '',
         paperless_document_id: '', paperlessQuery: '', paperlessResults: [], paperlessDuplicateWarning: null,
+        paperlessSuggestions: [],
       };
     },
 
@@ -4419,26 +4522,35 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       return Math.abs(this.bookLineSum - this.bookTargetSum) < 0.005;
     },
 
-    async submitBooking() {
+    // `andContinue` (the "Buchung anlegen und weiter" button) skips closing
+    // the modal and instead reopens it straight onto whatever line now
+    // occupies the just-booked line's spot in the current (already
+    // filtered/searched) queue — so working through a batch of similar
+    // staging lines doesn't need a click back into the list between each
+    // one. Falls back to a plain close if there's no next line (end of the
+    // filtered queue, or the backfill genuinely found nothing).
+    async submitBooking(andContinue = false) {
       this.bookSubmitting = true;
       this.bookError = null;
       try {
+        const bookedLine = this.bookingLine;
         const categoryLines = this.bookForm.isTransfer
-          ? [{ bank_account_id: parseInt(this.bookForm.transferAccountId, 10), amount: -parseFloat(this.bookingLine.amount) }]
+          ? [{ bank_account_id: parseInt(this.bookForm.transferAccountId, 10), amount: -parseFloat(bookedLine.amount) }]
           : this.bookForm.category_lines.map(l => ({
               category_id: parseInt(l.category_id, 10),
               amount: parseFloat(l.amount),
               note: l.note || null,
               paperless_document_id: l.paperless_document_id || null,
             }));
-        const r = await apiFetch(`/api/v1/ledger/import/lines/${this.bookingLine.id}/book`, {
+        const matchedLineId = (this.bookForm.isTransfer && this.bookForm.matchedImportLineId)
+          ? parseInt(this.bookForm.matchedImportLineId, 10) : null;
+        const r = await apiFetch(`/api/v1/ledger/import/lines/${bookedLine.id}/book`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             description: this.bookForm.description,
             category_lines: categoryLines,
-            matched_import_line_id: (this.bookForm.isTransfer && this.bookForm.matchedImportLineId)
-              ? parseInt(this.bookForm.matchedImportLineId, 10) : null,
+            matched_import_line_id: matchedLineId,
           }),
         });
         const data = await r.json();
@@ -4446,18 +4558,20 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
           this.bookError = data.detail || 'Error booking line';
           return;
         }
-        this.showBookModal = false;
         // Booking a staging line also creates a journal entry, so the
         // Buchungen tab's (already-loaded) list would otherwise silently go
         // stale — insert/refresh locally instead of refetching both lists
         // wholesale for what is, from the server's point of view, one
         // small state change.
-        this.removeImportLineLocally(this.bookingLine.id);
-        if (this.bookForm.isTransfer && this.bookForm.matchedImportLineId) {
-          this.removeImportLineLocally(parseInt(this.bookForm.matchedImportLineId, 10));
-        }
         this.insertEntryLocally(data);
         this.markPaperlessDocsLinkedLocally(categoryLines, data.id);
+        const nextLine = await this.removeImportLineLocally(bookedLine.id);
+        if (matchedLineId) this.removeImportLineLocally(matchedLineId);
+        if (andContinue && nextLine) {
+          this.openBookModal(nextLine);
+        } else {
+          this.showBookModal = false;
+        }
       } catch (e) {
         if (e !== 'unauthenticated') this.bookError = e.message || String(e);
       } finally {
@@ -4500,9 +4614,33 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
     },
 
+    // Proactive suggestions (#65) — alongside, not instead of, the manual
+    // search above: up to 3 documents ranked by an exact amount match (if
+    // PAPERLESS_AMOUNT_CUSTOM_FIELD_ID is configured) first, then by
+    // ascending distance between the document's own date and
+    // `referenceDate` (the staging line's booking_date in the Book Import
+    // Line Modal, or the whole entry's typed date in the New Entry Modal).
+    // Re-run on every amount edit (debounced from the template) since the
+    // ranking depends on it; a no-op once a document is already picked.
+    async suggestPaperlessForLine(line, referenceDate) {
+      if (!this.config.paperless_enabled || line.paperless_document_id || !line.amount || !referenceDate) {
+        line.paperlessSuggestions = [];
+        return;
+      }
+      try {
+        const r = await apiFetch(
+          `/api/v1/ledger/paperless/suggestions?amount=${encodeURIComponent(line.amount)}&target_date=${referenceDate}&limit=3`
+        );
+        if (r.ok) line.paperlessSuggestions = await r.json();
+      } catch (e) {
+        // non-critical — the manual search box still works
+      }
+    },
+
     pickPaperlessDocForLine(line, doc) {
       line.paperless_document_id = String(doc.id);
       line.paperlessResults = [];
+      line.paperlessSuggestions = [];
       line.paperlessQuery = doc.title;
       this.checkPaperlessDuplicateForLine(line);
     },

@@ -57,6 +57,15 @@ class Settings(BaseSettings):
     # Paperless might also hold. Empty = no restriction, list every document.
     PAPERLESS_DOCUMENT_TYPE_IDS: str = ""
 
+    # Optional: the numeric ID of a Paperless "custom field" (Monetary or
+    # Float type) that carries a document's own invoice amount — set this to
+    # let the booking-line document suggestions (GET
+    # /ledger/paperless/suggestions) rank an exact amount match above
+    # everything else. Empty = amount-matching is skipped; suggestions still
+    # work, ranked by document-date proximity alone. Find the field's ID in
+    # Paperless's own admin UI (Settings → Custom fields).
+    PAPERLESS_AMOUNT_CUSTOM_FIELD_ID: str = ""
+
     # Manual FinTS bank statement live-pull (Phase 3). Empty = disabled — no
     # scheduled automation regardless, this only gates whether the UI/API
     # accept a manual pull at all. python-fints requires a registered product
