@@ -1779,8 +1779,23 @@
            field always triggers the FIRST one ("Buchung anlegen", per the
            HTML spec's implicit-submission rule), never "und weiter"; a real
            button click is told apart via the native SubmitEvent.submitter,
-           which is null/undefined for an implicit (Enter-triggered) submit. -->
-      <form @submit.prevent="submitBooking($event.submitter?.dataset.continue === 'true')" class="space-y-4" x-show="bookingLine">
+           which is null/undefined for an implicit (Enter-triggered) submit.
+           Shift+Enter maps to "und weiter" — since implicit submission has
+           no notion of a modifier picking a different button, this calls
+           form.requestSubmit(button) directly on keydown instead: passing
+           the button as the submitter makes the browser run native
+           constraint validation and set SubmitEvent.submitter exactly as if
+           that button had been clicked, so it flows through the *same*
+           $event.submitter check above with no separate submit path to keep
+           in sync. .prevent stops the browser's own plain-Enter default
+           action from ALSO firing (it doesn't care about Shift), which
+           would otherwise double-submit via the other button. The
+           bookBalanced/bookSubmitting guard mirrors the button's own
+           :disabled below — requestSubmit on a disabled button isn't
+           reliably a no-op across browsers, so it's never even attempted. -->
+      <form @submit.prevent="submitBooking($event.submitter?.dataset.continue === 'true')"
+            @keydown.shift.enter.prevent="if (bookBalanced && !bookSubmitting) $refs.continueBookBtn.form.requestSubmit($refs.continueBookBtn)"
+            class="space-y-4" x-show="bookingLine">
         <div class="flex justify-between text-sm bg-gray-50 dark:bg-gray-900 rounded p-3">
           <span class="text-gray-500 dark:text-gray-400">
             {{ _('ledger.book_label_bank_amount') }}
@@ -1937,8 +1952,12 @@
           <!-- "und weiter" (for speed working through a batch of similar
                staging lines): jumps straight to whatever line now sits in
                the just-booked one's spot in the current queue instead of
-               closing the modal — see submitBooking()'s `andContinue` arg. -->
-          <button type="submit" data-continue="true" :disabled="bookSubmitting || !bookBalanced"
+               closing the modal — see submitBooking()'s `andContinue` arg.
+               x-ref lets the form's Shift+Enter handler (above) trigger this
+               exact button via requestSubmit() instead of duplicating its
+               logic. -->
+          <button type="submit" data-continue="true" x-ref="continueBookBtn" :disabled="bookSubmitting || !bookBalanced"
+                  :title="SHIFT_ENTER_HINT_L"
                   class="px-4 py-2 border border-blue-600 text-blue-600 dark:text-blue-400 text-sm rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 disabled:opacity-50">
             <span x-show="!bookSubmitting">{{ _('ledger.btn_submit_booking_and_continue') }}</span>
             <span x-show="bookSubmitting">…</span>
@@ -2644,6 +2663,7 @@ const REVIEW_NOTES_HEADING_L = {{ _('ledger.review_notes_heading') | tojson }};
 const PAPERLESS_DUPLICATE_TMPL = {{ _('ledger.paperless_duplicate_warning') | tojson }};
 const PAPERLESS_SUGGESTIONS_LABEL_L = {{ _('ledger.paperless_suggestions_label') | tojson }};
 const PAPERLESS_SUGGESTION_AMOUNT_MATCH_L = {{ _('ledger.paperless_suggestion_amount_match') | tojson }};
+const SHIFT_ENTER_HINT_L = {{ _('ledger.shift_enter_hint') | tojson }};
 const DUPLICATE_HINT_L = {{ _('ledger.import_duplicate_hint') | tojson }};
 const TRANSFER_AMOUNT_HINT_L = {{ _('ledger.book_transfer_amount_hint') | tojson }};
 const PAGE_SIZE = 50;

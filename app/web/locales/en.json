@@ -729,5 +729,6 @@
   "ledger.reserves_empty_filtered": "No reserves match this filter.",
   "ledger.btn_submit_booking_and_continue": "Create entry and continue",
   "ledger.paperless_suggestions_label": "Suggestions",
-  "ledger.paperless_suggestion_amount_match": "Amount matches"
+  "ledger.paperless_suggestion_amount_match": "Amount matches",
+  "ledger.shift_enter_hint": "Keyboard shortcut: Shift+Enter"
 }
