@@ -678,6 +678,13 @@ class PaperlessDocumentResult(BaseModel):
     # booking line's amount exactly; always False for a plain search result,
     # which has no target amount to compare against.
     amount_match: bool = False
+    # The document's own parsed custom-field value (#66), when configured and
+    # present — shown right-aligned in the suggestion row instead of a
+    # separate match/no-match badge, so the row stays a single line. None if
+    # PAPERLESS_AMOUNT_CUSTOM_FIELD_ID isn't configured, the document has no
+    # value for it, or (always, same reason as amount_match) for a plain
+    # search result.
+    amount: Optional[Decimal] = None
 
 
 class PaperlessDocumentOverviewItem(BaseModel):

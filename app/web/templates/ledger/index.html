@@ -1796,12 +1796,25 @@
       <form @submit.prevent="submitBooking($event.submitter?.dataset.continue === 'true')"
             @keydown.shift.enter.prevent="if (bookBalanced && !bookSubmitting) $refs.continueBookBtn.form.requestSubmit($refs.continueBookBtn)"
             class="space-y-4" x-show="bookingLine">
-        <div class="flex justify-between text-sm bg-gray-50 dark:bg-gray-900 rounded p-3">
-          <span class="text-gray-500 dark:text-gray-400">
-            {{ _('ledger.book_label_bank_amount') }}
-            <span class="text-gray-400 dark:text-gray-500" x-text="bookingLine && ('(' + bookingLine.booking_date + ')')"></span>
-          </span>
-          <span class="font-mono font-semibold" x-text="bookingLine && fmtSigned(bookingLine.amount)"></span>
+        <div class="flex justify-between items-start text-sm bg-gray-50 dark:bg-gray-900 rounded p-3">
+          <div>
+            <div class="text-gray-500 dark:text-gray-400">
+              {{ _('ledger.book_label_bank_amount') }}
+              <span class="text-gray-400 dark:text-gray-500" x-text="bookingLine && ('(' + bookingLine.booking_date + ')')"></span>
+            </div>
+            <!-- Gegenkonto (counterparty), raised by the user directly — the
+                 modal previously showed only the amount/date, giving no way
+                 to tell two similar-amount staging lines apart at a glance
+                 without leaving the dialog. Both fields were already on
+                 bookingLine (LedgerImportLineResponse), just never rendered
+                 here. -->
+            <div x-show="bookingLine && (bookingLine.counterparty_name || bookingLine.counterparty_iban)" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+              <span x-text="bookingLine && bookingLine.counterparty_name"></span>
+              <span x-show="bookingLine && bookingLine.counterparty_name && bookingLine.counterparty_iban">, </span>
+              <span class="font-mono" x-text="bookingLine && bookingLine.counterparty_iban"></span>
+            </div>
+          </div>
+          <span class="font-mono font-semibold shrink-0 ml-3" x-text="bookingLine && fmtSigned(bookingLine.amount)"></span>
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.book_label_description') }}</label>
@@ -1848,22 +1861,50 @@
                      for a category split line, not a transfer counter-
                      account line (bank_account_id set instead). -->
                 <div class="relative mt-1" x-show="!line.bank_account_id">
-                  <!-- Proactive suggestions (#65) — alongside the manual
+                  <!-- Proactive suggestions (#65/#66) — alongside the manual
                        search below, not instead of it. Ranked server-side
                        (amount match first, then closest date); a ✓ badge
-                       marks the ones matching this line's own amount. -->
-                  <div x-show="!line.paperless_document_id && line.paperlessSuggestions.length > 0" class="mb-1 space-y-1">
+                       marks the ones matching this line's own amount.
+                       Real bug (#66): the block used to only exist in the
+                       DOM once at least one suggestion had actually loaded
+                       — so the debounced fetch resolving mid-typing made the
+                       search box (and everything below it) suddenly jump
+                       down, right when the treasurer might be about to click
+                       something there. Fixed by always reserving space for
+                       exactly PAPERLESS_SUGGESTION_SLOTS placeholder rows
+                       from the moment this line could show suggestions at
+                       all (config.paperless_enabled, not yet linked) —
+                       real content fills the same fixed slots in place as it
+                       arrives, so nothing below ever moves. -->
+                  <div x-show="config.paperless_enabled && !line.paperless_document_id" class="mb-1 space-y-1">
                     <p class="text-xs text-gray-400 dark:text-gray-500" x-text="PAPERLESS_SUGGESTIONS_LABEL_L + ':'"></p>
-                    <template x-for="doc in line.paperlessSuggestions" :key="doc.id">
-                      <button type="button" @click="pickPaperlessDocForLine(line, doc)"
-                              class="flex items-center justify-between gap-2 w-full text-left px-2 py-1 text-xs rounded border dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700">
-                        <span class="truncate">
-                          <span x-text="doc.title"></span>
-                          <span class="text-gray-400 dark:text-gray-500" x-text="doc.created ? ' · ' + paperlessDocDate(doc.created) : ''"></span>
-                        </span>
-                        <span x-show="doc.amount_match" class="shrink-0 px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
-                              x-text="'✓ ' + PAPERLESS_SUGGESTION_AMOUNT_MATCH_L"></span>
-                      </button>
+                    <template x-for="i in PAPERLESS_SUGGESTION_SLOTS" :key="i">
+                      <div>
+                        <button type="button" x-show="line.paperlessSuggestions[i - 1]"
+                                @click="line.paperlessSuggestions[i - 1] && pickPaperlessDocForLine(line, line.paperlessSuggestions[i - 1])"
+                                class="flex items-center justify-between gap-2 w-full text-left px-2 py-1 text-xs rounded border dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700">
+                          <span class="truncate">
+                            <span x-text="(line.paperlessSuggestions[i - 1] || {}).title || ''"></span>
+                            <span class="text-gray-400 dark:text-gray-500"
+                                  x-text="(line.paperlessSuggestions[i - 1] || {}).created ? ' · ' + paperlessDocDate(line.paperlessSuggestions[i - 1].created) : ''"></span>
+                          </span>
+                          <!-- Real bug (#66): a separate match/no-match
+                               badge here could make a matching row wider
+                               than a non-matching one, occasionally
+                               wrapping onto a second line and growing the
+                               reserved slot height — exactly the "spontaner
+                               Sprung" the user reported. Showing the
+                               document's own amount right-aligned instead
+                               (green on a match, muted otherwise) fixes
+                               that AND is more informative: every row with
+                               a known amount shows it, not just matches. -->
+                          <span x-show="(line.paperlessSuggestions[i - 1] || {}).amount != null" class="shrink-0 font-mono"
+                                :class="(line.paperlessSuggestions[i - 1] || {}).amount_match ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'"
+                                x-text="fmt((line.paperlessSuggestions[i - 1] || {}).amount)"></span>
+                        </button>
+                        <div x-show="!line.paperlessSuggestions[i - 1]"
+                             class="w-full px-2 py-1 text-xs rounded border border-dashed border-gray-200 dark:border-gray-700">&nbsp;</div>
+                      </div>
                     </template>
                   </div>
                   <input type="text" x-model="line.paperlessQuery" @input.debounce.400ms="searchPaperlessForLine(line)"
@@ -2027,22 +2068,40 @@
                      one), so it needs the same search, not just an ID
                      field. -->
                 <div class="relative mt-1" x-show="line.ref && line.ref.startsWith('category:')">
-                  <!-- Proactive suggestions (#65) — see the identical block
-                       in the Book Import Line Modal above for the full
-                       explanation; here ranked against the whole entry's
-                       own typed date instead of a staging line's booking_date. -->
-                  <div x-show="!line.paperless_document_id && line.paperlessSuggestions.length > 0" class="mb-1 space-y-1">
+                  <!-- Proactive suggestions (#65/#66) — see the identical,
+                       fixed-slot block in the Book Import Line Modal above
+                       for the full explanation; here ranked against the
+                       whole entry's own typed date instead of a staging
+                       line's booking_date. -->
+                  <div x-show="config.paperless_enabled && !line.paperless_document_id" class="mb-1 space-y-1">
                     <p class="text-xs text-gray-400 dark:text-gray-500" x-text="PAPERLESS_SUGGESTIONS_LABEL_L + ':'"></p>
-                    <template x-for="doc in line.paperlessSuggestions" :key="doc.id">
-                      <button type="button" @click="pickPaperlessDocForLine(line, doc)"
-                              class="flex items-center justify-between gap-2 w-full text-left px-2 py-1 text-xs rounded border dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700">
-                        <span class="truncate">
-                          <span x-text="doc.title"></span>
-                          <span class="text-gray-400 dark:text-gray-500" x-text="doc.created ? ' · ' + paperlessDocDate(doc.created) : ''"></span>
-                        </span>
-                        <span x-show="doc.amount_match" class="shrink-0 px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
-                              x-text="'✓ ' + PAPERLESS_SUGGESTION_AMOUNT_MATCH_L"></span>
-                      </button>
+                    <template x-for="i in PAPERLESS_SUGGESTION_SLOTS" :key="i">
+                      <div>
+                        <button type="button" x-show="line.paperlessSuggestions[i - 1]"
+                                @click="line.paperlessSuggestions[i - 1] && pickPaperlessDocForLine(line, line.paperlessSuggestions[i - 1])"
+                                class="flex items-center justify-between gap-2 w-full text-left px-2 py-1 text-xs rounded border dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700">
+                          <span class="truncate">
+                            <span x-text="(line.paperlessSuggestions[i - 1] || {}).title || ''"></span>
+                            <span class="text-gray-400 dark:text-gray-500"
+                                  x-text="(line.paperlessSuggestions[i - 1] || {}).created ? ' · ' + paperlessDocDate(line.paperlessSuggestions[i - 1].created) : ''"></span>
+                          </span>
+                          <!-- Real bug (#66): a separate match/no-match
+                               badge here could make a matching row wider
+                               than a non-matching one, occasionally
+                               wrapping onto a second line and growing the
+                               reserved slot height — exactly the "spontaner
+                               Sprung" the user reported. Showing the
+                               document's own amount right-aligned instead
+                               (green on a match, muted otherwise) fixes
+                               that AND is more informative: every row with
+                               a known amount shows it, not just matches. -->
+                          <span x-show="(line.paperlessSuggestions[i - 1] || {}).amount != null" class="shrink-0 font-mono"
+                                :class="(line.paperlessSuggestions[i - 1] || {}).amount_match ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'"
+                                x-text="fmt((line.paperlessSuggestions[i - 1] || {}).amount)"></span>
+                        </button>
+                        <div x-show="!line.paperlessSuggestions[i - 1]"
+                             class="w-full px-2 py-1 text-xs rounded border border-dashed border-gray-200 dark:border-gray-700">&nbsp;</div>
+                      </div>
                     </template>
                   </div>
                   <input type="text" x-model="line.paperlessQuery" @input.debounce.400ms="searchPaperlessForLine(line)"
@@ -2662,8 +2721,10 @@ const NO_REVIEW_NOTES_IN_PERIOD_L = {{ _('ledger.no_review_notes_in_period') | t
 const REVIEW_NOTES_HEADING_L = {{ _('ledger.review_notes_heading') | tojson }};
 const PAPERLESS_DUPLICATE_TMPL = {{ _('ledger.paperless_duplicate_warning') | tojson }};
 const PAPERLESS_SUGGESTIONS_LABEL_L = {{ _('ledger.paperless_suggestions_label') | tojson }};
-const PAPERLESS_SUGGESTION_AMOUNT_MATCH_L = {{ _('ledger.paperless_suggestion_amount_match') | tojson }};
 const SHIFT_ENTER_HINT_L = {{ _('ledger.shift_enter_hint') | tojson }};
+// Fixed slot count for the Paperless suggestion placeholders (#66) — must
+// match the `limit` GET /ledger/paperless/suggestions is called with below.
+const PAPERLESS_SUGGESTION_SLOTS = 3;
 const DUPLICATE_HINT_L = {{ _('ledger.import_duplicate_hint') | tojson }};
 const TRANSFER_AMOUNT_HINT_L = {{ _('ledger.book_transfer_amount_hint') | tojson }};
 const PAGE_SIZE = 50;
@@ -4649,7 +4710,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
       try {
         const r = await apiFetch(
-          `/api/v1/ledger/paperless/suggestions?amount=${encodeURIComponent(line.amount)}&target_date=${referenceDate}&limit=3`
+          `/api/v1/ledger/paperless/suggestions?amount=${encodeURIComponent(line.amount)}&target_date=${referenceDate}&limit=${PAPERLESS_SUGGESTION_SLOTS}`
         );
         if (r.ok) line.paperlessSuggestions = await r.json();
       } catch (e) {

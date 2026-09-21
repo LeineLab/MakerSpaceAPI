@@ -208,14 +208,14 @@ def suggest_documents(amount: Decimal, target_date: date, limit: int = 3) -> lis
     for doc in data.get("results", []):
         doc_date = _document_date(doc)
         distance = abs((doc_date - target_date).days) if doc_date else 10**9
-        amount_match = False
+        parsed_amount = None
         if field_id is not None:
             for cf in doc.get("custom_fields") or []:
                 if cf.get("field") == field_id:
-                    parsed = _parse_amount_value(cf.get("value"))
-                    amount_match = parsed is not None and parsed == target_amount
+                    parsed_amount = _parse_amount_value(cf.get("value"))
                     break
-        ranked.append((not amount_match, distance, doc))
+        amount_match = parsed_amount is not None and parsed_amount == target_amount
+        ranked.append((not amount_match, distance, doc, parsed_amount, amount_match))
 
     ranked.sort(key=lambda t: (t[0], t[1]))
     return [
@@ -223,7 +223,11 @@ def suggest_documents(amount: Decimal, target_date: date, limit: int = 3) -> lis
             "id": doc["id"],
             "title": doc.get("title") or f"Dokument {doc['id']}",
             "created": doc.get("created"),
-            "amount_match": not is_no_match,
+            "amount_match": amount_match,
+            # The document's own parsed custom-field value (#66) — shown
+            # instead of a separate match/no-match badge so the row stays
+            # one line and doesn't grow the reserved suggestion slots.
+            "amount": parsed_amount,
         }
-        for is_no_match, _, doc in ranked[:limit]
+        for _, _, doc, parsed_amount, amount_match in ranked[:limit]
     ]

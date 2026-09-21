@@ -903,10 +903,11 @@ def test_paperless_search_when_configured(auditor_client, monkeypatch):
         resp = auditor_client.get("/api/v1/ledger/paperless/search?q=baumarkt")
 
     assert resp.status_code == 200
-    # amount_match (#65) is always False for a plain search result — there's
-    # no target amount to compare against here, only GET .../suggestions sets it.
+    # amount_match/amount (#65/#66) are always False/None for a plain search
+    # result — there's no target amount to compare against here, only
+    # GET .../suggestions sets them.
     assert resp.json() == [
-        {"id": 42, "title": "Rechnung Baumarkt", "created": "2026-03-01", "amount_match": False}
+        {"id": 42, "title": "Rechnung Baumarkt", "created": "2026-03-01", "amount_match": False, "amount": None}
     ]
 
 
@@ -1171,7 +1172,9 @@ def test_paperless_suggestions_amount_match_ranked_above_closer_date(auditor_cli
     data = resp.json()
     assert [d["id"] for d in data] == [2, 1]
     assert data[0]["amount_match"] is True
+    assert data[0]["amount"] == "50.00"
     assert data[1]["amount_match"] is False
+    assert data[1]["amount"] == "99.99"
 
 
 def test_paperless_suggestions_respects_limit(auditor_client, monkeypatch):
