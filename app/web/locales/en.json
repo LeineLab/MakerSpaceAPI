@@ -729,5 +729,7 @@
   "ledger.reserves_empty_filtered": "No reserves match this filter.",
   "ledger.btn_submit_booking_and_continue": "Create entry and continue",
   "ledger.paperless_suggestions_label": "Suggestions",
-  "ledger.shift_enter_hint": "Keyboard shortcut: Shift+Enter"
+  "ledger.shift_enter_hint": "Keyboard shortcut: Shift+Enter",
+  "ledger.btn_skip_line": "Skip",
+  "ledger.skip_line_hint": "Don't book — move on to the next line in the queue"
 }

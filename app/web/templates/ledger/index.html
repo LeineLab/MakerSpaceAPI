@@ -1982,9 +1982,20 @@
                 x-text="fmt(bookLineSum) + ' / ' + fmt(bookTargetSum)"></span>
         </div>
 
-        <div class="flex justify-end gap-3 pt-2">
+        <div class="flex flex-wrap justify-end gap-3 pt-2">
           <button type="button" @click="showBookModal = false"
                   class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.cancel') }}</button>
+          <!-- Skip this line (without booking or ignoring it) and jump to
+               whatever comes next in the current queue — for a receipt
+               that isn't ready to book yet, so it doesn't force closing
+               the dialog and re-finding it in the list. Unlike Cancel,
+               stays inside the booking flow; unlike Ignore, leaves the
+               line's status untouched. -->
+          <button type="button" @click="skipBookingLine()" :disabled="bookSubmitting"
+                  :title="SKIP_LINE_HINT_L"
+                  class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50">
+            {{ _('ledger.btn_skip_line') }}
+          </button>
           <button type="submit" :disabled="bookSubmitting || !bookBalanced"
                   class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
             <span x-show="!bookSubmitting">{{ _('ledger.btn_submit_booking') }}</span>
@@ -2722,6 +2733,7 @@ const REVIEW_NOTES_HEADING_L = {{ _('ledger.review_notes_heading') | tojson }};
 const PAPERLESS_DUPLICATE_TMPL = {{ _('ledger.paperless_duplicate_warning') | tojson }};
 const PAPERLESS_SUGGESTIONS_LABEL_L = {{ _('ledger.paperless_suggestions_label') | tojson }};
 const SHIFT_ENTER_HINT_L = {{ _('ledger.shift_enter_hint') | tojson }};
+const SKIP_LINE_HINT_L = {{ _('ledger.skip_line_hint') | tojson }};
 // Fixed slot count for the Paperless suggestion placeholders (#66) — must
 // match the `limit` GET /ledger/paperless/suggestions is called with below.
 const PAPERLESS_SUGGESTION_SLOTS = 3;
@@ -4610,6 +4622,24 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     // staging lines doesn't need a click back into the list between each
     // one. Falls back to a plain close if there's no next line (end of the
     // filtered queue, or the backfill genuinely found nothing).
+    // "Überspringen" — move on to the next line in the current (already
+    // filtered/searched) queue without booking OR ignoring this one, for a
+    // receipt that isn't ready to be booked yet. Unlike submitBooking's
+    // `andContinue`, nothing is removed from `importLines` here (the
+    // current line keeps its `status=new` untouched), so there's no
+    // backfill to await — just look at whatever already sits right after
+    // it in the currently-loaded array. Falls back to a plain close if
+    // this was the last loaded line (end of the current page/queue).
+    skipBookingLine() {
+      const idx = this.importLines.findIndex(l => l.id === this.bookingLine.id);
+      const nextLine = idx !== -1 ? this.importLines[idx + 1] : null;
+      if (nextLine) {
+        this.openBookModal(nextLine);
+      } else {
+        this.showBookModal = false;
+      }
+    },
+
     async submitBooking(andContinue = false) {
       this.bookSubmitting = true;
       this.bookError = null;

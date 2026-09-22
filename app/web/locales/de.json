@@ -729,5 +729,7 @@
   "ledger.reserves_empty_filtered": "Keine Rücklagen für diesen Filter.",
   "ledger.btn_submit_booking_and_continue": "Buchung anlegen und weiter",
   "ledger.paperless_suggestions_label": "Vorschläge",
-  "ledger.shift_enter_hint": "Tastenkürzel: Shift+Enter"
+  "ledger.shift_enter_hint": "Tastenkürzel: Shift+Enter",
+  "ledger.btn_skip_line": "Überspringen",
+  "ledger.skip_line_hint": "Nicht buchen, zur nächsten Position in der Warteschlange springen"
 }
