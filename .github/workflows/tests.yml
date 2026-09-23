@@ -15,7 +15,7 @@ jobs:
           MARIADB_ROOT_PASSWORD: root
           MARIADB_DATABASE: makerspaceapi_ci
         ports:
-          - 3306:3306
+          - 3306/tcp
         options: >-
           --health-cmd="mysqladmin ping -uroot -proot"
           --health-interval=10s
@@ -66,7 +66,7 @@ jobs:
 
       - name: Migration round-trip against MariaDB (upgrade / downgrade / upgrade)
         env:
-          DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/makerspaceapi_ci
+          DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:${{ job.services.mariadb.ports['3306'] }}/makerspaceapi_ci
         run: |
           alembic upgrade head
           alembic downgrade base
