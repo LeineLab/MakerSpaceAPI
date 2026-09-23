@@ -52,12 +52,29 @@ jobs:
       # of Gitea 1.26, see go-gitea/gitea#23642). The reliable fix there is a
       # Personal Access Token (packages: read+write) stored as the PACKAGES_USER
       # / PACKAGES_TOKEN repo (or org) Action secrets — see README for setup.
-      - name: Log in to registry
+      #
+      # Two separate steps, not one step with a `cond && secrets.A || secrets.B`
+      # expression: act-based runners (Gitea Actions included) mask/substitute
+      # secrets outside the normal expression evaluator, so a secret combined
+      # into a larger &&/|| expression can silently resolve to empty instead of
+      # its value — that's what happened here (both username and password came
+      # back empty). Referencing each secret directly and alone, gated by a
+      # plain (secret-free) `if:`, is the pattern that reliably works cross-platform.
+      - name: Log in to ghcr.io
+        if: github.server_url == 'https://github.com'
         uses: docker/login-action@v3
         with:
           registry: ${{ steps.registry.outputs.host }}
-          username: ${{ github.server_url == 'https://github.com' && github.actor || secrets.PACKAGES_USER }}
-          password: ${{ github.server_url == 'https://github.com' && secrets.GITHUB_TOKEN || secrets.PACKAGES_TOKEN }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Gitea registry
+        if: github.server_url != 'https://github.com'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ steps.registry.outputs.host }}
+          username: ${{ secrets.PACKAGES_USER }}
+          password: ${{ secrets.PACKAGES_TOKEN }}
 
       - name: Extract metadata
         id: meta

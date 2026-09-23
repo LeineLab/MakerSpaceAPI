@@ -64,9 +64,30 @@ jobs:
           done
           kill %1
 
-      - name: Migration round-trip against MariaDB (upgrade / downgrade / upgrade)
+      # GitHub-hosted runners execute steps directly on the VM (no job container),
+      # so the mariadb service is only reachable via its published host port —
+      # job.services.mariadb.ports['3306'] looks that dynamically-assigned port up.
+      # Gitea Actions' act-based runner always executes the job inside its own
+      # container, on the same per-job Docker network as its service containers —
+      # there the service is reachable by its label as a hostname on its native
+      # container port (mariadb:3306) directly; the ports[] context isn't
+      # populated there (it came back empty when tried), so this doesn't rely on it.
+      # Two separate steps rather than one with a `cond && a || b` expression:
+      # see the Docker workflow's login step for why that pattern is unreliable
+      # here with act-based runners.
+      - name: Migration round-trip against MariaDB (upgrade / downgrade / upgrade) [GitHub]
+        if: github.server_url == 'https://github.com'
         env:
           DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:${{ job.services.mariadb.ports['3306'] }}/makerspaceapi_ci
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
+
+      - name: Migration round-trip against MariaDB (upgrade / downgrade / upgrade) [Gitea]
+        if: github.server_url != 'https://github.com'
+        env:
+          DATABASE_URL: mysql+pymysql://root:root@mariadb:3306/makerspaceapi_ci
         run: |
           alembic upgrade head
           alembic downgrade base
