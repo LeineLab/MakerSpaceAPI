@@ -2827,9 +2827,16 @@ def reset_import_line(
 @router.get("/paperless/search", response_model=list[PaperlessDocumentResult])
 def search_paperless(
     q: str = Query(..., min_length=1),
+    target_date: Optional[date] = Query(default=None),
     _viewer: dict = Depends(require_ledger_viewer_user),
 ):
-    return paperless.search_documents(q)
+    """`target_date` (#68), when given, re-sorts the matching documents by
+    ascending distance to it (the reference line's own booking/entry date)
+    instead of leaving Paperless's own relevance ordering as-is — several
+    textually-similar hits (e.g. every monthly "Contabo Server" invoice) are
+    otherwise indistinguishable by relevance alone, burying the one actually
+    relevant to this booking."""
+    return paperless.search_documents(q, target_date=target_date)
 
 
 @router.get("/paperless/suggestions", response_model=list[PaperlessDocumentResult])

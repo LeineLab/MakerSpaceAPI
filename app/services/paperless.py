@@ -21,8 +21,17 @@ def is_configured() -> bool:
     return bool(settings.PAPERLESS_URL and settings.PAPERLESS_API_TOKEN)
 
 
-def search_documents(query: str, limit: int = 10) -> list[dict]:
+def search_documents(query: str, limit: int = 10, target_date: date | None = None) -> list[dict]:
     """Search Paperless for documents matching `query`.
+
+    When `target_date` is given (#68), fetches a wider candidate pool than
+    `limit` and re-sorts it by ascending distance to `target_date` before
+    truncating — Paperless's own relevance ordering treats every textual
+    match as roughly equal (e.g. "Contabo Server" appears on every monthly
+    invoice), so without this the one actually relevant to the booking being
+    searched for can easily sit below several other, equally-relevant-by-text
+    hits. Without `target_date`, behaves exactly as before (Paperless's own
+    ordering, `limit` results fetched directly).
 
     Returns an empty list if Paperless isn't configured or is unreachable —
     a down/misconfigured Paperless must never block booking a ledger entry.
@@ -30,11 +39,12 @@ def search_documents(query: str, limit: int = 10) -> list[dict]:
     if not is_configured():
         return []
 
+    fetch_size = max(limit * 5, 50) if target_date is not None else limit
     url = settings.PAPERLESS_URL.rstrip("/") + "/api/documents/"
     try:
         response = httpx.get(
             url,
-            params={"query": query, "page_size": limit},
+            params={"query": query, "page_size": fetch_size},
             headers={
                 "Authorization": f"Token {settings.PAPERLESS_API_TOKEN}",
                 "Accept": "application/json",
@@ -46,7 +56,7 @@ def search_documents(query: str, limit: int = 10) -> list[dict]:
     except (httpx.HTTPError, ValueError):
         return []
 
-    return [
+    results = [
         {
             "id": doc["id"],
             "title": doc.get("title") or f"Dokument {doc['id']}",
@@ -54,6 +64,10 @@ def search_documents(query: str, limit: int = 10) -> list[dict]:
         }
         for doc in data.get("results", [])
     ]
+    if target_date is not None:
+        results.sort(key=lambda d: _date_distance(d, target_date))
+        results = results[:limit]
+    return results
 
 
 def _document_type_ids() -> list[str]:
@@ -156,6 +170,36 @@ def _document_date(doc: dict) -> date | None:
         return None
 
 
+def _date_distance(doc: dict, target_date: date) -> int:
+    """Absolute day distance between a (already-simplified) doc dict's own
+    date and `target_date` — a document with no parseable date sorts last,
+    never wins a distance-based tiebreak."""
+    doc_date = _document_date(doc)
+    return abs((doc_date - target_date).days) if doc_date else 10**9
+
+
+def _fetch_documents(params: dict) -> list[dict]:
+    """Raw (un-simplified) Paperless document dicts for one filtered query —
+    shared by suggest_documents()'s several candidate batches below. Same
+    fail-open convention as every other function here: an unreachable or
+    misconfigured Paperless yields an empty batch, not an exception."""
+    url = settings.PAPERLESS_URL.rstrip("/") + "/api/documents/"
+    try:
+        response = httpx.get(
+            url,
+            params=params,
+            headers={
+                "Authorization": f"Token {settings.PAPERLESS_API_TOKEN}",
+                "Accept": "application/json",
+            },
+            timeout=_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        return response.json().get("results", [])
+    except (httpx.HTTPError, ValueError):
+        return []
+
+
 def suggest_documents(amount: Decimal, target_date: date, limit: int = 3) -> list[dict]:
     """Suggest up to `limit` Paperless documents likely to be the receipt for
     one booking line (Key Design Decision #65), ranked by:
@@ -169,45 +213,69 @@ def suggest_documents(amount: Decimal, target_date: date, limit: int = 3) -> lis
          matches, and the only signal used at all when no amount field is
          configured.
 
-    Fetches a bounded, NOT date-windowed candidate set (unlike a hypothetical
-    "documents near this date" query) specifically so a genuine amount match
-    can't be missed just because the invoice was raised long before it was
-    finally paid — the precedence above only matters once every candidate
-    already in hand has been ranked.
+    Candidate fetch (#68 — was previously a single "newest 200 documents
+    overall" query, which silently excluded any document older than however
+    many had been added to Paperless since; a still-recent booking whose
+    receipt was uploaded around the time of the transaction routinely fell
+    outside that window once the Verein's Paperless instance held more than
+    a couple hundred documents, so a same-day exact-date match could be
+    missing from the candidates entirely while unrelated, merely-more-recent
+    documents got suggested instead): two date-windowed queries around
+    `target_date` — documents at-or-before it (newest-first, so the
+    on-target document is always the very first row) and documents strictly
+    after it (oldest-first) — so a document dated at or near `target_date`
+    is always a candidate regardless of the total document count. When an
+    amount field is configured, a third, NOT date-windowed "newest overall"
+    batch is also fetched and merged in, preserving (on a best-effort basis
+    — still bounded, not exhaustive) the "amount always wins, regardless of
+    date distance" precedence above for a genuine match raised well outside
+    the two date windows.
 
     Returns `[]` if Paperless isn't configured, unreachable, or `limit <= 0`
     — same fail-open convention as search_documents()/list_documents()."""
     if not is_configured() or limit <= 0:
         return []
 
-    url = settings.PAPERLESS_URL.rstrip("/") + "/api/documents/"
-    params: dict = {"page_size": _SUGGESTION_FETCH_LIMIT, "ordering": "-created"}
+    base_params: dict = {}
     type_ids = _document_type_ids()
     if type_ids:
-        params["document_type__id__in"] = ",".join(type_ids)
-    try:
-        response = httpx.get(
-            url,
-            params=params,
-            headers={
-                "Authorization": f"Token {settings.PAPERLESS_API_TOKEN}",
-                "Accept": "application/json",
-            },
-            timeout=_TIMEOUT_SECONDS,
-        )
-        response.raise_for_status()
-        data = response.json()
-    except (httpx.HTTPError, ValueError):
-        return []
+        base_params["document_type__id__in"] = ",".join(type_ids)
 
+    window = _SUGGESTION_FETCH_LIMIT // 2
     field_id_raw = settings.PAPERLESS_AMOUNT_CUSTOM_FIELD_ID.strip()
     field_id = int(field_id_raw) if field_id_raw.isdigit() else None
+
+    batches = [
+        _fetch_documents({
+            **base_params,
+            "created__date__lte": target_date.isoformat(),
+            "ordering": "-created",
+            "page_size": window,
+        }),
+        _fetch_documents({
+            **base_params,
+            "created__date__gt": target_date.isoformat(),
+            "ordering": "created",
+            "page_size": window,
+        }),
+    ]
+    if field_id is not None:
+        batches.append(_fetch_documents({**base_params, "ordering": "-created", "page_size": window}))
+
+    seen_ids: set = set()
+    candidates: list[dict] = []
+    for batch in batches:
+        for doc in batch:
+            if doc["id"] in seen_ids:
+                continue
+            seen_ids.add(doc["id"])
+            candidates.append(doc)
+
     target_amount = abs(amount)
 
     ranked = []
-    for doc in data.get("results", []):
-        doc_date = _document_date(doc)
-        distance = abs((doc_date - target_date).days) if doc_date else 10**9
+    for doc in candidates:
+        distance = _date_distance(doc, target_date)
         parsed_amount = None
         if field_id is not None:
             for cf in doc.get("custom_fields") or []:

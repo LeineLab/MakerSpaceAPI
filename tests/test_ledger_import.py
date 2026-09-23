@@ -924,6 +924,61 @@ def test_paperless_search_unreachable_returns_empty(auditor_client, monkeypatch)
     assert resp.json() == []
 
 
+def test_paperless_search_sorts_by_target_date_when_given(auditor_client, monkeypatch):
+    """Key Design Decision #68 — several textually-similar matches (e.g. the
+    same "Contabo Server" invoice title recurring every month) are otherwise
+    indistinguishable by Paperless's own relevance ordering; `target_date`
+    re-sorts them by date proximity so the one actually relevant to the
+    booking being searched for surfaces first."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "PAPERLESS_URL", "https://paperless.example.com")
+    monkeypatch.setattr(settings, "PAPERLESS_API_TOKEN", "test-token")
+
+    fake_response = {
+        "results": [
+            {"id": 1, "title": "Contabo Server", "created": "2024-07-26"},
+            {"id": 2, "title": "Contabo Server", "created": "2024-06-26"},
+            {"id": 3, "title": "Contabo Server", "created": "2024-05-27"},
+            {"id": 4, "title": "Contabo Server", "created": "2025-12-01"},
+        ],
+    }
+    with patch("app.services.paperless.httpx.get") as mock_get:
+        mock_get.return_value = httpx.Response(
+            200, json=fake_response, request=httpx.Request("GET", "https://paperless.example.com/api/documents/"),
+        )
+        resp = auditor_client.get("/api/v1/ledger/paperless/search?q=contabo&target_date=2024-05-27")
+
+    assert resp.status_code == 200
+    ids = [d["id"] for d in resp.json()]
+    # id 3 is dated exactly target_date — must sort first regardless of
+    # whatever (here: unrelated) order Paperless itself returned them in.
+    assert ids[0] == 3
+    assert ids == sorted(ids, key=lambda i: {1: 60, 2: 30, 3: 0, 4: 554}[i])
+
+
+def test_paperless_search_without_target_date_keeps_paperless_ordering(auditor_client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "PAPERLESS_URL", "https://paperless.example.com")
+    monkeypatch.setattr(settings, "PAPERLESS_API_TOKEN", "test-token")
+
+    fake_response = {
+        "results": [
+            {"id": 2, "title": "B", "created": "2024-01-01"},
+            {"id": 1, "title": "A", "created": "2024-06-01"},
+        ],
+    }
+    with patch("app.services.paperless.httpx.get") as mock_get:
+        mock_get.return_value = httpx.Response(
+            200, json=fake_response, request=httpx.Request("GET", "https://paperless.example.com/api/documents/"),
+        )
+        resp = auditor_client.get("/api/v1/ledger/paperless/search?q=x")
+
+    # No target_date given — Paperless's own ordering is left untouched.
+    assert [d["id"] for d in resp.json()] == [2, 1]
+
+
 # ---------------------------------------------------------------------------
 # Paperless Belege overview (GET /ledger/paperless/documents)
 # ---------------------------------------------------------------------------
@@ -1209,3 +1264,46 @@ def test_paperless_suggestions_unreachable_returns_empty(auditor_client, monkeyp
 
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+def test_paperless_suggestions_finds_document_missed_by_newest_only_fetch(auditor_client, monkeypatch):
+    """Real bug found in production, Key Design Decision #68: the original
+    implementation fetched only the newest N documents overall, which
+    silently excluded any document older than however many had been added
+    to Paperless since — a same-day exact-date match for a real booking was
+    missing from the suggestions entirely (unrelated, more-recent documents
+    were suggested instead), even though the very same document turned up
+    immediately via the manual search box. The date-windowed fetch must find
+    it regardless of how many newer documents exist."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "PAPERLESS_URL", "https://paperless.example.com")
+    monkeypatch.setattr(settings, "PAPERLESS_API_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "PAPERLESS_AMOUNT_CUSTOM_FIELD_ID", "")
+
+    # The correct receipt, dated exactly on the booking date.
+    on_target = {"id": 175, "title": "Contabo Server", "created": "2024-05-27"}
+    # Unrelated, much more recent documents — what a plain "newest overall"
+    # query would return instead once enough of these exist.
+    noise = [{"id": i, "title": f"Anderer Beleg {i}", "created": "2026-05-0" + str(i)} for i in range(1, 4)]
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        if params.get("created__date__lte") == "2024-05-27":
+            results = [on_target]
+        elif "created__date__gt" in params:
+            results = []
+        else:
+            # Only reached if the (wrong, pre-fix) "newest overall" query is
+            # issued instead of/in addition to the date-windowed ones.
+            results = noise
+        return httpx.Response(
+            200, json={"results": results},
+            request=httpx.Request("GET", "https://paperless.example.com/api/documents/"),
+        )
+
+    with patch("app.services.paperless.httpx.get", side_effect=fake_get):
+        resp = auditor_client.get("/api/v1/ledger/paperless/suggestions?amount=10.49&target_date=2024-05-27")
+
+    assert resp.status_code == 200
+    ids = [d["id"] for d in resp.json()]
+    assert ids[0] == 175

@@ -1907,7 +1907,7 @@
                       </div>
                     </template>
                   </div>
-                  <input type="text" x-model="line.paperlessQuery" @input.debounce.400ms="searchPaperlessForLine(line)"
+                  <input type="text" x-model="line.paperlessQuery" @input.debounce.400ms="searchPaperlessForLine(line, bookingLine && bookingLine.booking_date)"
                          placeholder="{{ _('ledger.paperless_search_placeholder') }}"
                          class="w-full border dark:border-gray-700 rounded px-2 py-1.5 text-xs bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
                   <template x-if="line.paperlessResults.length > 0">
@@ -2115,7 +2115,7 @@
                       </div>
                     </template>
                   </div>
-                  <input type="text" x-model="line.paperlessQuery" @input.debounce.400ms="searchPaperlessForLine(line)"
+                  <input type="text" x-model="line.paperlessQuery" @input.debounce.400ms="searchPaperlessForLine(line, entryForm.entry_date)"
                          placeholder="{{ _('ledger.paperless_search_placeholder') }}"
                          class="w-full border dark:border-gray-700 rounded px-2 py-1.5 text-xs bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
                   <template x-if="line.paperlessResults.length > 0">
@@ -4711,14 +4711,19 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     // the line object itself (bookForm.category_lines item, or an
     // entryForm.lines item for the plain-text duplicate check) and mutates
     // its own paperlessQuery/paperlessResults/paperless_document_id/
-    // paperlessDuplicateWarning fields.
-    async searchPaperlessForLine(line) {
+    // paperlessDuplicateWarning fields. `referenceDate` (#68, same as
+    // suggestPaperlessForLine's) has the backend re-sort the matches by
+    // date proximity instead of leaving Paperless's own relevance ordering
+    // as-is — several textually-similar invoices (e.g. every month's
+    // "Contabo Server") are otherwise indistinguishable by relevance alone.
+    async searchPaperlessForLine(line, referenceDate) {
       if (!line.paperlessQuery) {
         line.paperlessResults = [];
         return;
       }
       try {
-        const r = await apiFetch(`/api/v1/ledger/paperless/search?q=${encodeURIComponent(line.paperlessQuery)}`);
+        const dateParam = referenceDate ? `&target_date=${referenceDate}` : '';
+        const r = await apiFetch(`/api/v1/ledger/paperless/search?q=${encodeURIComponent(line.paperlessQuery)}${dateParam}`);
         if (r.ok) line.paperlessResults = await r.json();
       } catch (e) {
         // leave previous results on failure
