@@ -51,30 +51,11 @@ jobs:
       # Actions-token permissions there don't cover packages yet (still open as
       # of Gitea 1.26, see go-gitea/gitea#23642). The reliable fix there is a
       # Personal Access Token (packages: read+write) stored as the PACKAGES_USER
-      # / PACKAGES_TOKEN repo (or org) Action secrets — see README for setup.
-      #
-      # Two separate steps, not one step with a `cond && secrets.A || secrets.B`
-      # expression: act-based runners (Gitea Actions included) mask/substitute
-      # secrets outside the normal expression evaluator, so a secret combined
-      # into a larger &&/|| expression can silently resolve to empty instead of
-      # its value — that's what happened here (both username and password came
-      # back empty). Referencing each secret directly and alone, gated by a
-      # plain (secret-free) `if:`, is the pattern that reliably works cross-platform.
-      - name: Log in to ghcr.io
-        if: github.server_url == 'https://github.com'
         uses: docker/login-action@v3
         with:
           registry: ${{ steps.registry.outputs.host }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Log in to Gitea registry
-        if: github.server_url != 'https://github.com'
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ steps.registry.outputs.host }}
-          username: ${{ secrets.PACKAGES_USER }}
-          password: ${{ secrets.PACKAGES_TOKEN }}
+          username: ${{ github.server_url == 'https://github.com' && github.actor || secrets.PACKAGES_USER }}
+          password: ${{ github.server_url == 'https://github.com' && secrets.GITHUB_TOKEN || secrets.PACKAGES_TOKEN }}
 
       - name: Extract metadata
         id: meta
@@ -91,6 +72,12 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
+      # type=gha (GitHub's own Actions-cache service) isn't reliably usable here:
+      # it times out on Gitea's cache-proxy implementation for this build's cache
+      # blobs (confirmed: "dial tcp ...: i/o timeout" exporting to it). type=registry
+      # instead stores the cache as an ordinary tag in whichever registry this run
+      # is already pushing to (ghcr.io or Gitea's) — no separate cache service
+      # involved, works identically on both platforms, no branching needed.
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -99,5 +86,5 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=registry,ref=${{ steps.registry.outputs.image }}:buildcache
+          cache-to: type=registry,ref=${{ steps.registry.outputs.image }}:buildcache,mode=max
