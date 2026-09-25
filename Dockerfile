@@ -1,7 +1,7 @@
 # ---- Stage 1: build Tailwind CSS ----
 # Compiled fresh at image-build time (CI), so the committed tailwind.css never
 # needs to be up to date and can even be dropped from version control.
-FROM node:20-slim AS css
+FROM node:24-slim AS css
 
 WORKDIR /build
 
