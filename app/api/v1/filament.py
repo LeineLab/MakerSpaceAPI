@@ -19,6 +19,8 @@ from app.schemas.filament import (
     FilamentRollUpdate,
     FilamentScanRequest,
     FilamentScanResponse,
+    FilamentStatusRequest,
+    FilamentStatusResponse,
     FilamentStockSummary,
     FilamentTypeCreate,
     FilamentTypeResponse,
@@ -402,6 +404,25 @@ def scan_tag(
     db.commit()
     db.refresh(roll)
     return FilamentScanResponse(identify_required=False, action="checked_in", roll=_roll_response(roll))
+
+
+@router.post("/status", response_model=FilamentStatusResponse)
+def device_status(
+    body: FilamentStatusRequest,
+    device: Machine = Depends(get_current_device),
+    db: Session = Depends(get_db),
+):
+    """Read-only: reports whether a roll with this serial is currently in
+    stock, without checking anything in or out. Lets the station show an
+    explicit Einbuchen/Ausbuchen confirmation before acting, instead of
+    /scan's deterministic auto-action — scanning the same physical spool
+    twice in a row would otherwise silently flip its state with no chance
+    for the operator to notice or stop it."""
+    serial = body.vendor_serial.strip()
+    roll = db.query(FilamentRoll).filter(
+        FilamentRoll.vendor_serial == serial, FilamentRoll.removed_at.is_(None)
+    ).first()
+    return FilamentStatusResponse(in_stock=roll is not None, roll=_roll_response(roll) if roll else None)
 
 
 @router.post("/checkin", response_model=FilamentRollResponse, responses={**HTTP_409})

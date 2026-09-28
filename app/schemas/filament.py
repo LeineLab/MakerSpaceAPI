@@ -108,3 +108,15 @@ class FilamentManualActionRequest(BaseModel):
     weight_grams: int = Field(gt=0)
     color: str = Field(min_length=1, max_length=50)
     vendor_serial: Optional[str] = Field(default=None, max_length=64)
+
+
+class FilamentStatusRequest(BaseModel):
+    """Read-only lookup for a serial's current in-stock status — lets the
+    station show an explicit Einbuchen/Ausbuchen confirmation before acting,
+    instead of /scan's deterministic auto-action. Never modifies anything."""
+    vendor_serial: str = Field(min_length=1, max_length=64)
+
+
+class FilamentStatusResponse(BaseModel):
+    in_stock: bool
+    roll: Optional[FilamentRollResponse] = None

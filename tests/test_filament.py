@@ -289,6 +289,60 @@ def test_scan_without_serial_unknown_spec_reports_zero_stock(client, machine_tok
 
 
 # ---------------------------------------------------------------------------
+# Device: /status — read-only lookup, never checks anything in or out
+# ---------------------------------------------------------------------------
+
+def test_status_unknown_serial_reports_not_in_stock(client, machine_token):
+    token, _machine = machine_token
+    resp = client.post(
+        "/api/v1/filament/status", headers=_auth_header(token), json={"vendor_serial": "BBL-9999"}
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["in_stock"] is False
+    assert data["roll"] is None
+
+
+def test_status_in_stock_serial_reports_roll_without_acting(client, machine_token, db):
+    token, _machine = machine_token
+    scan_body = {
+        "brand_name": "Bambu Lab", "type_name": "PETG", "weight_grams": 1000,
+        "color": "Schwarz", "vendor_serial": "BBL-0002",
+    }
+    client.post("/api/v1/filament/scan", headers=_auth_header(token), json=scan_body)
+
+    resp = client.post(
+        "/api/v1/filament/status", headers=_auth_header(token), json={"vendor_serial": "BBL-0002"}
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["in_stock"] is True
+    assert data["roll"]["type_name"] == "PETG"
+
+    # A repeated /status call must not have changed anything — still in stock.
+    resp = client.post(
+        "/api/v1/filament/status", headers=_auth_header(token), json={"vendor_serial": "BBL-0002"}
+    )
+    assert resp.json()["in_stock"] is True
+    assert db.query(FilamentRoll).filter(FilamentRoll.vendor_serial == "BBL-0002").count() == 1
+
+
+def test_status_reports_not_in_stock_after_checkout(client, machine_token):
+    token, _machine = machine_token
+    scan_body = {
+        "brand_name": "Bambu Lab", "type_name": "PLA Basic", "weight_grams": 1000,
+        "color": "Weiss", "vendor_serial": "BBL-0003",
+    }
+    client.post("/api/v1/filament/scan", headers=_auth_header(token), json=scan_body)
+    client.post("/api/v1/filament/scan", headers=_auth_header(token), json=scan_body)  # checks it back out
+
+    resp = client.post(
+        "/api/v1/filament/status", headers=_auth_header(token), json={"vendor_serial": "BBL-0003"}
+    )
+    assert resp.json() == {"in_stock": False, "roll": None}
+
+
+# ---------------------------------------------------------------------------
 # Device: /checkin, /checkout — OpenSpool-style manual flow (no serial)
 # ---------------------------------------------------------------------------
 
