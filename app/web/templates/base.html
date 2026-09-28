@@ -150,6 +150,7 @@
           {% endif %}
           {% if is_product_manager(user) %}
             <a href="/products/manage" class="hover:text-gray-300 text-sm">{{ _('nav.manage_products') }}</a>
+            <a href="/filament" class="hover:text-gray-300 text-sm">{{ _('nav.filament') }}</a>
           {% endif %}
           {% if is_auditor(user) %}
             <a href="/ledger" class="hover:text-gray-300 text-sm">{{ _('nav.ledger') }}</a>
@@ -214,6 +215,7 @@
         {% endif %}
         {% if is_product_manager(user) %}
           <a href="/products/manage" class="hover:text-gray-300 text-sm py-2">{{ _('nav.manage_products') }}</a>
+          <a href="/filament" class="hover:text-gray-300 text-sm py-2">{{ _('nav.filament') }}</a>
         {% endif %}
         {% if is_auditor(user) %}
           <a href="/ledger" class="hover:text-gray-300 text-sm py-2">{{ _('nav.ledger') }}</a>
