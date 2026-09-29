@@ -126,6 +126,18 @@ def products_manage(
 
 
 # ---------------------------------------------------------------------------
+# Product manager: Filament roll tracking
+# ---------------------------------------------------------------------------
+
+@router.get("/filament", response_class=HTMLResponse)
+def filament_page(
+    request: Request,
+    user: dict = Depends(require_product_manager_user),
+):
+    return templates.TemplateResponse(request, "filament/index.html", _ctx(request, user))
+
+
+# ---------------------------------------------------------------------------
 # Admin: Bankomat / Booking Targets
 # ---------------------------------------------------------------------------
 

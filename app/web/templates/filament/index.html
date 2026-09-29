@@ -1,0 +1,568 @@
+{% extends "base.html" %}
+{% block title %}{{ _('filament.title') }} – MakerSpaceAPI{% endblock %}
+{% block content %}
+
+<div x-data="filamentManage()" x-cloak>
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+    <h1 class="text-2xl font-bold">{{ _('filament.title') }}</h1>
+    <button @click="openAddModal()"
+            class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+      {{ _('filament.btn_add_roll') }}
+    </button>
+  </div>
+
+  <div x-show="error" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="error"></div>
+  <div x-show="success" class="mb-4 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 p-3 rounded text-sm" x-text="success"></div>
+
+  <!-- Stock overview -->
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden mb-8">
+    <div class="px-5 py-4 border-b dark:border-gray-700">
+      <h2 class="font-semibold">{{ _('filament.summary_title') }}</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 uppercase text-xs">
+          <tr>
+            <th class="px-4 py-3 text-left">{{ _('filament.col_brand') }}</th>
+            <th class="px-4 py-3 text-left">{{ _('filament.col_type') }}</th>
+            <th class="px-4 py-3 text-left">{{ _('filament.col_color') }}</th>
+            <th class="px-4 py-3 text-right">{{ _('filament.col_weight') }}</th>
+            <th class="px-4 py-3 text-right">{{ _('filament.col_count') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-if="!loadingSummary && summary.length === 0">
+            <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400 dark:text-gray-500">{{ _('filament.summary_empty') }}</td></tr>
+          </template>
+          <template x-for="s in summary" :key="s.brand_id + '-' + s.type_id + '-' + s.weight_grams + '-' + s.color">
+            <tr class="border-t dark:border-gray-700">
+              <td class="px-4 py-2" x-text="s.brand_name"></td>
+              <td class="px-4 py-2" x-text="s.type_name"></td>
+              <td class="px-4 py-2">
+                <div class="flex items-center gap-2">
+                  <span x-show="isHexColor(s.color)" :style="{ backgroundColor: s.color }"
+                        class="inline-block w-3.5 h-3.5 rounded-sm border border-gray-300 dark:border-gray-600 flex-shrink-0"></span>
+                  <span x-text="s.color"></span>
+                </div>
+              </td>
+              <td class="px-4 py-2 text-right" x-text="s.weight_grams + ' g'"></td>
+              <td class="px-4 py-2 text-right font-semibold" x-text="s.count_in_stock"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Individual rolls -->
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden mb-8">
+    <div class="px-5 py-4 border-b dark:border-gray-700 flex flex-wrap items-center gap-3">
+      <h2 class="font-semibold mr-auto">{{ _('filament.rolls_title') }}</h2>
+      <select x-model="filterStatus" @change="loadRolls()"
+              class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+        <option value="active">{{ _('filament.filter_status_active') }}</option>
+        <option value="removed">{{ _('filament.filter_status_removed') }}</option>
+        <option value="all">{{ _('filament.filter_status_all') }}</option>
+      </select>
+      <select x-model="filterBrandId" @change="loadRolls()"
+              class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+        <option value="">{{ _('filament.filter_brand_all') }}</option>
+        <template x-for="b in brands" :key="b.id">
+          <option :value="b.id" x-text="b.name"></option>
+        </template>
+      </select>
+      <select x-model="filterTypeId" @change="loadRolls()"
+              class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+        <option value="">{{ _('filament.filter_type_all') }}</option>
+        <template x-for="t in types" :key="t.id">
+          <option :value="t.id" x-text="t.name"></option>
+        </template>
+      </select>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 uppercase text-xs">
+          <tr>
+            <th class="px-4 py-3 text-left">{{ _('filament.col_brand') }}</th>
+            <th class="px-4 py-3 text-left">{{ _('filament.col_type') }}</th>
+            <th class="px-4 py-3 text-left">{{ _('filament.col_color') }}</th>
+            <th class="px-4 py-3 text-right">{{ _('filament.col_weight') }}</th>
+            <th class="px-4 py-3 text-left">{{ _('filament.col_serial') }}</th>
+            <th class="px-4 py-3 text-left">{{ _('filament.col_added_at') }}</th>
+            <th class="px-4 py-3 text-center">{{ _('common.status') }}</th>
+            <th class="px-4 py-3"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-if="loadingRolls">
+            <tr><td colspan="8" class="px-4 py-8 text-center text-gray-400 dark:text-gray-500">Loading…</td></tr>
+          </template>
+          <template x-if="!loadingRolls && rolls.length === 0">
+            <tr><td colspan="8" class="px-4 py-8 text-center text-gray-400 dark:text-gray-500">{{ _('filament.rolls_empty') }}</td></tr>
+          </template>
+          <template x-for="r in rolls" :key="r.id">
+            <tr class="border-t dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
+              <td class="px-4 py-2" x-text="r.brand_name"></td>
+              <td class="px-4 py-2" x-text="r.type_name"></td>
+              <td class="px-4 py-2">
+                <div class="flex items-center gap-2">
+                  <span x-show="isHexColor(r.color)" :style="{ backgroundColor: r.color }"
+                        class="inline-block w-3.5 h-3.5 rounded-sm border border-gray-300 dark:border-gray-600 flex-shrink-0"></span>
+                  <span x-text="r.color"></span>
+                </div>
+              </td>
+              <td class="px-4 py-2 text-right" x-text="r.weight_grams + ' g'"></td>
+              <td class="px-4 py-2 font-mono text-xs text-gray-500 dark:text-gray-400" x-text="r.vendor_serial || '—'"></td>
+              <td class="px-4 py-2 text-gray-500 dark:text-gray-400" x-text="r.added_at.slice(0, 10)"></td>
+              <td class="px-4 py-2 text-center">
+                <span x-show="r.in_stock"
+                      class="text-xs bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 rounded px-2 py-0.5">{{ _('filament.filter_status_active') }}</span>
+                <span x-show="!r.in_stock"
+                      class="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded px-2 py-0.5">{{ _('filament.filter_status_removed') }}</span>
+              </td>
+              <td class="px-4 py-2 text-right space-x-2 whitespace-nowrap">
+                <button @click="openEditModal(r)"
+                        class="text-xs text-blue-600 dark:text-blue-400 hover:underline">{{ _('common.edit') }}</button>
+                <button x-show="r.in_stock" @click="removeRoll(r)"
+                        class="text-xs text-red-500 dark:text-red-400 hover:underline">{{ _('filament.btn_remove') }}</button>
+                <button x-show="!r.in_stock" @click="restoreRoll(r)"
+                        class="text-xs text-gray-500 dark:text-gray-400 hover:underline">{{ _('filament.btn_restore') }}</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Brands and Types side by side -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+      <div class="px-5 py-4 border-b dark:border-gray-700 flex flex-wrap items-center justify-between gap-2">
+        <h2 class="font-semibold">{{ _('filament.brands_title') }}</h2>
+        <span class="text-xs text-gray-400 dark:text-gray-500" x-text="brands.length"></span>
+      </div>
+      <div class="px-5 py-4">
+        <ul x-show="brands.length > 0" class="mb-4 space-y-1">
+          <template x-for="b in brands" :key="b.id">
+            <li class="flex items-center justify-between text-sm text-gray-700 dark:text-gray-300 py-1 border-b border-gray-100 dark:border-gray-700 last:border-0">
+              <span x-text="b.name"></span>
+              <button @click="deleteBrand(b)"
+                      class="text-xs text-red-400 hover:text-red-600 hover:underline">{{ _('common.remove') }}</button>
+            </li>
+          </template>
+        </ul>
+        <p x-show="brands.length === 0" class="text-sm text-gray-400 dark:text-gray-500 mb-4">{{ _('filament.no_brands') }}</p>
+        <div x-show="brandError" class="mb-2 text-xs text-red-600 dark:text-red-400" x-text="brandError"></div>
+        <form @submit.prevent="addBrand()" class="flex gap-2">
+          <input type="text" x-model="newBrandName" required placeholder="{{ _('filament.brands_placeholder') }}"
+                 class="flex-1 border dark:border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <button type="submit"
+                  class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">{{ _('common.add') }}</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+      <div class="px-5 py-4 border-b dark:border-gray-700 flex flex-wrap items-center justify-between gap-2">
+        <h2 class="font-semibold">{{ _('filament.types_title') }}</h2>
+        <span class="text-xs text-gray-400 dark:text-gray-500" x-text="types.length"></span>
+      </div>
+      <div class="px-5 py-4">
+        <ul x-show="types.length > 0" class="mb-4 space-y-1">
+          <template x-for="t in types" :key="t.id">
+            <li class="flex items-center justify-between text-sm text-gray-700 dark:text-gray-300 py-1 border-b border-gray-100 dark:border-gray-700 last:border-0">
+              <span x-text="t.name"></span>
+              <button @click="deleteType(t)"
+                      class="text-xs text-red-400 hover:text-red-600 hover:underline">{{ _('common.remove') }}</button>
+            </li>
+          </template>
+        </ul>
+        <p x-show="types.length === 0" class="text-sm text-gray-400 dark:text-gray-500 mb-4">{{ _('filament.no_types') }}</p>
+        <div x-show="typeError" class="mb-2 text-xs text-red-600 dark:text-red-400" x-text="typeError"></div>
+        <form @submit.prevent="addType()" class="flex gap-2">
+          <input type="text" x-model="newTypeName" required placeholder="{{ _('filament.types_placeholder') }}"
+                 class="flex-1 border dark:border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <button type="submit"
+                  class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">{{ _('common.add') }}</button>
+        </form>
+      </div>
+    </div>
+
+  </div>
+
+  <p class="text-xs text-gray-400 dark:text-gray-500 mb-8">{{ _('filament.device_hint') }}</p>
+
+  <!-- Add Roll Modal -->
+  <div x-show="showAddModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showAddModal = false">
+      <h2 class="text-lg font-bold mb-4">{{ _('filament.add_roll_title') }}</h2>
+      <div x-show="brands.length === 0 || types.length === 0" class="mb-3 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 p-2 rounded text-sm">
+        {{ _('filament.no_brands_or_types_warn') }}
+      </div>
+      <div x-show="addError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="addError"></div>
+      <form @submit.prevent="createRolls()" class="space-y-3">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('filament.label_brand') }}</label>
+            <select x-model="addForm.brand_id" required
+                    class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+              <option value="">{{ _('filament.select_brand') }}</option>
+              <template x-for="b in brands" :key="b.id">
+                <option :value="b.id" x-text="b.name"></option>
+              </template>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('filament.label_type') }}</label>
+            <select x-model="addForm.type_id" required
+                    class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+              <option value="">{{ _('filament.select_type') }}</option>
+              <template x-for="t in types" :key="t.id">
+                <option :value="t.id" x-text="t.name"></option>
+              </template>
+            </select>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('filament.label_weight') }}</label>
+            <input type="number" x-model="addForm.weight_grams" required min="1" placeholder="1000"
+                   class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">{{ _('filament.weight_unit_hint') }}</p>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('filament.label_color') }}</label>
+            <div class="flex items-center gap-2">
+              <input type="text" x-model="addForm.color" required placeholder="{{ _('filament.placeholder_color') }}"
+                     class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+              <span x-show="isHexColor(addForm.color)" :style="{ backgroundColor: addForm.color }"
+                    class="inline-block w-7 h-7 rounded border border-gray-300 dark:border-gray-600 flex-shrink-0"></span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('filament.label_serial') }}</label>
+          <input type="text" x-model="addForm.vendor_serial" placeholder="{{ _('filament.placeholder_serial') }}"
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div x-show="!addForm.vendor_serial">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('filament.label_quantity') }}</label>
+          <input type="number" x-model="addForm.quantity" min="1" max="100"
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <p x-show="addForm.vendor_serial" class="text-xs text-gray-400 dark:text-gray-500">{{ _('filament.serial_hint') }}</p>
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" @click="showAddModal = false"
+                  class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.cancel') }}</button>
+          <button type="submit" :disabled="submitting"
+                  class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
+            {{ _('filament.btn_add_roll') }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Edit Roll Modal -->
+  <div x-show="showEditModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showEditModal = false">
+      <h2 class="text-lg font-bold mb-4">{{ _('filament.edit_roll_title') }}</h2>
+      <div x-show="editError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="editError"></div>
+      <form @submit.prevent="updateRoll()" class="space-y-3">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('filament.label_brand') }}</label>
+            <select x-model="editForm.brand_id" required
+                    class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+              <template x-for="b in brands" :key="b.id">
+                <option :value="b.id" x-text="b.name"></option>
+              </template>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('filament.label_type') }}</label>
+            <select x-model="editForm.type_id" required
+                    class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+              <template x-for="t in types" :key="t.id">
+                <option :value="t.id" x-text="t.name"></option>
+              </template>
+            </select>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('filament.label_weight') }}</label>
+            <input type="number" x-model="editForm.weight_grams" required min="1"
+                   class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('filament.label_color') }}</label>
+            <div class="flex items-center gap-2">
+              <input type="text" x-model="editForm.color" required
+                     class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+              <span x-show="isHexColor(editForm.color)" :style="{ backgroundColor: editForm.color }"
+                    class="inline-block w-7 h-7 rounded border border-gray-300 dark:border-gray-600 flex-shrink-0"></span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('filament.label_serial') }}</label>
+          <input type="text" x-model="editForm.vendor_serial" placeholder="{{ _('filament.placeholder_serial') }}"
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" @click="showEditModal = false"
+                  class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900">{{ _('common.cancel') }}</button>
+          <button type="submit" :disabled="submitting"
+                  class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
+            {{ _('common.save') }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function filamentManage() {
+  return {
+    brands: [],
+    types: [],
+    summary: [],
+    rolls: [],
+    loadingSummary: true,
+    loadingRolls: true,
+    error: null,
+    success: null,
+    submitting: false,
+
+    filterStatus: 'active',
+    filterBrandId: '',
+    filterTypeId: '',
+
+    newBrandName: '',
+    brandError: null,
+    newTypeName: '',
+    typeError: null,
+
+    showAddModal: false,
+    addError: null,
+    addForm: { brand_id: '', type_id: '', weight_grams: 1000, color: '', vendor_serial: '', quantity: 1 },
+
+    showEditModal: false,
+    editError: null,
+    editForm: { id: '', brand_id: '', type_id: '', weight_grams: '', color: '', vendor_serial: '' },
+
+    // `color` isn't always a hex value — it's free text (manual entry, or
+    // whatever a scanning station's tag parser produced, which for some tag
+    // formats is a human-readable color NAME rather than "#RRGGBB", see the
+    // esp32filament firmware's own tag_types.h comment on this same field).
+    // Only render a swatch for a value that actually parses as one, rather
+    // than guessing or showing a wrong color for a name like "Schwarz" or
+    // "unbekannt".
+    isHexColor(c) {
+      return typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c);
+    },
+
+    async init() {
+      this.error = null;
+      try {
+        const [brands, types] = await Promise.all([
+          apiFetch('/api/v1/filament/brands').then(r => r.ok ? r.json() : Promise.reject('brands')),
+          apiFetch('/api/v1/filament/types').then(r => r.ok ? r.json() : Promise.reject('types')),
+        ]);
+        this.brands = brands;
+        this.types = types;
+        await Promise.all([this.loadSummary(), this.loadRolls()]);
+      } catch (e) {
+        this.error = 'Failed to load data';
+      }
+    },
+
+    async loadSummary() {
+      this.loadingSummary = true;
+      try {
+        const r = await apiFetch('/api/v1/filament/rolls/summary');
+        this.summary = r.ok ? await r.json() : [];
+      } finally {
+        this.loadingSummary = false;
+      }
+    },
+
+    async loadRolls() {
+      this.loadingRolls = true;
+      try {
+        const params = new URLSearchParams({ status: this.filterStatus });
+        if (this.filterBrandId) params.set('brand_id', this.filterBrandId);
+        if (this.filterTypeId) params.set('type_id', this.filterTypeId);
+        const r = await apiFetch(`/api/v1/filament/rolls?${params.toString()}`);
+        this.rolls = r.ok ? await r.json() : [];
+      } finally {
+        this.loadingRolls = false;
+      }
+    },
+
+    async reloadAll() {
+      await Promise.all([this.loadSummary(), this.loadRolls()]);
+    },
+
+    flashSuccess(msg) {
+      this.success = msg;
+      setTimeout(() => this.success = null, 4000);
+    },
+
+    openAddModal() {
+      this.addForm = {
+        brand_id: this.brands[0]?.id || '', type_id: this.types[0]?.id || '',
+        weight_grams: 1000, color: '', vendor_serial: '', quantity: 1,
+      };
+      this.addError = null;
+      this.showAddModal = true;
+    },
+
+    openEditModal(r) {
+      this.editForm = {
+        id: r.id, brand_id: r.brand_id, type_id: r.type_id,
+        weight_grams: r.weight_grams, color: r.color, vendor_serial: r.vendor_serial || '',
+      };
+      this.editError = null;
+      this.showEditModal = true;
+    },
+
+    async createRolls() {
+      this.submitting = true;
+      this.addError = null;
+      try {
+        const r = await apiFetch('/api/v1/filament/rolls', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            brand_id: parseInt(this.addForm.brand_id),
+            type_id: parseInt(this.addForm.type_id),
+            weight_grams: parseInt(this.addForm.weight_grams),
+            color: this.addForm.color,
+            vendor_serial: this.addForm.vendor_serial || null,
+            quantity: this.addForm.vendor_serial ? 1 : (parseInt(this.addForm.quantity) || 1),
+          }),
+        });
+        const data = await r.json();
+        if (!r.ok) { this.addError = data.detail || 'Error'; return; }
+        this.showAddModal = false;
+        this.flashSuccess('Roll(s) added.');
+        await this.reloadAll();
+      } catch (e) {
+        this.addError = e.message;
+      } finally {
+        this.submitting = false;
+      }
+    },
+
+    async updateRoll() {
+      this.submitting = true;
+      this.editError = null;
+      try {
+        const r = await apiFetch(`/api/v1/filament/rolls/${this.editForm.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            brand_id: parseInt(this.editForm.brand_id),
+            type_id: parseInt(this.editForm.type_id),
+            weight_grams: parseInt(this.editForm.weight_grams),
+            color: this.editForm.color,
+            vendor_serial: this.editForm.vendor_serial || null,
+          }),
+        });
+        const data = await r.json();
+        if (!r.ok) { this.editError = data.detail || 'Error'; return; }
+        this.showEditModal = false;
+        this.flashSuccess('Roll updated.');
+        await this.reloadAll();
+      } catch (e) {
+        this.editError = e.message;
+      } finally {
+        this.submitting = false;
+      }
+    },
+
+    async removeRoll(r) {
+      if (!confirm({{ _('filament.confirm_remove') | tojson }})) return;
+      const resp = await apiFetch(`/api/v1/filament/rolls/${r.id}/remove`, { method: 'POST' });
+      const data = await resp.json();
+      if (!resp.ok) { this.error = data.detail || 'Error'; return; }
+      await this.reloadAll();
+    },
+
+    async restoreRoll(r) {
+      const resp = await apiFetch(`/api/v1/filament/rolls/${r.id}/restore`, { method: 'POST' });
+      const data = await resp.json();
+      if (!resp.ok) { this.error = data.detail || 'Error'; return; }
+      await this.reloadAll();
+    },
+
+    async addBrand() {
+      this.brandError = null;
+      try {
+        const r = await apiFetch('/api/v1/filament/brands', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: this.newBrandName }),
+        });
+        const data = await r.json();
+        if (!r.ok) { this.brandError = data.detail || 'Error'; return; }
+        this.newBrandName = '';
+        this.brands = await apiFetch('/api/v1/filament/brands').then(r => r.ok ? r.json() : this.brands);
+      } catch (e) {
+        this.brandError = e.message;
+      }
+    },
+
+    async deleteBrand(b) {
+      const msg = {{ _('filament.confirm_remove_brand') | tojson }}.replace('{name}', b.name);
+      if (!confirm(msg)) return;
+      this.brandError = null;
+      try {
+        const r = await apiFetch(`/api/v1/filament/brands/${b.id}`, { method: 'DELETE' });
+        const data = await r.json();
+        if (!r.ok) { this.brandError = data.detail || 'Error'; return; }
+        this.brands = await apiFetch('/api/v1/filament/brands').then(r => r.ok ? r.json() : this.brands);
+      } catch (e) {
+        this.brandError = e.message;
+      }
+    },
+
+    async addType() {
+      this.typeError = null;
+      try {
+        const r = await apiFetch('/api/v1/filament/types', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: this.newTypeName }),
+        });
+        const data = await r.json();
+        if (!r.ok) { this.typeError = data.detail || 'Error'; return; }
+        this.newTypeName = '';
+        this.types = await apiFetch('/api/v1/filament/types').then(r => r.ok ? r.json() : this.types);
+      } catch (e) {
+        this.typeError = e.message;
+      }
+    },
+
+    async deleteType(t) {
+      const msg = {{ _('filament.confirm_remove_type') | tojson }}.replace('{name}', t.name);
+      if (!confirm(msg)) return;
+      this.typeError = null;
+      try {
+        const r = await apiFetch(`/api/v1/filament/types/${t.id}`, { method: 'DELETE' });
+        const data = await r.json();
+        if (!r.ok) { this.typeError = data.detail || 'Error'; return; }
+        this.types = await apiFetch('/api/v1/filament/types').then(r => r.ok ? r.json() : this.types);
+      } catch (e) {
+        this.typeError = e.message;
+      }
+    }
+  }
+}
+</script>
+{% endblock %}
