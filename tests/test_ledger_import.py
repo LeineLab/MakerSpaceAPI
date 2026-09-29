@@ -903,12 +903,48 @@ def test_paperless_search_when_configured(auditor_client, monkeypatch):
         resp = auditor_client.get("/api/v1/ledger/paperless/search?q=baumarkt")
 
     assert resp.status_code == 200
-    # amount_match/amount (#65/#66) are always False/None for a plain search
-    # result — there's no target amount to compare against here, only
-    # GET .../suggestions sets them.
+    # amount_match is always False for a plain search result — there's no
+    # target amount to compare against here. `amount` itself stays None too
+    # in this test specifically because PAPERLESS_AMOUNT_CUSTOM_FIELD_ID
+    # isn't configured — see test_paperless_search_includes_amount_when_configured
+    # (#77) for the case where it is.
     assert resp.json() == [
         {"id": 42, "title": "Rechnung Baumarkt", "created": "2026-03-01", "amount_match": False, "amount": None}
     ]
+
+
+def test_paperless_search_includes_amount_when_configured(auditor_client, monkeypatch):
+    """search_documents() parses PAPERLESS_AMOUNT_CUSTOM_FIELD_ID the same
+    way suggest_documents() already did (#65/#66) — raised directly by the
+    user so a treasurer can see each search result's invoice total without
+    opening it first. amount_match stays always False here regardless (a
+    plain search has no target amount to compare against)."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "PAPERLESS_URL", "https://paperless.example.com")
+    monkeypatch.setattr(settings, "PAPERLESS_API_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "PAPERLESS_AMOUNT_CUSTOM_FIELD_ID", "9")
+
+    fake_response = {
+        "results": [
+            {
+                "id": 42, "title": "Rechnung Baumarkt", "created": "2026-03-01",
+                "custom_fields": [{"field": 9, "value": "EUR45.67"}],
+            },
+            {"id": 43, "title": "Rechnung ohne Betragsfeld", "created": "2026-03-02", "custom_fields": []},
+        ],
+    }
+    with patch("app.services.paperless.httpx.get") as mock_get:
+        mock_get.return_value = httpx.Response(
+            200, json=fake_response, request=httpx.Request("GET", "https://paperless.example.com/api/documents/"),
+        )
+        resp = auditor_client.get("/api/v1/ledger/paperless/search?q=baumarkt")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body[0]["amount"] == "45.67"
+    assert body[0]["amount_match"] is False
+    assert body[1]["amount"] is None
 
 
 def test_paperless_search_restricted_to_configured_document_types(auditor_client, monkeypatch):

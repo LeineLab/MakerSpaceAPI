@@ -1915,12 +1915,22 @@
                       <!-- Doc id (and, #59, its date) shown alongside the
                            title (not just on pick) so two documents with
                            the same title are distinguishable before
-                           picking, not just after. -->
+                           picking, not just after. The amount (#77, right-
+                           aligned like the suggestion rows above) is shown
+                           whenever PAPERLESS_AMOUNT_CUSTOM_FIELD_ID is
+                           configured and the document has a value for it —
+                           always the muted color here (never green), since
+                           a plain search result has no target amount to
+                           match against. -->
                       <template x-for="doc in line.paperlessResults" :key="doc.id">
                         <div @click="pickPaperlessDocForLine(line, doc)"
-                             class="px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
-                          <span x-text="doc.title"></span>
-                          <span class="text-gray-400 dark:text-gray-500 text-xs" x-text="'#' + doc.id + (doc.created ? ' · ' + paperlessDocDate(doc.created) : '')"></span>
+                             class="flex items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
+                          <span class="truncate">
+                            <span x-text="doc.title"></span>
+                            <span class="text-gray-400 dark:text-gray-500 text-xs" x-text="'#' + doc.id + (doc.created ? ' · ' + paperlessDocDate(doc.created) : '')"></span>
+                          </span>
+                          <span x-show="doc.amount != null" class="shrink-0 font-mono text-xs text-gray-400 dark:text-gray-500"
+                                x-text="fmt(doc.amount)"></span>
                         </div>
                       </template>
                     </div>
@@ -2123,12 +2133,22 @@
                       <!-- Doc id (and, #59, its date) shown alongside the
                            title (not just on pick) so two documents with
                            the same title are distinguishable before
-                           picking, not just after. -->
+                           picking, not just after. The amount (#77, right-
+                           aligned like the suggestion rows above) is shown
+                           whenever PAPERLESS_AMOUNT_CUSTOM_FIELD_ID is
+                           configured and the document has a value for it —
+                           always the muted color here (never green), since
+                           a plain search result has no target amount to
+                           match against. -->
                       <template x-for="doc in line.paperlessResults" :key="doc.id">
                         <div @click="pickPaperlessDocForLine(line, doc)"
-                             class="px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
-                          <span x-text="doc.title"></span>
-                          <span class="text-gray-400 dark:text-gray-500 text-xs" x-text="'#' + doc.id + (doc.created ? ' · ' + paperlessDocDate(doc.created) : '')"></span>
+                             class="flex items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
+                          <span class="truncate">
+                            <span x-text="doc.title"></span>
+                            <span class="text-gray-400 dark:text-gray-500 text-xs" x-text="'#' + doc.id + (doc.created ? ' · ' + paperlessDocDate(doc.created) : '')"></span>
+                          </span>
+                          <span x-show="doc.amount != null" class="shrink-0 font-mono text-xs text-gray-400 dark:text-gray-500"
+                                x-text="fmt(doc.amount)"></span>
                         </div>
                       </template>
                     </div>

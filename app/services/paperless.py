@@ -42,6 +42,13 @@ def search_documents(query: str, limit: int = 10, target_date: date | None = Non
     excluded type that neither the Belege overview nor the proactive
     suggestions would ever show.
 
+    Each result's own `amount` (#77) — the document's parsed
+    PAPERLESS_AMOUNT_CUSTOM_FIELD_ID value, when that field is configured
+    and the document has one — is included the same way `suggest_documents()`
+    already does, so a treasurer picking between several search hits can see
+    each one's invoice total without opening it first. `None` when the field
+    isn't configured, or the document has no value for it.
+
     Returns an empty list if Paperless isn't configured or is unreachable —
     a down/misconfigured Paperless must never block booking a ledger entry.
     """
@@ -69,11 +76,13 @@ def search_documents(query: str, limit: int = 10, target_date: date | None = Non
     except (httpx.HTTPError, ValueError):
         return []
 
+    field_id = _amount_custom_field_id()
     results = [
         {
             "id": doc["id"],
             "title": doc.get("title") or f"Dokument {doc['id']}",
             "created": doc.get("created"),
+            "amount": _document_amount(doc, field_id),
         }
         for doc in data.get("results", [])
     ]
@@ -189,6 +198,24 @@ def _parse_amount_value(value) -> Decimal | None:
         return None
 
 
+def _amount_custom_field_id() -> int | None:
+    field_id_raw = settings.PAPERLESS_AMOUNT_CUSTOM_FIELD_ID.strip()
+    return int(field_id_raw) if field_id_raw.isdigit() else None
+
+
+def _document_amount(doc: dict, field_id: int | None) -> Decimal | None:
+    """This document's own value for PAPERLESS_AMOUNT_CUSTOM_FIELD_ID, or
+    `None` if it isn't configured or the document has no value for it —
+    shared by search_documents() and suggest_documents() (#77) so both
+    parse it identically."""
+    if field_id is None:
+        return None
+    for cf in doc.get("custom_fields") or []:
+        if cf.get("field") == field_id:
+            return _parse_amount_value(cf.get("value"))
+    return None
+
+
 def _document_date(doc: dict) -> date | None:
     created = doc.get("created")
     if not created:
@@ -271,8 +298,7 @@ def suggest_documents(amount: Decimal, target_date: date, limit: int = 3) -> lis
         base_params["document_type__id__in"] = ",".join(type_ids)
 
     window = _SUGGESTION_FETCH_LIMIT // 2
-    field_id_raw = settings.PAPERLESS_AMOUNT_CUSTOM_FIELD_ID.strip()
-    field_id = int(field_id_raw) if field_id_raw.isdigit() else None
+    field_id = _amount_custom_field_id()
 
     batches = [
         _fetch_documents({
@@ -305,12 +331,7 @@ def suggest_documents(amount: Decimal, target_date: date, limit: int = 3) -> lis
     ranked = []
     for doc in candidates:
         distance = _date_distance(doc, target_date)
-        parsed_amount = None
-        if field_id is not None:
-            for cf in doc.get("custom_fields") or []:
-                if cf.get("field") == field_id:
-                    parsed_amount = _parse_amount_value(cf.get("value"))
-                    break
+        parsed_amount = _document_amount(doc, field_id)
         amount_match = parsed_amount is not None and parsed_amount == target_amount
         ranked.append((not amount_match, distance, doc, parsed_amount, amount_match))
 
