@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.auth.deps import get_current_device, require_product_manager_user
+from app.auth.deps import get_current_device, require_product_manager_user, require_session_user
 from app.database import get_db
 from app.models.filament import FilamentBrand, FilamentRoll, FilamentType
 from app.models.machine import Machine
@@ -86,7 +86,7 @@ def _active_serial_conflict(db: Session, serial: str, exclude_roll_id: Optional[
 
 @router.get("/brands", response_model=list[FilamentBrandResponse])
 def list_brands(
-    user: dict = Depends(require_product_manager_user),
+    user: dict = Depends(require_session_user),
     db: Session = Depends(get_db),
 ):
     return db.query(FilamentBrand).order_by(FilamentBrand.name).all()
@@ -130,7 +130,7 @@ def delete_brand(
 
 @router.get("/types", response_model=list[FilamentTypeResponse])
 def list_types(
-    user: dict = Depends(require_product_manager_user),
+    user: dict = Depends(require_session_user),
     db: Session = Depends(get_db),
 ):
     return db.query(FilamentType).order_by(FilamentType.name).all()
@@ -177,7 +177,7 @@ def list_rolls(
     status: Literal["active", "removed", "all"] = "active",
     brand_id: Optional[int] = None,
     type_id: Optional[int] = None,
-    user: dict = Depends(require_product_manager_user),
+    user: dict = Depends(require_session_user),
     db: Session = Depends(get_db),
 ):
     query = db.query(FilamentRoll)
@@ -195,10 +195,11 @@ def list_rolls(
 
 @router.get("/rolls/summary", response_model=list[FilamentStockSummary])
 def rolls_summary(
-    user: dict = Depends(require_product_manager_user),
     db: Session = Depends(get_db),
 ):
-    """Current in-stock count grouped by brand/type/weight/color."""
+    """Public: current in-stock count grouped by brand/type/weight/color — no
+    per-roll identifying detail (vendor_serial, added_by/removed_by, timestamps)
+    here, unlike GET /rolls, so this one is safe to expose with no auth at all."""
     rows = (
         db.query(
             FilamentRoll.brand_id,

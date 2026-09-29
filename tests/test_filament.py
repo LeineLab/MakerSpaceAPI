@@ -31,8 +31,41 @@ def _auth_header(token):
 # Permissions
 # ---------------------------------------------------------------------------
 
-def test_brands_require_product_manager(treasurer_client):
+def test_brands_readable_by_any_session_user(treasurer_client):
+    """GET endpoints only require a logged-in session, not product-manager —
+    write endpoints stay product-manager-only (see CLAUDE.md #74)."""
     resp = treasurer_client.get("/api/v1/filament/brands")
+    assert resp.status_code == 200
+
+
+def test_types_readable_by_any_session_user(treasurer_client):
+    resp = treasurer_client.get("/api/v1/filament/types")
+    assert resp.status_code == 200
+
+
+def test_rolls_readable_by_any_session_user(treasurer_client):
+    resp = treasurer_client.get("/api/v1/filament/rolls")
+    assert resp.status_code == 200
+
+
+def test_rolls_summary_is_fully_public(client):
+    """No auth at all — see CLAUDE.md #75. Unlike GET /rolls, this response
+    carries no per-roll identifying detail (vendor_serial, added_by/removed_by,
+    timestamps), so it's safe to expose with zero auth."""
+    resp = client.get("/api/v1/filament/rolls/summary")
+    assert resp.status_code == 200
+
+
+def test_create_brand_requires_product_manager(treasurer_client):
+    resp = treasurer_client.post("/api/v1/filament/brands", json={"name": "Should Fail"})
+    assert resp.status_code == 403
+
+
+def test_create_roll_requires_product_manager(treasurer_client, brand, ftype):
+    resp = treasurer_client.post(
+        "/api/v1/filament/rolls",
+        json={"brand_id": brand.id, "type_id": ftype.id, "weight_grams": 1000, "color": "Schwarz"},
+    )
     assert resp.status_code == 403
 
 
@@ -431,22 +464,30 @@ def test_device_endpoints_require_token(client):
 # Web page
 # ---------------------------------------------------------------------------
 
-def test_filament_page_requires_product_manager(client):
+def test_filament_page_is_public(client):
+    """Public like /products — see CLAUDE.md #75. An anonymous visitor gets
+    canManage=false and loggedIn=false, so the template never even attempts
+    to fetch the session-only brands/types/rolls endpoints."""
     resp = client.get("/filament")
-    assert resp.status_code == 401
+    assert resp.status_code == 200
+    assert "filamentManage(false, false)" in resp.text
 
 
-def test_filament_page_forbidden_for_plain_treasurer(treasurer_client):
+def test_filament_page_renders_readonly_for_plain_treasurer(treasurer_client):
+    """Logged in but not a product manager: canManage=false, loggedIn=true —
+    see CLAUDE.md #74."""
     resp = treasurer_client.get("/filament")
-    assert resp.status_code == 403
+    assert resp.status_code == 200
+    assert "filamentManage(false, true)" in resp.text
 
 
 def test_filament_page_renders_for_product_manager(product_manager_client):
     resp = product_manager_client.get("/filament")
     assert resp.status_code == 200
-    assert "filamentManage(" in resp.text
+    assert "filamentManage(true, true)" in resp.text
 
 
 def test_filament_page_renders_for_admin(admin_client):
     resp = admin_client.get("/filament")
     assert resp.status_code == 200
+    assert "filamentManage(true, true)" in resp.text

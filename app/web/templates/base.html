@@ -139,6 +139,7 @@
       <!-- Desktop links (md and up) -->
       <div class="hidden md:flex items-center gap-6 flex-1">
         <a href="/products" class="hover:text-gray-300 text-sm">{{ _('nav.products') }}</a>
+        <a href="/filament" class="hover:text-gray-300 text-sm">{{ _('nav.filament') }}</a>
         {% if user %}
           <a href="/me"       class="hover:text-gray-300 text-sm">{{ _('nav.me') }}</a>
           <a href="/machines" class="hover:text-gray-300 text-sm">{{ _('nav.machines') }}</a>
@@ -150,7 +151,6 @@
           {% endif %}
           {% if is_product_manager(user) %}
             <a href="/products/manage" class="hover:text-gray-300 text-sm">{{ _('nav.manage_products') }}</a>
-            <a href="/filament" class="hover:text-gray-300 text-sm">{{ _('nav.filament') }}</a>
           {% endif %}
           {% if is_auditor(user) %}
             <a href="/ledger" class="hover:text-gray-300 text-sm">{{ _('nav.ledger') }}</a>
@@ -204,6 +204,8 @@
          class="md:hidden border-t border-gray-700 px-6 py-3 flex flex-col gap-1">
       <a href="/products"
          class="hover:text-gray-300 text-sm py-2">{{ _('nav.products') }}</a>
+      <a href="/filament"
+         class="hover:text-gray-300 text-sm py-2">{{ _('nav.filament') }}</a>
       {% if user %}
         <a href="/me"       class="hover:text-gray-300 text-sm py-2">{{ _('nav.me') }}</a>
         <a href="/machines" class="hover:text-gray-300 text-sm py-2">{{ _('nav.machines') }}</a>
@@ -215,7 +217,6 @@
         {% endif %}
         {% if is_product_manager(user) %}
           <a href="/products/manage" class="hover:text-gray-300 text-sm py-2">{{ _('nav.manage_products') }}</a>
-          <a href="/filament" class="hover:text-gray-300 text-sm py-2">{{ _('nav.filament') }}</a>
         {% endif %}
         {% if is_auditor(user) %}
           <a href="/ledger" class="hover:text-gray-300 text-sm py-2">{{ _('nav.ledger') }}</a>

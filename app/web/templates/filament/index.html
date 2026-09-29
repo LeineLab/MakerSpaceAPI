@@ -2,10 +2,10 @@
 {% block title %}{{ _('filament.title') }} – MakerSpaceAPI{% endblock %}
 {% block content %}
 
-<div x-data="filamentManage()" x-cloak>
+<div x-data="filamentManage({{ user_can_manage | tojson }}, {{ logged_in | tojson }})" x-cloak>
   <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
     <h1 class="text-2xl font-bold">{{ _('filament.title') }}</h1>
-    <button @click="openAddModal()"
+    <button x-show="canManage" @click="openAddModal()"
             class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
       {{ _('filament.btn_add_roll') }}
     </button>
@@ -23,18 +23,18 @@
       <table class="w-full text-sm">
         <thead class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 uppercase text-xs">
           <tr>
-            <th class="px-4 py-3 text-left">{{ _('filament.col_brand') }}</th>
-            <th class="px-4 py-3 text-left">{{ _('filament.col_type') }}</th>
-            <th class="px-4 py-3 text-left">{{ _('filament.col_color') }}</th>
-            <th class="px-4 py-3 text-right">{{ _('filament.col_weight') }}</th>
-            <th class="px-4 py-3 text-right">{{ _('filament.col_count') }}</th>
+            <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="summarySort.toggle('brand_name')">{{ _('filament.col_brand') }} <span class="text-gray-400 dark:text-gray-500" x-text="summarySort.indicator('brand_name')"></span></th>
+            <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="summarySort.toggle('type_name')">{{ _('filament.col_type') }} <span class="text-gray-400 dark:text-gray-500" x-text="summarySort.indicator('type_name')"></span></th>
+            <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="summarySort.toggle('color')">{{ _('filament.col_color') }} <span class="text-gray-400 dark:text-gray-500" x-text="summarySort.indicator('color')"></span></th>
+            <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="summarySort.toggle('weight_grams')">{{ _('filament.col_weight') }} <span class="text-gray-400 dark:text-gray-500" x-text="summarySort.indicator('weight_grams')"></span></th>
+            <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="summarySort.toggle('count_in_stock')">{{ _('filament.col_count') }} <span class="text-gray-400 dark:text-gray-500" x-text="summarySort.indicator('count_in_stock')"></span></th>
           </tr>
         </thead>
         <tbody>
           <template x-if="!loadingSummary && summary.length === 0">
             <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400 dark:text-gray-500">{{ _('filament.summary_empty') }}</td></tr>
           </template>
-          <template x-for="s in summary" :key="s.brand_id + '-' + s.type_id + '-' + s.weight_grams + '-' + s.color">
+          <template x-for="s in sortedSummary" :key="s.brand_id + '-' + s.type_id + '-' + s.weight_grams + '-' + s.color">
             <tr class="border-t dark:border-gray-700">
               <td class="px-4 py-2" x-text="s.brand_name"></td>
               <td class="px-4 py-2" x-text="s.type_name"></td>
@@ -54,7 +54,8 @@
     </div>
   </div>
 
-  <!-- Individual rolls -->
+  {% if user %}
+  <!-- Individual rolls (needs a session — see GET /filament/rolls's own auth) -->
   <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden mb-8">
     <div class="px-5 py-4 border-b dark:border-gray-700 flex flex-wrap items-center gap-3">
       <h2 class="font-semibold mr-auto">{{ _('filament.rolls_title') }}</h2>
@@ -83,13 +84,13 @@
       <table class="w-full text-sm">
         <thead class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 uppercase text-xs">
           <tr>
-            <th class="px-4 py-3 text-left">{{ _('filament.col_brand') }}</th>
-            <th class="px-4 py-3 text-left">{{ _('filament.col_type') }}</th>
-            <th class="px-4 py-3 text-left">{{ _('filament.col_color') }}</th>
-            <th class="px-4 py-3 text-right">{{ _('filament.col_weight') }}</th>
-            <th class="px-4 py-3 text-left">{{ _('filament.col_serial') }}</th>
-            <th class="px-4 py-3 text-left">{{ _('filament.col_added_at') }}</th>
-            <th class="px-4 py-3 text-center">{{ _('common.status') }}</th>
+            <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="rollsSort.toggle('brand_name')">{{ _('filament.col_brand') }} <span class="text-gray-400 dark:text-gray-500" x-text="rollsSort.indicator('brand_name')"></span></th>
+            <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="rollsSort.toggle('type_name')">{{ _('filament.col_type') }} <span class="text-gray-400 dark:text-gray-500" x-text="rollsSort.indicator('type_name')"></span></th>
+            <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="rollsSort.toggle('color')">{{ _('filament.col_color') }} <span class="text-gray-400 dark:text-gray-500" x-text="rollsSort.indicator('color')"></span></th>
+            <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="rollsSort.toggle('weight_grams')">{{ _('filament.col_weight') }} <span class="text-gray-400 dark:text-gray-500" x-text="rollsSort.indicator('weight_grams')"></span></th>
+            <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="rollsSort.toggle('vendor_serial')">{{ _('filament.col_serial') }} <span class="text-gray-400 dark:text-gray-500" x-text="rollsSort.indicator('vendor_serial')"></span></th>
+            <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="rollsSort.toggle('added_at')">{{ _('filament.col_added_at') }} <span class="text-gray-400 dark:text-gray-500" x-text="rollsSort.indicator('added_at')"></span></th>
+            <th class="px-4 py-3 text-center cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="rollsSort.toggle('in_stock')">{{ _('common.status') }} <span class="text-gray-400 dark:text-gray-500" x-text="rollsSort.indicator('in_stock')"></span></th>
             <th class="px-4 py-3"></th>
           </tr>
         </thead>
@@ -100,7 +101,7 @@
           <template x-if="!loadingRolls && rolls.length === 0">
             <tr><td colspan="8" class="px-4 py-8 text-center text-gray-400 dark:text-gray-500">{{ _('filament.rolls_empty') }}</td></tr>
           </template>
-          <template x-for="r in rolls" :key="r.id">
+          <template x-for="r in sortedRolls" :key="r.id">
             <tr class="border-t dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
               <td class="px-4 py-2" x-text="r.brand_name"></td>
               <td class="px-4 py-2" x-text="r.type_name"></td>
@@ -120,7 +121,7 @@
                 <span x-show="!r.in_stock"
                       class="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded px-2 py-0.5">{{ _('filament.filter_status_removed') }}</span>
               </td>
-              <td class="px-4 py-2 text-right space-x-2 whitespace-nowrap">
+              <td x-show="canManage" class="px-4 py-2 text-right space-x-2 whitespace-nowrap">
                 <button @click="openEditModal(r)"
                         class="text-xs text-blue-600 dark:text-blue-400 hover:underline">{{ _('common.edit') }}</button>
                 <button x-show="r.in_stock" @click="removeRoll(r)"
@@ -144,23 +145,29 @@
         <span class="text-xs text-gray-400 dark:text-gray-500" x-text="brands.length"></span>
       </div>
       <div class="px-5 py-4">
+        <div x-show="brands.length > 0" @click="brandListSort.toggle('name')"
+             class="flex items-center gap-1 px-1 mb-1 text-xs uppercase text-gray-400 dark:text-gray-500 cursor-pointer select-none hover:text-gray-600 dark:hover:text-gray-300">
+          <span>{{ _('common.name') }}</span><span x-text="brandListSort.indicator('name')"></span>
+        </div>
         <ul x-show="brands.length > 0" class="mb-4 space-y-1">
-          <template x-for="b in brands" :key="b.id">
+          <template x-for="b in sortedBrands" :key="b.id">
             <li class="flex items-center justify-between text-sm text-gray-700 dark:text-gray-300 py-1 border-b border-gray-100 dark:border-gray-700 last:border-0">
               <span x-text="b.name"></span>
-              <button @click="deleteBrand(b)"
+              <button x-show="canManage" @click="deleteBrand(b)"
                       class="text-xs text-red-400 hover:text-red-600 hover:underline">{{ _('common.remove') }}</button>
             </li>
           </template>
         </ul>
         <p x-show="brands.length === 0" class="text-sm text-gray-400 dark:text-gray-500 mb-4">{{ _('filament.no_brands') }}</p>
-        <div x-show="brandError" class="mb-2 text-xs text-red-600 dark:text-red-400" x-text="brandError"></div>
-        <form @submit.prevent="addBrand()" class="flex gap-2">
-          <input type="text" x-model="newBrandName" required placeholder="{{ _('filament.brands_placeholder') }}"
-                 class="flex-1 border dark:border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-          <button type="submit"
-                  class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">{{ _('common.add') }}</button>
-        </form>
+        <div x-show="canManage">
+          <div x-show="brandError" class="mb-2 text-xs text-red-600 dark:text-red-400" x-text="brandError"></div>
+          <form @submit.prevent="addBrand()" class="flex gap-2">
+            <input type="text" x-model="newBrandName" required placeholder="{{ _('filament.brands_placeholder') }}"
+                   class="flex-1 border dark:border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <button type="submit"
+                    class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">{{ _('common.add') }}</button>
+          </form>
+        </div>
       </div>
     </div>
 
@@ -170,29 +177,36 @@
         <span class="text-xs text-gray-400 dark:text-gray-500" x-text="types.length"></span>
       </div>
       <div class="px-5 py-4">
+        <div x-show="types.length > 0" @click="typeListSort.toggle('name')"
+             class="flex items-center gap-1 px-1 mb-1 text-xs uppercase text-gray-400 dark:text-gray-500 cursor-pointer select-none hover:text-gray-600 dark:hover:text-gray-300">
+          <span>{{ _('common.name') }}</span><span x-text="typeListSort.indicator('name')"></span>
+        </div>
         <ul x-show="types.length > 0" class="mb-4 space-y-1">
-          <template x-for="t in types" :key="t.id">
+          <template x-for="t in sortedTypes" :key="t.id">
             <li class="flex items-center justify-between text-sm text-gray-700 dark:text-gray-300 py-1 border-b border-gray-100 dark:border-gray-700 last:border-0">
               <span x-text="t.name"></span>
-              <button @click="deleteType(t)"
+              <button x-show="canManage" @click="deleteType(t)"
                       class="text-xs text-red-400 hover:text-red-600 hover:underline">{{ _('common.remove') }}</button>
             </li>
           </template>
         </ul>
         <p x-show="types.length === 0" class="text-sm text-gray-400 dark:text-gray-500 mb-4">{{ _('filament.no_types') }}</p>
-        <div x-show="typeError" class="mb-2 text-xs text-red-600 dark:text-red-400" x-text="typeError"></div>
-        <form @submit.prevent="addType()" class="flex gap-2">
-          <input type="text" x-model="newTypeName" required placeholder="{{ _('filament.types_placeholder') }}"
-                 class="flex-1 border dark:border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-          <button type="submit"
-                  class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">{{ _('common.add') }}</button>
-        </form>
+        <div x-show="canManage">
+          <div x-show="typeError" class="mb-2 text-xs text-red-600 dark:text-red-400" x-text="typeError"></div>
+          <form @submit.prevent="addType()" class="flex gap-2">
+            <input type="text" x-model="newTypeName" required placeholder="{{ _('filament.types_placeholder') }}"
+                   class="flex-1 border dark:border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <button type="submit"
+                    class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">{{ _('common.add') }}</button>
+          </form>
+        </div>
       </div>
     </div>
 
   </div>
 
   <p class="text-xs text-gray-400 dark:text-gray-500 mb-8">{{ _('filament.device_hint') }}</p>
+  {% endif %}
 
   <!-- Add Roll Modal -->
   <div x-show="showAddModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
@@ -326,8 +340,10 @@
 </div>
 
 <script>
-function filamentManage() {
+function filamentManage(canManage, loggedIn) {
   return {
+    canManage: canManage,
+    loggedIn: loggedIn,
     brands: [],
     types: [],
     summary: [],
@@ -341,6 +357,52 @@ function filamentManage() {
     filterStatus: 'active',
     filterBrandId: '',
     filterTypeId: '',
+
+    summarySort: makeSort(),
+    rollsSort: makeSort(),
+    brandListSort: makeSort(),
+    typeListSort: makeSort(),
+    get sortedSummary() { return this.summarySort.apply(this.summary, (row, key) => key === 'color' ? this.colorSortKey(row.color) : row[key]); },
+    get sortedRolls() { return this.rollsSort.apply(this.rolls, (row, key) => key === 'color' ? this.colorSortKey(row.color) : row[key]); },
+    get sortedBrands() { return this.brandListSort.apply(this.brands); },
+    get sortedTypes() { return this.typeListSort.apply(this.types); },
+
+    // Sorting by the raw hex STRING would cluster colors by numeric RGB
+    // value (dominated by the most-significant Red digits) rather than
+    // anything perceptually meaningful — e.g. two very different colors
+    // that happen to share a red channel land next to each other, while two
+    // similar blues with different red channels end up far apart.
+    // Converting to HSL and sorting by hue (then lightness) instead groups
+    // perceptually similar colors together, like a rainbow-ordered color
+    // picker. Grayscale hex colors (near-zero saturation) have no
+    // meaningful hue, so they're bucketed separately and sorted by
+    // lightness alone, after all real hues. A `color` that isn't a hex
+    // value at all — free text, or a tag format's own color NAME (e.g.
+    // OpenTag3D, see isHexColor()'s own comment) — sorts into a third
+    // bucket, alphabetically, since there's no color space to place it in.
+    // Returns a single zero-padded string so the generic sort helper's
+    // plain string comparison already orders it correctly.
+    colorSortKey(color) {
+      if (!this.isHexColor(color)) return '2-' + (color || '').toLowerCase();
+      const r = parseInt(color.slice(1, 3), 16) / 255;
+      const g = parseInt(color.slice(3, 5), 16) / 255;
+      const b = parseInt(color.slice(5, 7), 16) / 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      const l = (max + min) / 2;
+      const d = max - min;
+      const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+      const lPct = Math.round(l * 100).toString().padStart(3, '0');
+      if (s < 0.08) return '1-' + lPct;
+      let h;
+      switch (max) {
+        case r: h = ((g - b) / d) % 6; break;
+        case g: h = (b - r) / d + 2; break;
+        default: h = (r - g) / d + 4; break;
+      }
+      h *= 60;
+      if (h < 0) h += 360;
+      return '0-' + Math.round(h).toString().padStart(3, '0') + '-' + lPct;
+    },
 
     newBrandName: '',
     brandError: null,
@@ -366,16 +428,25 @@ function filamentManage() {
       return typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c);
     },
 
+    // GET /filament/rolls/summary is public — always loaded. Brands/types/rolls
+    // need a session (see their own endpoints' auth); calling them while
+    // logged out would trip apiFetch()'s 401->redirect-to-login handling,
+    // which is exactly wrong for what's supposed to be a public page.
     async init() {
       this.error = null;
       try {
-        const [brands, types] = await Promise.all([
-          apiFetch('/api/v1/filament/brands').then(r => r.ok ? r.json() : Promise.reject('brands')),
-          apiFetch('/api/v1/filament/types').then(r => r.ok ? r.json() : Promise.reject('types')),
-        ]);
-        this.brands = brands;
-        this.types = types;
-        await Promise.all([this.loadSummary(), this.loadRolls()]);
+        await this.loadSummary();
+        if (this.loggedIn) {
+          const [brands, types] = await Promise.all([
+            apiFetch('/api/v1/filament/brands').then(r => r.ok ? r.json() : Promise.reject('brands')),
+            apiFetch('/api/v1/filament/types').then(r => r.ok ? r.json() : Promise.reject('types')),
+          ]);
+          this.brands = brands;
+          this.types = types;
+          await this.loadRolls();
+        } else {
+          this.loadingRolls = false;
+        }
       } catch (e) {
         this.error = 'Failed to load data';
       }

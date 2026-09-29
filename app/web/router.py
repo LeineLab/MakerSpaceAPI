@@ -132,9 +132,21 @@ def products_manage(
 @router.get("/filament", response_class=HTMLResponse)
 def filament_page(
     request: Request,
-    user: dict = Depends(require_product_manager_user),
+    user: dict | None = Depends(get_session_user),
 ):
-    return templates.TemplateResponse(request, "filament/index.html", _ctx(request, user))
+    """Public (like /products): the stock-overview summary is visible to
+    anyone. The detailed rolls list and brand/type management need a session
+    (see GET /filament/rolls's own auth) — logged_in gates that in the
+    template so an anonymous visitor's page load never triggers a 401
+    redirect from fetching those."""
+    return templates.TemplateResponse(
+        request, "filament/index.html",
+        _ctx(
+            request, user,
+            user_can_manage=is_product_manager(user) if user else False,
+            logged_in=user is not None,
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
