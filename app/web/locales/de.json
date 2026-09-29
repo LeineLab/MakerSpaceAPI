@@ -597,6 +597,7 @@
   "ledger.col_closing_value": "Endwert",
   "ledger.row_total": "Summe",
   "ledger.asset_gwg_hint": "Die GWG-Grenze wird hier bewusst nicht automatisch geprüft — sie ändert sich und ist je nach Vorsteuerabzug unterschiedlich zu betrachten. Ob eine Anschaffung als Anlagevermögen zu erfassen ist, liegt in eurem Ermessen.",
+  "ledger.asset_useful_life_zero_hint": "0 = Sofortabschreibung (z.B. GWG, oder das Wahlrecht für Computerhardware/-software) — der volle Betrag wird im Anschaffungsmonat als AfA erfasst.",
   "ledger.asset_remove_confirm": "Anlagevermögen wirklich entfernen? Die zugrunde liegende Buchung bleibt bestehen und zählt wieder als normale Ausgabe im Buchungsjahr.",
   "ledger.select_afa_category": "AfA-Kategorie wählen…",
   "ledger.label_notes": "Notizen",

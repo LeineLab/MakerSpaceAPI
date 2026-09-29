@@ -597,6 +597,7 @@
   "ledger.col_closing_value": "Closing value",
   "ledger.row_total": "Total",
   "ledger.asset_gwg_hint": "The GWG threshold isn't checked automatically here — it changes over time and applies differently depending on VAT deduction. Whether a purchase should be capitalized at all is your own judgment call.",
+  "ledger.asset_useful_life_zero_hint": "0 = immediate write-off (e.g. a GWG, or the elective option for computer hardware/software) — the full amount is recognized as AfA in the acquisition month.",
   "ledger.asset_remove_confirm": "Really remove this asset? The underlying booking stays as-is and will count as a normal expense in its booking year again.",
   "ledger.select_afa_category": "Select AfA category…",
   "ledger.label_notes": "Notes",

@@ -130,6 +130,43 @@ def test_create_asset_success(treasurer_client, bank_account, purchase_category,
     assert component["entry_line_id"] == _category_line_id(entry)
 
 
+def test_create_asset_negative_useful_life_years_rejected(
+    treasurer_client, bank_account, purchase_category, afa_category,
+):
+    entry = _book_purchase(treasurer_client, bank_account, purchase_category, "1200.00")
+    resp = treasurer_client.post(
+        "/api/v1/ledger/assets",
+        json={
+            "name": "Lasercutter", "components": [_full_component(entry)],
+            "useful_life_years": -1, "category_id": afa_category.id,
+        },
+    )
+    assert resp.status_code == 422
+
+
+def test_create_asset_zero_useful_life_years_is_immediate_write_off(
+    treasurer_client, bank_account, purchase_category, afa_category,
+):
+    """useful_life_years=0 (Sofortabschreibung, e.g. a GWG or the elective
+    immediate write-off for computer hardware/software) fully depreciates
+    the component within its own acquisition month rather than dividing by
+    zero — see Key Design Decision #77."""
+    entry = _book_purchase(treasurer_client, bank_account, purchase_category, "700.00", entry_date="2024-03-15")
+    resp = treasurer_client.post(
+        "/api/v1/ledger/assets",
+        json={
+            "name": "Tastatur+Maus", "components": [_full_component(entry)],
+            "useful_life_years": 0, "category_id": afa_category.id,
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["useful_life_years"] == 0
+    assert body["acquisition_cost"] == "700.00"
+    assert body["accumulated_depreciation"] == "700.00"  # fully written off immediately
+    assert body["book_value"] == "0.00"
+
+
 def test_create_asset_explicit_acquisition_date_overrides_entry_date(
     treasurer_client, bank_account, purchase_category, afa_category,
 ):
@@ -449,6 +486,23 @@ def test_euer_afa_stops_after_disposal(treasurer_client, bank_account, purchase_
     assert afa_for(2026) == Decimal("0.00")
 
 
+def test_euer_afa_zero_useful_life_years_recognized_fully_in_acquisition_year(
+    treasurer_client, bank_account, purchase_category, afa_category,
+):
+    entry = _book_purchase(treasurer_client, bank_account, purchase_category, "700.00", entry_date="2024-03-15")
+    _capitalize(treasurer_client, entry, afa_category, useful_life_years=0)
+
+    def afa_for(year):
+        report = treasurer_client.get("/api/v1/ledger/report/euer", params={"year": year}).json()
+        if not report["categories"]:
+            return Decimal("0.00")
+        return Decimal(report["categories"][0]["total"])
+
+    assert afa_for(2023) == Decimal("0.00")  # before acquisition
+    assert afa_for(2024) == Decimal("700.00")  # fully recognized in the acquisition year
+    assert afa_for(2025) == Decimal("0.00")  # nothing left
+
+
 def test_euer_afa_combines_with_other_bookings_in_same_category(
     treasurer_client, bank_account, purchase_category, afa_category,
 ):
@@ -734,6 +788,34 @@ def test_anlagenspiegel_acquisition_year(treasurer_client, bank_account, purchas
     assert row["afa"] == "200.00"  # 10 depreciable months at 1200/60=20/month
     assert row["closing_book_value"] == "1000.00"
     assert row["acquisition_cost_end_of_year"] == "1200.00"
+
+
+def test_anlagenspiegel_zero_useful_life_years_fully_written_off_in_acquisition_year(
+    treasurer_client, bank_account, purchase_category, afa_category,
+):
+    """Sofortabschreibung (useful_life_years=0, #77) still appears in the
+    Anlagenspiegel like any other capitalized asset — Zugang and AfA both
+    equal the full cost in the acquisition year, closing book value 0 —
+    satisfying the GWG-Verzeichnis-style "must still be listed" requirement
+    even though it's fully written off immediately."""
+    entry = _book_purchase(treasurer_client, bank_account, purchase_category, "700.00", entry_date="2024-03-15")
+    asset = _capitalize(treasurer_client, entry, afa_category, useful_life_years=0)
+
+    report = treasurer_client.get("/api/v1/ledger/report/anlagenspiegel", params={"year": 2024}).json()
+    row = _row_for(report, asset["id"])
+    assert row["opening_book_value"] == "0.00"
+    assert row["zugang"] == "700.00"
+    assert row["abgang"] == "0.00"
+    assert row["afa"] == "700.00"
+    assert row["closing_book_value"] == "0.00"
+    assert row["acquisition_cost_end_of_year"] == "700.00"
+
+    later = treasurer_client.get("/api/v1/ledger/report/anlagenspiegel", params={"year": 2025}).json()
+    row_2025 = _row_for(later, asset["id"])
+    assert row_2025["opening_book_value"] == "0.00"
+    assert row_2025["zugang"] == "0.00"
+    assert row_2025["afa"] == "0.00"
+    assert row_2025["closing_book_value"] == "0.00"
 
 
 def test_anlagenspiegel_full_year_after_acquisition(treasurer_client, bank_account, purchase_category, afa_category):

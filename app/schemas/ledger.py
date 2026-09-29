@@ -322,10 +322,15 @@ class LedgerAssetCreate(BaseModel):
     or several separate purchases that only have functional value together
     (e.g. a computer's individually-bought parts — see #49). `category_id`
     is the AfA target category (e.g. "Abschreibungen") — may differ from
-    whatever category the purchase(s) were originally booked against."""
+    whatever category the purchase(s) were originally booked against.
+    `useful_life_years=0` is Sofortabschreibung (e.g. a GWG, or the
+    optional immediate-write-off elected for computer hardware/software) —
+    the full amount is recognized as AfA in the acquisition month itself,
+    still fully appearing in the Anlagevermögen list and Anlagenspiegel
+    rather than only as a plain expense (see #77)."""
     name: str = Field(examples=["Lasercutter Speedy 400"])
     components: list[LedgerAssetComponentCreate] = Field(min_length=1)
-    useful_life_years: int = Field(gt=0, examples=[7])
+    useful_life_years: int = Field(ge=0, examples=[7])
     category_id: int
     notes: Optional[str] = None
 
@@ -352,7 +357,7 @@ class LedgerAssetUpdate(BaseModel):
     #50) are managed separately via POST/PUT/DELETE
     /ledger/assets/{id}/components, not here."""
     name: Optional[str] = None
-    useful_life_years: Optional[int] = Field(default=None, gt=0)
+    useful_life_years: Optional[int] = Field(default=None, ge=0)
     category_id: Optional[int] = None
     notes: Optional[str] = None
 

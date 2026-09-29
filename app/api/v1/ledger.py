@@ -1394,7 +1394,20 @@ def _component_cumulative_depreciation(component: "LedgerAssetComponent", useful
     through the end of `through_month`/`through_year`. Computed from
     monthly_rate * elapsed_months (not summed year-by-year) and capped at
     the component's own `amount`, so rounding never drifts across years —
-    any remainder is simply absorbed in the final period."""
+    any remainder is simply absorbed in the final period.
+
+    `useful_life_years == 0` is Sofortabschreibung: the component's full
+    amount is recognized as AfA in its own acquisition month (monatsgenau,
+    same "acquisition month already counts as a full period" convention as
+    every other useful life), not spread out — there is no 60-month
+    schedule to divide by, so this is a genuinely separate case rather than
+    the general formula's zero-months-elapsed limit (which would otherwise
+    divide by zero). See Key Design Decision #77."""
+    if useful_life_years == 0:
+        start = component.acquisition_date
+        if (through_year, through_month) < (start.year, start.month):
+            return Decimal("0.00")
+        return component.amount
     months = _component_months_elapsed(component, useful_life_years, through_year, through_month)
     monthly_rate = component.amount / (useful_life_years * 12)
     cumulative = (monthly_rate * months).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
