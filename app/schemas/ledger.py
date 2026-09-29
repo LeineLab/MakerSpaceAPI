@@ -414,6 +414,31 @@ class AnlagenspiegelResponse(BaseModel):
     rows: list[AnlagenspiegelRow]
 
 
+class AccountBalanceYearRow(BaseModel):
+    """One account's computed balance at the start and end of a calendar
+    year — see Key Design Decision #79. `opening_balance` is the same
+    figure `GET /ledger/accounts/{id}/balance?as_of=` would return for
+    31.12 of the *previous* year (the double-entry ledger's own running
+    total, not a bank statement's), `closing_balance` for 31.12 of `year`
+    itself."""
+    account_id: int
+    name: str
+    iban: Optional[str] = None
+    is_offline: bool
+    opening_balance: Decimal = Field(examples=[Decimal("1234.56")])
+    closing_balance: Decimal = Field(examples=[Decimal("2345.67")])
+
+
+class AccountBalancesYearReport(BaseModel):
+    """Rows omit any account that was at exactly 0.00 both at the start and
+    the end of `year` AND had no booked line dated within it — a genuinely
+    dormant/unused account, per the user's own explicit request (#79). An
+    account with real activity that happens to net back to 0.00 is still
+    included."""
+    year: int
+    rows: list[AccountBalanceYearRow]
+
+
 class EuerCategoryTotal(BaseModel):
     category_id: int
     name: str

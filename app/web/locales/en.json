@@ -459,6 +459,10 @@
   "ledger.report_net_result":   "Net result",
   "ledger.col_total":           "Total",
 
+  "ledger.kontostaende_title":  "Account Balances at Start/End of Year",
+  "ledger.kontostaende_empty":  "No accounts with activity in this year.",
+  "ledger.col_closing_balance": "Closing Balance",
+
   "common.no":                  "No",
 
   "ledger.import_upload_title": "Import Bank Statement",

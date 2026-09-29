@@ -512,7 +512,7 @@
       <h2 class="text-xl font-semibold">{{ _('ledger.report_title') }}</h2>
       <div class="flex items-center gap-2">
         <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.report_year') }}</label>
-        <select x-model.number="reportYear" @change="loadReport()"
+        <select x-model.number="reportYear" @change="loadReport(); loadAccountBalancesYear()"
                 class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
           <template x-for="y in yearOptions" :key="y">
             <option :value="y" x-text="y"></option>
@@ -580,6 +580,41 @@
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
           <div class="text-xs text-gray-400 dark:text-gray-500 uppercase">{{ _('ledger.report_net_result') }}</div>
           <div class="text-xl font-bold" :class="report.net_result >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'" x-text="fmt(report.net_result)"></div>
+        </div>
+      </div>
+    </template>
+
+    <h2 class="text-xl font-semibold mt-8 mb-4">{{ _('ledger.kontostaende_title') }}</h2>
+    <div x-show="accountBalancesYearError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="accountBalancesYearError"></div>
+    <template x-if="loadingAccountBalancesYear">
+      <div class="text-gray-400 dark:text-gray-500 text-sm">Loading…</div>
+    </template>
+    <template x-if="!loadingAccountBalancesYear && accountBalancesYear && accountBalancesYear.rows.length === 0">
+      <p class="text-gray-400 dark:text-gray-500">{{ _('ledger.kontostaende_empty') }}</p>
+    </template>
+    <template x-if="!loadingAccountBalancesYear && accountBalancesYear && accountBalancesYear.rows.length > 0">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
+            <tr>
+              <th class="px-4 py-3 text-left">{{ _('common.name') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_iban') }}</th>
+              <th class="px-4 py-3 text-right">{{ _('ledger.col_opening_balance') }}</th>
+              <th class="px-4 py-3 text-right">{{ _('ledger.col_closing_balance') }}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+            <template x-for="a in accountBalancesYear.rows" :key="a.account_id">
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                <td class="px-4 py-3 font-medium" x-text="a.name"></td>
+                <td class="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400" x-text="a.iban || (a.is_offline ? OFFLINE_ACCOUNT_L : '')"></td>
+                <td class="px-4 py-3 text-right font-mono" x-text="fmt(a.opening_balance)"></td>
+                <td class="px-4 py-3 text-right font-mono" x-text="fmt(a.closing_balance)"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
         </div>
       </div>
     </template>
@@ -2723,6 +2758,7 @@ const SPHERE_NONE = {{ _('ledger.sphere_none') | tojson }};
 // every translated string used inside an x-text expression is predefined here.
 const YES_NO_L = { yes: {{ _('common.yes') | tojson }}, no: {{ _('common.no') | tojson }} };
 const CASH_CLEARING_HINT_L = {{ _('ledger.cash_clearing_hint') | tojson }};
+const OFFLINE_ACCOUNT_L = {{ _('ledger.offline_badge') | tojson }};
 const ACTIVE_L = { active: {{ _('common.active') | tojson }}, inactive: {{ _('common.inactive') | tojson }} };
 const KIND_L = { income: {{ _('ledger.kind_income') | tojson }}, expense: {{ _('ledger.kind_expense') | tojson }} };
 const CATEGORY_SIGN_WARNING_L = {
@@ -2998,6 +3034,9 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     reportYear: new Date().getFullYear(),
     pdfExporting: false,
     pdfExportError: null,
+    accountBalancesYear: null,
+    loadingAccountBalancesYear: false,
+    accountBalancesYearError: null,
 
     importAccountId: '',
     importFile: null,
@@ -3332,6 +3371,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     loadTabData(tab) {
       if (tab === 'entries') this.loadEntries();
       if (tab === 'report' && !this.report) this.loadReport();
+      if (tab === 'report' && !this.accountBalancesYear) this.loadAccountBalancesYear();
       if (tab === 'import') {
         this.loadImportLines();
         if (this.config.fints_enabled) this.loadFintsPresets();
@@ -3915,6 +3955,23 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         if (e !== 'unauthenticated') this.reportError = e.message || String(e);
       } finally {
         this.loadingReport = false;
+      }
+    },
+
+    // Kontostände zu Jahresbeginn/-ende (#79) — shares the EÜR tab's own
+    // reportYear picker rather than a second one, since both describe the
+    // same fiscal year.
+    async loadAccountBalancesYear() {
+      this.loadingAccountBalancesYear = true;
+      this.accountBalancesYearError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/report/kontostaende?year=${this.reportYear}`);
+        if (!r.ok) throw new Error('Failed to load account balances');
+        this.accountBalancesYear = await r.json();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.accountBalancesYearError = e.message || String(e);
+      } finally {
+        this.loadingAccountBalancesYear = false;
       }
     },
 

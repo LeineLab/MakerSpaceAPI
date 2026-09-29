@@ -1328,3 +1328,126 @@ def test_euer_report_pdf_export_empty_year(treasurer_client):
     resp = treasurer_client.get("/api/v1/ledger/report/euer/pdf?year=1999&lang=en")
     assert resp.status_code == 200
     assert resp.content.startswith(b"%PDF")
+
+
+# ---------------------------------------------------------------------------
+# GET /ledger/report/kontostaende (#79 — account balances at year start/end)
+# ---------------------------------------------------------------------------
+
+def test_account_balances_by_year_requires_auth(client):
+    resp = client.get("/api/v1/ledger/report/kontostaende?year=2026")
+    assert resp.status_code == 401
+
+
+def test_account_balances_by_year_omits_dormant_zero_account(treasurer_client, bank_account):
+    """A never-booked account at opening_balance=0.00 with no activity in the
+    given year is left out entirely, per the user's own explicit request."""
+    resp = treasurer_client.get("/api/v1/ledger/report/kontostaende?year=2026")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["year"] == 2026
+    assert all(r["account_id"] != bank_account.id for r in body["rows"])
+
+
+def test_account_balances_by_year_computes_opening_and_closing(treasurer_client, bank_account, income_category):
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-01",
+            "description": "Beitrag",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "50.00"},
+                {"category_id": income_category.id, "amount": "-50.00"},
+            ],
+        },
+    )
+    resp = treasurer_client.get("/api/v1/ledger/report/kontostaende?year=2026")
+    assert resp.status_code == 200
+    [row] = [r for r in resp.json()["rows"] if r["account_id"] == bank_account.id]
+    assert row["opening_balance"] == "0.00"
+    assert row["closing_balance"] == "50.00"
+    assert row["iban"] == bank_account.iban
+    assert row["is_offline"] is False
+
+
+def test_account_balances_by_year_carries_prior_year_balance_into_opening(
+    treasurer_client, bank_account, income_category,
+):
+    """A booking dated in an earlier year still shows up as the following
+    year's opening balance — and the account stays listed for that later
+    year even with zero activity actually dated within it, since the
+    balance itself is non-zero."""
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2025-06-15",
+            "description": "Beitrag Vorjahr",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "80.00"},
+                {"category_id": income_category.id, "amount": "-80.00"},
+            ],
+        },
+    )
+    resp = treasurer_client.get("/api/v1/ledger/report/kontostaende?year=2026")
+    assert resp.status_code == 200
+    [row] = [r for r in resp.json()["rows"] if r["account_id"] == bank_account.id]
+    assert row["opening_balance"] == "80.00"
+    assert row["closing_balance"] == "80.00"
+
+
+def test_account_balances_by_year_includes_active_account_that_nets_to_zero(
+    treasurer_client, bank_account, income_category, expense_category,
+):
+    """Real activity dated within the year keeps the account listed even
+    when it nets back to exactly 0.00 — "no bookings at all" is the actual
+    omission condition, not "ends at zero"."""
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-02-01",
+            "description": "Rein",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "100.00"},
+                {"category_id": income_category.id, "amount": "-100.00"},
+            ],
+        },
+    )
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-05-01",
+            "description": "Raus",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "-100.00"},
+                {"category_id": expense_category.id, "amount": "100.00"},
+            ],
+        },
+    )
+    resp = treasurer_client.get("/api/v1/ledger/report/kontostaende?year=2026")
+    assert resp.status_code == 200
+    [row] = [r for r in resp.json()["rows"] if r["account_id"] == bank_account.id]
+    assert row["opening_balance"] == "0.00"
+    assert row["closing_balance"] == "0.00"
+
+
+def test_account_balances_by_year_includes_offline_account(treasurer_client, db, income_category):
+    offline = BankAccount(name="Domain-Guthaben", is_offline=True, opening_balance=Decimal("0.00"))
+    db.add(offline)
+    db.commit()
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-04-01",
+            "description": "Aufladung",
+            "lines": [
+                {"bank_account_id": offline.id, "amount": "20.00"},
+                {"category_id": income_category.id, "amount": "-20.00"},
+            ],
+        },
+    )
+    resp = treasurer_client.get("/api/v1/ledger/report/kontostaende?year=2026")
+    assert resp.status_code == 200
+    [row] = [r for r in resp.json()["rows"] if r["account_id"] == offline.id]
+    assert row["is_offline"] is True
+    assert row["iban"] is None
+    assert row["closing_balance"] == "20.00"

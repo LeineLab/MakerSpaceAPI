@@ -459,6 +459,10 @@
   "ledger.report_net_result":   "Ergebnis",
   "ledger.col_total":           "Summe",
 
+  "ledger.kontostaende_title":  "Kontostände zu Jahresbeginn und -ende",
+  "ledger.kontostaende_empty":  "Keine Konten mit Aktivität in diesem Jahr.",
+  "ledger.col_closing_balance": "Endsaldo",
+
   "common.no":                  "Nein",
 
   "ledger.import_upload_title": "Kontoauszug importieren",

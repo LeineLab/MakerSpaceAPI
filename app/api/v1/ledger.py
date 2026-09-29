@@ -42,6 +42,8 @@ from app.models.transaction import Transaction, TransactionType
 from app.schemas.booking_target import BookingTargetResponse
 from app.schemas.common import HTTP_400, HTTP_403, HTTP_404, HTTP_409, HTTP_502, MessageResponse
 from app.schemas.ledger import (
+    AccountBalanceYearRow,
+    AccountBalancesYearReport,
     AnlagenspiegelResponse,
     AnlagenspiegelRow,
     BankAccountBalanceResponse,
@@ -2266,6 +2268,60 @@ def anlagenspiegel_report(
     Abgang, AfA, Endwert. See `_compute_anlagenspiegel()`'s own docstring for
     the per-component computation this is built from."""
     return _compute_anlagenspiegel(db, year)
+
+
+@router.get("/report/kontostaende", response_model=AccountBalancesYearReport)
+def account_balances_by_year(
+    year: int = Query(...),
+    _viewer: dict = Depends(require_ledger_viewer_user),
+    db: Session = Depends(get_db),
+):
+    """Every account's (bank and offline alike, #23) computed balance at the
+    start and end of `year` — Key Design Decision #79, raised by the user
+    directly as a gap for both the Vereins-Vermögensübersicht and the EÜR
+    context. Reuses `_computed_balance()` (the same helper
+    `GET /ledger/accounts/{id}/balance` already uses) at 31.12 of the
+    previous year (opening) and 31.12 of `year` itself (closing) — a
+    year that isn't over yet naturally comes out identical to today's
+    balance, since there are no future-dated bookings to include.
+
+    An account at exactly 0.00 both at the start and end of `year` with no
+    booked line dated within it is omitted entirely, per the user's own
+    explicit request — a genuinely dormant/unused account shouldn't clutter
+    the list. An account whose activity nets back to 0.00 is still shown,
+    since "no bookings at all" is the actual condition, not "ends at 0"."""
+    year_start = date(year, 1, 1)
+    year_end = date(year, 12, 31)
+    prev_year_end = date(year - 1, 12, 31)
+
+    active_account_ids = {
+        row[0]
+        for row in (
+            db.query(LedgerEntryLine.bank_account_id)
+            .join(LedgerEntry, LedgerEntry.id == LedgerEntryLine.entry_id)
+            .filter(
+                LedgerEntryLine.bank_account_id.isnot(None),
+                LedgerEntry.entry_date >= year_start,
+                LedgerEntry.entry_date <= year_end,
+            )
+            .distinct()
+            .all()
+        )
+    }
+
+    rows = []
+    for account in db.query(BankAccount).order_by(BankAccount.name).all():
+        opening = _computed_balance(db, account, prev_year_end)
+        closing = _computed_balance(db, account, year_end)
+        if opening == 0 and closing == 0 and account.id not in active_account_ids:
+            continue
+        rows.append(AccountBalanceYearRow(
+            account_id=account.id, name=account.name, iban=account.iban,
+            is_offline=account.is_offline,
+            opening_balance=opening, closing_balance=closing,
+        ))
+
+    return AccountBalancesYearReport(year=year, rows=rows)
 
 
 # --- Kassenprüfungsprotokolle (audit reports) ---
