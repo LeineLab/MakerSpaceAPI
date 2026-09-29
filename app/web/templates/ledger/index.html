@@ -2295,7 +2295,7 @@
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_capitalized_amount') }}</label>
-              <input type="number" step="0.01" x-model="assetForm.component_amount" required
+              <input type="number" step="0.01" x-model="assetForm.component_amount" :required="!editingAssetId"
                      class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm font-mono bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
             </div>
             <div>
@@ -2304,7 +2304,7 @@
                    kosten) depreciates from here, never backdated to another
                    component's date. -->
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_acquisition_date') }}</label>
-              <input type="date" x-model="assetForm.component_acquisition_date" required
+              <input type="date" x-model="assetForm.component_acquisition_date" :required="!editingAssetId"
                      class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
             </div>
           </div>
