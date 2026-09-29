@@ -1818,7 +1818,7 @@
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.book_label_description') }}</label>
-          <input type="text" x-model="bookForm.description" required
+          <input type="text" x-model="bookForm.description" required x-ref="bookDescriptionInput"
                  class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
         </div>
 
@@ -4499,14 +4499,17 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       const firstLine = this.newBookCategoryLine();
       // Autofill (#45): the staging line's own suggested_category_id
       // (computed server-side from active categories' match_keywords
-      // against purpose_text) pre-fills the single default line with the
-      // category and the full amount — purely a starting point, freely
-      // overridable, same "advisory, not enforced" precedent as the sign
-      // warning and the GWG hint.
+      // against purpose_text) pre-fills the single default line's category
+      // — purely a starting point, freely overridable, same
+      // "advisory, not enforced" precedent as the sign warning and the GWG
+      // hint. The full negated bank amount is now ALWAYS pre-filled (#72
+      // follow-up), independent of whether a category was suggested — it's
+      // what suggestPaperlessForLine() below needs to fire at all, so even
+      // an unrecognized purpose text still gets Paperless suggestions to
+      // help pick the right category from, instead of waiting for the
+      // treasurer to type the amount in by hand first.
       this.bookCategorySuggested = !!line.suggested_category_id;
-      if (line.suggested_category_id) {
-        firstLine.amount = (-parseFloat(line.amount)).toFixed(2);
-      }
+      firstLine.amount = (-parseFloat(line.amount)).toFixed(2);
       this.bookForm = {
         description: line.purpose_text || '',
         category_lines: [firstLine],
@@ -4519,12 +4522,27 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       this.showBookModal = true;
       // Fetch suggestions (#65) for the pre-filled amount right away — the
       // amount input's own @input.debounce handler never fires here since
-      // this write is programmatic, not typed. A no-op if there's no
-      // suggested_category_id (amount stays empty, suggestPaperlessForLine
-      // bails out on that). Reads back through the reactive
-      // this.bookForm... chain rather than the closed-over `firstLine`,
-      // same reasoning as the category_id fix below.
+      // this write is programmatic, not typed. Reads back through the
+      // reactive this.bookForm... chain rather than the closed-over
+      // `firstLine`, same reasoning as the category_id fix below.
       this.suggestPaperlessForLine(this.bookForm.category_lines[0], line.booking_date);
+      // Auto-focus (#72 follow-up): Shift+Enter ("und weiter") is bound as
+      // a keydown handler on the <form> itself, which only ever sees the
+      // event if some element inside the form already has focus — a fresh
+      // browser tab/page load, or a modal reopened after clicking anywhere
+      // outside a field, leaves nothing focused at all, silently dropping
+      // the shortcut with no visible error. The description field is
+      // always present (unlike the category/amount inputs, which only
+      // exist once bookForm.category_lines is populated) and deliberately
+      // NOT select()ed — this only needs *a* focused field for the keydown
+      // to bubble through, not a text-editing head start. Deferred to
+      // $nextTick since the field doesn't exist in the DOM until Alpine
+      // processes the x-show="bookingLine" this same call just triggered;
+      // guarded the same way the category_id write below is, in case the
+      // modal was closed/reopened onto a different line before it fires.
+      this.$nextTick(() => {
+        if (this.bookingLine === line) this.$refs.bookDescriptionInput?.focus();
+      });
       // Real bug (2026-09-21): the category <select>'s <option>s (a nested
       // x-for over activeCategories) only get mounted into the DOM the
       // moment bookForm.category_lines goes from empty to populated — the

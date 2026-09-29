@@ -33,6 +33,15 @@ def search_documents(query: str, limit: int = 10, target_date: date | None = Non
     hits. Without `target_date`, behaves exactly as before (Paperless's own
     ordering, `limit` results fetched directly).
 
+    Restricted to `PAPERLESS_DOCUMENT_TYPE_IDS` the same way `list_documents()`
+    /`suggest_documents()` already are — found missing here specifically
+    (this function historically never applied it) when the user asked
+    whether the restriction supports a list of IDs at all (it always has,
+    comma-separated); the manual search box was the one place that
+    restriction silently didn't reach, so it could surface a document of an
+    excluded type that neither the Belege overview nor the proactive
+    suggestions would ever show.
+
     Returns an empty list if Paperless isn't configured or is unreachable —
     a down/misconfigured Paperless must never block booking a ledger entry.
     """
@@ -41,10 +50,14 @@ def search_documents(query: str, limit: int = 10, target_date: date | None = Non
 
     fetch_size = max(limit * 5, 50) if target_date is not None else limit
     url = settings.PAPERLESS_URL.rstrip("/") + "/api/documents/"
+    params: dict = {"query": query, "page_size": fetch_size}
+    type_ids = _document_type_ids()
+    if type_ids:
+        params["document_type__id__in"] = ",".join(type_ids)
     try:
         response = httpx.get(
             url,
-            params={"query": query, "page_size": fetch_size},
+            params=params,
             headers={
                 "Authorization": f"Token {settings.PAPERLESS_API_TOKEN}",
                 "Accept": "application/json",
@@ -75,6 +88,11 @@ def _document_type_ids() -> list[str]:
     return [part.strip() for part in raw.split(",") if part.strip()]
 
 
+def _excluded_tag_ids() -> set[int]:
+    raw = settings.PAPERLESS_EXCLUDED_TAG_IDS.strip()
+    return {int(part.strip()) for part in raw.split(",") if part.strip().isdigit()}
+
+
 def list_documents(q: str | None = None, limit: int = 500) -> list[dict]:
     """List Paperless documents, newest first, for the Belege overview.
 
@@ -83,7 +101,13 @@ def list_documents(q: str | None = None, limit: int = 500) -> list[dict]:
     hold) via the same `document_type__id__in` filter Paperless's own web UI
     uses, and/or `q` (Paperless's own full-text search, the same `query`
     param `search_documents()` uses — it searches document content, not just
-    the title, which this app can't replicate on its own).
+    the title, which this app can't replicate on its own). Any document
+    carrying one of `PAPERLESS_EXCLUDED_TAG_IDS` (Key Design Decision #72 —
+    e.g. a "Duplikat" tag marking a document that shouldn't clutter this
+    list) is dropped — applied here, not via a Paperless-side query param,
+    same "computed here, not delegated" precedent as the `status`/`date_from`
+    /`date_to` filters on `GET /ledger/paperless/documents` already use,
+    since Paperless-ngx exposes no simple query-string "tag NOT IN" filter.
 
     Unlike `search_documents()`, this fetches up to `limit` documents in one
     request rather than paginating against Paperless — the caller
@@ -127,13 +151,18 @@ def list_documents(q: str | None = None, limit: int = 500) -> list[dict]:
     except (httpx.HTTPError, ValueError):
         return []
 
+    excluded = _excluded_tag_ids()
+    results = data.get("results", [])
+    if excluded:
+        results = [doc for doc in results if not (excluded & set(doc.get("tags") or []))]
+
     return [
         {
             "id": doc["id"],
             "title": doc.get("title") or f"Dokument {doc['id']}",
             "created": doc.get("created"),
         }
-        for doc in data.get("results", [])
+        for doc in results
     ]
 
 
@@ -299,3 +328,58 @@ def suggest_documents(amount: Decimal, target_date: date, limit: int = 3) -> lis
         }
         for _, _, doc, parsed_amount, amount_match in ranked[:limit]
     ]
+
+
+def set_paid_date_if_not_set(document_id: str, paid_date: date) -> None:
+    """Fill in a document's "paid on" custom field (`PAPERLESS_PAID_DATE_
+    CUSTOM_FIELD_ID`, Key Design Decision #72) with `paid_date` — ONLY if
+    the field is still empty on that document. Never overwrites an
+    already-set value, whether Paperless itself derived it or a treasurer
+    set it by hand; this is a one-way, best-effort convenience fill-in, not
+    a source of truth this app keeps in sync going forward.
+
+    Called right after a category-side line's `paperless_document_id` is
+    committed onto a booking (`POST /ledger/entries`, `POST /ledger/import/
+    lines/{id}/book`) with that entry's own `entry_date` — deliberately not
+    on the frontend's picker action alone, since picking a document in the
+    UI is provisional until the booking actually commits.
+
+    No-op if `PAPERLESS_PAID_DATE_CUSTOM_FIELD_ID` isn't configured, or if
+    Paperless is unreachable/misconfigured, or if the document doesn't
+    exist — same fail-open convention as every other function here; this
+    must never block or fail a booking that already succeeded.
+    """
+    field_id_raw = settings.PAPERLESS_PAID_DATE_CUSTOM_FIELD_ID.strip()
+    if not field_id_raw.isdigit() or not is_configured():
+        return
+    field_id = int(field_id_raw)
+
+    url = settings.PAPERLESS_URL.rstrip("/") + f"/api/documents/{document_id}/"
+    headers = {
+        "Authorization": f"Token {settings.PAPERLESS_API_TOKEN}",
+        "Accept": "application/json",
+    }
+    try:
+        response = httpx.get(url, headers=headers, timeout=_TIMEOUT_SECONDS)
+        response.raise_for_status()
+        doc = response.json()
+    except (httpx.HTTPError, ValueError):
+        return
+
+    custom_fields = doc.get("custom_fields") or []
+    existing = next((cf for cf in custom_fields if cf.get("field") == field_id), None)
+    if existing is not None and existing.get("value"):
+        return
+
+    updated_fields = [cf for cf in custom_fields if cf.get("field") != field_id]
+    updated_fields.append({"field": field_id, "value": paid_date.isoformat()})
+    try:
+        patch_response = httpx.patch(
+            url,
+            json={"custom_fields": updated_fields},
+            headers={**headers, "Content-Type": "application/json"},
+            timeout=_TIMEOUT_SECONDS,
+        )
+        patch_response.raise_for_status()
+    except httpx.HTTPError:
+        return

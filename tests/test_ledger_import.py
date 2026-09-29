@@ -911,6 +911,27 @@ def test_paperless_search_when_configured(auditor_client, monkeypatch):
     ]
 
 
+def test_paperless_search_restricted_to_configured_document_types(auditor_client, monkeypatch):
+    """PAPERLESS_DOCUMENT_TYPE_IDS already supports a comma-separated list of
+    IDs (same as list_documents()/suggest_documents()) — the manual search
+    box just never actually applied it, found while confirming this for the
+    user; now consistent with every other Paperless-backed list."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "PAPERLESS_URL", "https://paperless.example.com")
+    monkeypatch.setattr(settings, "PAPERLESS_API_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "PAPERLESS_DOCUMENT_TYPE_IDS", "3, 7")
+
+    with patch("app.services.paperless.httpx.get") as mock_get:
+        mock_get.return_value = httpx.Response(
+            200, json={"results": []},
+            request=httpx.Request("GET", "https://paperless.example.com/api/documents/"),
+        )
+        auditor_client.get("/api/v1/ledger/paperless/search?q=baumarkt")
+
+    assert mock_get.call_args.kwargs["params"]["document_type__id__in"] == "3,7"
+
+
 def test_paperless_search_unreachable_returns_empty(auditor_client, monkeypatch):
     from app.config import settings
 
@@ -1264,6 +1285,135 @@ def test_paperless_suggestions_unreachable_returns_empty(auditor_client, monkeyp
 
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+def test_paperless_documents_excludes_configured_tags(auditor_client, monkeypatch):
+    """Key Design Decision #72: PAPERLESS_EXCLUDED_TAG_IDS hides any document
+    carrying one of the listed tag ids (e.g. a "Duplikat" tag) from the
+    Belege overview — applied here, not via a Paperless-side filter."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "PAPERLESS_URL", "https://paperless.example.com")
+    monkeypatch.setattr(settings, "PAPERLESS_API_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "PAPERLESS_EXCLUDED_TAG_IDS", "5")
+
+    fake_response = {
+        "results": [
+            {"id": 1, "title": "Duplikat-markiert", "created": "2026-03-01", "tags": [5, 9]},
+            {"id": 2, "title": "Normaler Beleg", "created": "2026-03-01", "tags": [9]},
+        ],
+    }
+    with patch("app.services.paperless.httpx.get") as mock_get:
+        mock_get.return_value = httpx.Response(
+            200, json=fake_response, request=httpx.Request("GET", "https://paperless.example.com/api/documents/"),
+        )
+        resp = auditor_client.get("/api/v1/ledger/paperless/documents")
+
+    ids = [d["id"] for d in resp.json()]
+    assert ids == [2]
+    assert resp.headers["X-Total-Count"] == "1"
+
+
+def test_paperless_paid_date_disabled_by_default_makes_no_calls(
+    treasurer_client, bank_account, expense_category,
+):
+    """PAPERLESS_PAID_DATE_CUSTOM_FIELD_ID unset — booking a line with a
+    paperless_document_id must not attempt any Paperless call at all."""
+    _upload(treasurer_client, bank_account.id, _MT940_SAMPLE)
+    lines = treasurer_client.get("/api/v1/ledger/import/lines").json()
+    debit_line = next(l for l in lines if Decimal(str(l["amount"])) < 0)
+
+    with patch("app.services.paperless.httpx.get") as mock_get, \
+         patch("app.services.paperless.httpx.patch") as mock_patch:
+        resp = treasurer_client.post(
+            f"/api/v1/ledger/import/lines/{debit_line['id']}/book",
+            json={
+                "description": "Rechnung",
+                "category_lines": [
+                    {"category_id": expense_category.id, "amount": "30.00", "paperless_document_id": "77"},
+                ],
+            },
+        )
+    assert resp.status_code == 201
+    mock_get.assert_not_called()
+    mock_patch.assert_not_called()
+
+
+def test_book_import_line_fills_empty_paperless_paid_date(
+    treasurer_client, bank_account, expense_category, monkeypatch,
+):
+    """Key Design Decision #72: booking a document-linked line fills that
+    document's still-empty "paid on" custom field with the booking's own
+    entry_date."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "PAPERLESS_URL", "https://paperless.example.com")
+    monkeypatch.setattr(settings, "PAPERLESS_API_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "PAPERLESS_PAID_DATE_CUSTOM_FIELD_ID", "9")
+
+    _upload(treasurer_client, bank_account.id, _MT940_SAMPLE)
+    lines = treasurer_client.get("/api/v1/ledger/import/lines").json()
+    debit_line = next(l for l in lines if Decimal(str(l["amount"])) < 0)
+
+    with patch("app.services.paperless.httpx.get") as mock_get, \
+         patch("app.services.paperless.httpx.patch") as mock_patch:
+        mock_get.return_value = httpx.Response(
+            200, json={"id": 77, "custom_fields": []},
+            request=httpx.Request("GET", "https://paperless.example.com/api/documents/77/"),
+        )
+        mock_patch.return_value = httpx.Response(
+            200, json={"id": 77},
+            request=httpx.Request("PATCH", "https://paperless.example.com/api/documents/77/"),
+        )
+        resp = treasurer_client.post(
+            f"/api/v1/ledger/import/lines/{debit_line['id']}/book",
+            json={
+                "description": "Rechnung",
+                "category_lines": [
+                    {"category_id": expense_category.id, "amount": "30.00", "paperless_document_id": "77"},
+                ],
+            },
+        )
+    assert resp.status_code == 201
+    entry_date = resp.json()["entry_date"]
+    mock_patch.assert_called_once()
+    sent_fields = mock_patch.call_args.kwargs["json"]["custom_fields"]
+    assert {"field": 9, "value": entry_date} in sent_fields
+
+
+def test_book_import_line_does_not_overwrite_existing_paperless_paid_date(
+    treasurer_client, bank_account, expense_category, monkeypatch,
+):
+    """An already-set "paid on" value (Paperless-derived or hand-entered) is
+    never overwritten by a later booking that happens to link the same
+    document again (e.g. a partial payment against the same invoice)."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "PAPERLESS_URL", "https://paperless.example.com")
+    monkeypatch.setattr(settings, "PAPERLESS_API_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "PAPERLESS_PAID_DATE_CUSTOM_FIELD_ID", "9")
+
+    _upload(treasurer_client, bank_account.id, _MT940_SAMPLE)
+    lines = treasurer_client.get("/api/v1/ledger/import/lines").json()
+    debit_line = next(l for l in lines if Decimal(str(l["amount"])) < 0)
+
+    with patch("app.services.paperless.httpx.get") as mock_get, \
+         patch("app.services.paperless.httpx.patch") as mock_patch:
+        mock_get.return_value = httpx.Response(
+            200, json={"id": 77, "custom_fields": [{"field": 9, "value": "2026-01-05"}]},
+            request=httpx.Request("GET", "https://paperless.example.com/api/documents/77/"),
+        )
+        resp = treasurer_client.post(
+            f"/api/v1/ledger/import/lines/{debit_line['id']}/book",
+            json={
+                "description": "Rechnung",
+                "category_lines": [
+                    {"category_id": expense_category.id, "amount": "30.00", "paperless_document_id": "77"},
+                ],
+            },
+        )
+    assert resp.status_code == 201
+    mock_patch.assert_not_called()
 
 
 def test_paperless_suggestions_finds_document_missed_by_newest_only_fetch(auditor_client, monkeypatch):

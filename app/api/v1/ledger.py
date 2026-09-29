@@ -235,6 +235,21 @@ def _reject_cash_clearing_account_line(account: BankAccount) -> None:
         )
 
 
+def _fill_paperless_paid_dates(entry: LedgerEntry) -> None:
+    """Best-effort fill-in of each freshly-booked line's linked document's
+    "paid on" Paperless custom field (Key Design Decision #72) — called
+    right after a booking commits, for every category-side line carrying a
+    `paperless_document_id`. A no-op per line if that document already has
+    the field set, or if PAPERLESS_PAID_DATE_CUSTOM_FIELD_ID isn't
+    configured (paperless.set_paid_date_if_not_set() checks both). Not
+    called from reverse_entry() — a Storno's `entry_date` is today, not the
+    original booking's date, and the field (if set) was already correctly
+    filled in when the original was booked."""
+    for line in entry.lines:
+        if line.paperless_document_id:
+            paperless.set_paid_date_if_not_set(line.paperless_document_id, entry.entry_date)
+
+
 @router.get("/accounts/{account_id}/balance", response_model=BankAccountBalanceResponse, responses={**HTTP_404})
 def get_account_balance(
     account_id: int,
@@ -878,6 +893,7 @@ def create_entry(
     db.add(entry)
     db.commit()
     db.refresh(entry)
+    _fill_paperless_paid_dates(entry)
     return entry
 
 
@@ -2782,6 +2798,7 @@ def book_import_line(
         matched_line.matched_entry_id = entry.id
     db.commit()
     db.refresh(entry)
+    _fill_paperless_paid_dates(entry)
     return entry
 
 

@@ -66,6 +66,24 @@ class Settings(BaseSettings):
     # Paperless's own admin UI (Settings → Custom fields).
     PAPERLESS_AMOUNT_CUSTOM_FIELD_ID: str = ""
 
+    # Optional: the numeric ID of a Paperless "custom field" (Date type) that
+    # records when a document was paid — when set, booking a document to a
+    # ledger line fills this field in with the booking's own entry date, but
+    # ONLY if the field was still empty on that document (never overwrites an
+    # already-set value, e.g. one Paperless itself derived or a treasurer set
+    # by hand). Empty = this fill-in is skipped entirely. Find the field's ID
+    # in Paperless's own admin UI (Settings → Custom fields). See Key Design
+    # Decision #72.
+    PAPERLESS_PAID_DATE_CUSTOM_FIELD_ID: str = ""
+
+    # Optional: Paperless tag IDs (comma-separated, e.g. "12,5") to hide from
+    # the Belege overview (GET /ledger/paperless/documents) — e.g. a
+    # "Duplikat" tag used to mark documents that were already scanned once
+    # and shouldn't clutter the list of things still needing to be booked.
+    # Empty = no exclusion, every document (subject to
+    # PAPERLESS_DOCUMENT_TYPE_IDS) is listed. See Key Design Decision #72.
+    PAPERLESS_EXCLUDED_TAG_IDS: str = ""
+
     # Manual FinTS bank statement live-pull (Phase 3). Empty = disabled — no
     # scheduled automation regardless, this only gates whether the UI/API
     # accept a manual pull at all. python-fints requires a registered product
