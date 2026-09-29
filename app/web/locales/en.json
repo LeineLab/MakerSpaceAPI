@@ -413,7 +413,7 @@
   "ledger.sync_token_remove_confirm": "Really delete this sync token? Scripts using it will no longer be able to sync afterwards.",
   "ledger.no_statement_balance": "No bank statement balance known from an import — this is just the computed balance from booked lines.",
   "ledger.reconciliation_match": "Matches the bank's balance as of {date}.",
-  "ledger.reconciliation_mismatch": "Differs from the bank's balance: {statement} per the last import (as of {date}). Some transactions up to that date may still be unbooked.",
+  "ledger.reconciliation_mismatch": "Differs from the bank's balance as of {date}: your own bookkeeping shows {computed}, the bank statement shows {statement}. Some transactions up to that date may still be unbooked.",
   "ledger.account_modal_title": "New Bank Account",
   "ledger.label_iban":          "IBAN",
   "ledger.label_name":          "Name",

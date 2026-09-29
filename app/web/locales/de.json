@@ -413,7 +413,7 @@
   "ledger.sync_token_remove_confirm": "Diesen Sync-Token wirklich löschen? Skripte, die ihn verwenden, können danach nicht mehr synchronisieren.",
   "ledger.no_statement_balance": "Kein Bank-Saldo aus einem Import bekannt — nur der berechnete Saldo aus den gebuchten Zeilen.",
   "ledger.reconciliation_match": "Stimmt mit dem Bank-Saldo vom {date} überein.",
-  "ledger.reconciliation_mismatch": "Weicht vom Bank-Saldo ab: {statement} laut letztem Import vom {date}. Möglicherweise sind noch nicht alle Umsätze bis zu diesem Datum verbucht.",
+  "ledger.reconciliation_mismatch": "Weicht vom Bank-Saldo zum {date} ab: eigene Buchführung zeigt {computed}, Kontoauszug zeigt {statement}. Möglicherweise sind noch nicht alle Umsätze bis zu diesem Datum verbucht.",
   "ledger.account_modal_title": "Neues Bankkonto",
   "ledger.label_iban":          "IBAN",
   "ledger.label_name":          "Name",

@@ -4334,6 +4334,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
       return this.balanceMismatch(account)
         ? RECONCILIATION_MISMATCH_TMPL
+            .replace('{computed}', this.fmt(b.balance_as_of_last_statement))
             .replace('{statement}', this.fmt(b.last_statement_balance))
             .replace('{date}', b.last_statement_balance_date)
         : RECONCILIATION_MATCH_TMPL.replace('{date}', b.last_statement_balance_date);
