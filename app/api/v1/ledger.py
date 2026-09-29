@@ -727,11 +727,14 @@ def list_entries(
     line(s) it was booked from, if any — that line's bank purpose text or
     counterparty name, so a booking can be found by what the bank actually
     called it even when the treasurer typed something different (or
-    nothing) into the description. Matched via `.in_()` subqueries rather
-    than additional joins on the main query, so it composes cleanly with
-    the existing conditional `bank_account_id`/`category_id`/
-    `paperless_document_id` join below without affecting row multiplicity.
-    Same substring-match convention as the import staging queue's own `q`
+    nothing) into the description. Matched via `.in_()` subqueries, same as
+    every other per-line filter below (`bank_account_id`/`category_id`/
+    `paperless_document_id`/`has_document`) — each against its own
+    independent subquery rather than a single shared join, so combining two
+    of them (e.g. an account and a category) correctly finds an entry where
+    *some* line matches one and *some other* line matches the other,
+    instead of requiring a single line to impossibly match both at once
+    (see #80). Same substring-match convention as the import staging queue's own `q`
     filter (#38). Deliberately does NOT also match category name by
     substring (see #60) — `category_id` (exact match, below) is the
     correct tool for "show me this category's bookings" instead, since a
@@ -769,18 +772,34 @@ def list_entries(
         query = query.filter(LedgerEntry.entry_date >= date_from)
     if date_to is not None:
         query = query.filter(LedgerEntry.entry_date <= date_to)
-    if bank_account_id is not None or category_id is not None or paperless_document_id is not None:
-        query = query.join(LedgerEntryLine)
-        if bank_account_id is not None:
-            query = query.filter(LedgerEntryLine.bank_account_id == bank_account_id)
-        if category_id is not None:
-            query = query.filter(LedgerEntryLine.category_id == category_id)
-        if paperless_document_id is not None:
-            # paperless_document_id lives per line (migration 0016) — used by
-            # the frontend to warn (not block — partial payments against the
-            # same invoice are a legitimate reason to link it more than once)
-            # when a document is about to be linked a second time.
-            query = query.filter(LedgerEntryLine.paperless_document_id == paperless_document_id)
+    # bank_account_id/category_id/paperless_document_id each match against
+    # some *one* of an entry's lines independently, via their own `.in_()`
+    # subquery — never a single shared join. A `ledger_entry_lines` row is
+    # exclusively a bank line or a category line (the table's own CHECK
+    # constraint), so a bank_account_id=X AND category_id=Y filter applied
+    # to one joined row could never match anything — a real bug found by
+    # the user (combining an account and a category filter on the Buchungen
+    # tab silently returned zero rows, even though the same booking clearly
+    # had both a matching bank line and a matching category line, just on
+    # two different lines of the same entry).
+    if bank_account_id is not None:
+        query = query.filter(LedgerEntry.id.in_(
+            db.query(LedgerEntryLine.entry_id).filter(LedgerEntryLine.bank_account_id == bank_account_id)
+        ))
+    if category_id is not None:
+        query = query.filter(LedgerEntry.id.in_(
+            db.query(LedgerEntryLine.entry_id).filter(LedgerEntryLine.category_id == category_id)
+        ))
+    if paperless_document_id is not None:
+        # paperless_document_id lives per line (migration 0016) — used by
+        # the frontend to warn (not block — partial payments against the
+        # same invoice are a legitimate reason to link it more than once)
+        # when a document is about to be linked a second time.
+        query = query.filter(LedgerEntry.id.in_(
+            db.query(LedgerEntryLine.entry_id).filter(
+                LedgerEntryLine.paperless_document_id == paperless_document_id
+            )
+        ))
     if q:
         like = f"%{q}%"
         line_note_entry_ids = db.query(LedgerEntryLine.entry_id).filter(LedgerEntryLine.note.ilike(like))
