@@ -982,6 +982,55 @@ def test_reverse_entry_posts_offsetting_entry(treasurer_client, bank_account, in
     assert original_amounts == {Decimal("-50.00"), Decimal("50.00")}
 
 
+def test_reverse_entry_uses_original_entry_date_not_today(treasurer_client, bank_account, income_category):
+    """Real bug (#82): a Storno used to always be dated "today", regardless
+    of the original entry's own date. If a mistaken booking from a past
+    year is only discovered and corrected much later, dating the reversal
+    "today" leaves that earlier year's EÜR permanently wrong (still showing
+    the uncorrected mistake) while injecting an unrelated adjustment into
+    whatever year the correction happens to land in instead. The reversal
+    must carry the *original's own* entry_date so both halves of the
+    correction land in the same period."""
+    original = _create_entry(treasurer_client, bank_account, income_category, amount="50.00")
+    assert original["entry_date"] == "2026-03-01"
+
+    reversal = treasurer_client.post(f"/api/v1/ledger/entries/{original['id']}/reverse").json()
+    assert reversal["entry_date"] == "2026-03-01"
+    # created_at (independent of entry_date on every entry) still records
+    # when the correction was actually made — no separate field needed.
+    assert reversal["created_at"] is not None
+
+
+def test_reverse_entry_from_prior_year_keeps_euer_correct_across_year_boundary(
+    treasurer_client, bank_account, income_category,
+):
+    """The exact scenario the user raised: a 2025 booking mistake, only
+    reversed in 2026 (i.e. today, whenever the test happens to run). Both
+    2025's and 2026's EÜR must come out correct — the mistake's own year
+    nets back to zero, and the year the correction was actually made in
+    shows nothing from it at all."""
+    original = treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2025-06-01",
+            "description": "Fehlbuchung 2025",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "50.00"},
+                {"category_id": income_category.id, "amount": "-50.00"},
+            ],
+        },
+    ).json()
+
+    reversal = treasurer_client.post(f"/api/v1/ledger/entries/{original['id']}/reverse").json()
+    assert reversal["entry_date"] == "2025-06-01"
+
+    report_2025 = treasurer_client.get("/api/v1/ledger/report/euer?year=2025").json()
+    assert report_2025["total_income"] == "0.00"
+
+    report_2026 = treasurer_client.get("/api/v1/ledger/report/euer?year=2026").json()
+    assert report_2026["categories"] == []
+
+
 def test_reverse_entry_copies_line_paperless_document(treasurer_client, bank_account, income_category):
     resp = treasurer_client.post(
         "/api/v1/ledger/entries",

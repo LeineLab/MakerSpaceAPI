@@ -941,6 +941,17 @@ def reverse_entry(
     payout's other bookings untouched. The reversal itself gets no such
     links (it isn't a payout booking, just its undo).
 
+    The reversal's `entry_date` is the *original* entry's own `entry_date`
+    (#82), not today — a Storno corrects a booking mistake that existed on
+    that date, so both halves of the correction belong in the same period;
+    dating it "today" instead would leave the original's period's own EÜR
+    permanently wrong (still showing the uncorrected mistake) while
+    injecting an unrelated adjustment into whatever period the correction
+    happened to be made in — a real, reported bug when the mistake and its
+    correction straddle a year boundary. "When was this actually corrected"
+    is `created_at` (already `now()`, already tracked on every entry
+    independently of `entry_date` — no separate field needed for it).
+
     A reversal entry can't itself be reversed: those links (`matched_entry_id`
     on a staging line, `ledger_target_payout_entries` rows on a payout
     booking) only ever live on the *original* entry, and get cleared once
@@ -967,7 +978,7 @@ def reverse_entry(
         raise HTTPException(status_code=409, detail=f"Already reversed by entry {already_reversed.id}")
 
     reversal = LedgerEntry(
-        entry_date=datetime.now(UTC).date(),
+        entry_date=original.entry_date,
         description=f"Storno: {original.description}",
         reverses_entry_id=original.id,
         created_by=treasurer.get("sub", "unknown"),
