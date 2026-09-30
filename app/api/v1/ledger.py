@@ -2940,19 +2940,42 @@ def reset_import_line(
 
 # --- Paperless-ngx document search (proxy, read-only) ---
 
+def _linked_entry_ids_by_doc(db: Session, doc_ids: list[str]) -> dict[str, list[int]]:
+    """Which already-booked entries (if any) link each of `doc_ids` (#28/#83)
+    — shared by the Belege overview and the search/suggestions dropdowns so
+    all three compute "already linked" identically."""
+    if not doc_ids:
+        return {}
+    linked_by_doc: dict[str, list[int]] = {}
+    for doc_id, entry_id in (
+        db.query(LedgerEntryLine.paperless_document_id, LedgerEntryLine.entry_id)
+        .filter(LedgerEntryLine.paperless_document_id.in_(doc_ids))
+        .all()
+    ):
+        linked_by_doc.setdefault(doc_id, []).append(entry_id)
+    return linked_by_doc
+
+
 @router.get("/paperless/search", response_model=list[PaperlessDocumentResult])
 def search_paperless(
     q: str = Query(..., min_length=1),
     target_date: Optional[date] = Query(default=None),
     _viewer: dict = Depends(require_ledger_viewer_user),
+    db: Session = Depends(get_db),
 ):
     """`target_date` (#68), when given, re-sorts the matching documents by
     ascending distance to it (the reference line's own booking/entry date)
     instead of leaving Paperless's own relevance ordering as-is — several
     textually-similar hits (e.g. every monthly "Contabo Server" invoice) are
     otherwise indistinguishable by relevance alone, burying the one actually
-    relevant to this booking."""
-    return paperless.search_documents(q, target_date=target_date)
+    relevant to this booking. `linked_entry_ids` (#83) is filled in here too,
+    same as suggestions below — never filtered out, just surfaced so the
+    frontend can highlight it."""
+    results = paperless.search_documents(q, target_date=target_date)
+    linked_by_doc = _linked_entry_ids_by_doc(db, [str(r["id"]) for r in results])
+    for r in results:
+        r["linked_entry_ids"] = linked_by_doc.get(str(r["id"]), [])
+    return results
 
 
 @router.get("/paperless/suggestions", response_model=list[PaperlessDocumentResult])
@@ -2961,14 +2984,26 @@ def suggest_paperless_documents(
     target_date: date = Query(...),
     limit: int = Query(default=3, ge=1, le=10),
     _viewer: dict = Depends(require_ledger_viewer_user),
+    db: Session = Depends(get_db),
 ):
     """Proactive per-line document suggestions (#65) — alongside, not instead
     of, the manual search above. Ranked by an exact match against
     PAPERLESS_AMOUNT_CUSTOM_FIELD_ID first (if configured), then by ascending
     distance between the document's own date and `target_date`. `amount`'s
     sign is irrelevant (compared against a document's own always-positive
-    invoice total) — pass the line's amount exactly as typed."""
-    return paperless.suggest_documents(amount, target_date, limit=limit)
+    invoice total) — pass the line's amount exactly as typed.
+
+    A document already linked to a booked entry is still suggested here —
+    deliberately never excluded, since a partial payment against the same
+    invoice is a legitimate reason to link it again (#28) — but
+    `linked_entry_ids` (#83) is filled in so the frontend can highlight it,
+    rather than silently suggesting what looks like a fresh, unbooked
+    document."""
+    results = paperless.suggest_documents(amount, target_date, limit=limit)
+    linked_by_doc = _linked_entry_ids_by_doc(db, [str(r["id"]) for r in results])
+    for r in results:
+        r["linked_entry_ids"] = linked_by_doc.get(str(r["id"]), [])
+    return results
 
 
 _PAPERLESS_BULK_FETCH_LIMIT = 500
@@ -3013,13 +3048,7 @@ def list_paperless_documents(
         return []
 
     doc_ids = [str(d["id"]) for d in documents]
-    linked_by_doc: dict[str, list[int]] = {}
-    for doc_id, entry_id in (
-        db.query(LedgerEntryLine.paperless_document_id, LedgerEntryLine.entry_id)
-        .filter(LedgerEntryLine.paperless_document_id.in_(doc_ids))
-        .all()
-    ):
-        linked_by_doc.setdefault(doc_id, []).append(entry_id)
+    linked_by_doc = _linked_entry_ids_by_doc(db, doc_ids)
 
     items = [
         PaperlessDocumentOverviewItem(

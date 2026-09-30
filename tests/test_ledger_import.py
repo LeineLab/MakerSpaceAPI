@@ -907,9 +907,14 @@ def test_paperless_search_when_configured(auditor_client, monkeypatch):
     # target amount to compare against here. `amount` itself stays None too
     # in this test specifically because PAPERLESS_AMOUNT_CUSTOM_FIELD_ID
     # isn't configured — see test_paperless_search_includes_amount_when_configured
-    # (#77) for the case where it is.
+    # (#77) for the case where it is. linked_entry_ids is empty since nothing
+    # has booked this document yet — see test_paperless_search_marks_already_
+    # linked_documents (#83) for the linked case.
     assert resp.json() == [
-        {"id": 42, "title": "Rechnung Baumarkt", "created": "2026-03-01", "amount_match": False, "amount": None}
+        {
+            "id": 42, "title": "Rechnung Baumarkt", "created": "2026-03-01",
+            "amount_match": False, "amount": None, "linked_entry_ids": [],
+        }
     ]
 
 
@@ -945,6 +950,49 @@ def test_paperless_search_includes_amount_when_configured(auditor_client, monkey
     assert body[0]["amount"] == "45.67"
     assert body[0]["amount_match"] is False
     assert body[1]["amount"] is None
+
+
+def test_paperless_search_marks_already_linked_documents(
+    auditor_client, treasurer_client, monkeypatch, bank_account, expense_category,
+):
+    """A document already linked to a booked entry (#28) is still returned by
+    the manual search — never filtered out, since a partial payment against
+    the same invoice is a legitimate reason to link it again — but now
+    carries its `linked_entry_ids` (#83) so the frontend can highlight it
+    instead of showing it as if it were a fresh, unbooked document."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "PAPERLESS_URL", "https://paperless.example.com")
+    monkeypatch.setattr(settings, "PAPERLESS_API_TOKEN", "test-token")
+
+    entry = treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-01",
+            "description": "Bueromaterial",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "-20.00"},
+                {"category_id": expense_category.id, "amount": "20.00", "paperless_document_id": "42"},
+            ],
+        },
+    ).json()
+
+    fake_response = {
+        "results": [
+            {"id": 42, "title": "Rechnung Bueromarkt", "created": "2026-03-01"},
+            {"id": 99, "title": "Rechnung Getraenke", "created": "2026-02-15"},
+        ],
+    }
+    with patch("app.services.paperless.httpx.get") as mock_get:
+        mock_get.return_value = httpx.Response(
+            200, json=fake_response, request=httpx.Request("GET", "https://paperless.example.com/api/documents/"),
+        )
+        resp = auditor_client.get("/api/v1/ledger/paperless/search?q=rechnung")
+
+    assert resp.status_code == 200
+    docs = {d["id"]: d for d in resp.json()}
+    assert docs[42]["linked_entry_ids"] == [entry["id"]]
+    assert docs[99]["linked_entry_ids"] == []
 
 
 def test_paperless_search_restricted_to_configured_document_types(auditor_client, monkeypatch):
@@ -1252,6 +1300,50 @@ def test_paperless_suggestions_ranked_by_date_distance_without_amount_field(audi
     ids = [d["id"] for d in resp.json()]
     assert ids == [3, 2, 1]
     assert all(d["amount_match"] is False for d in resp.json())
+
+
+def test_paperless_suggestions_marks_already_linked_documents(
+    auditor_client, treasurer_client, monkeypatch, bank_account, expense_category,
+):
+    """A document already linked to a booked entry is still suggested here —
+    deliberately never excluded (a partial payment against the same invoice
+    is a legitimate reason to link it again, #28) — but now carries its
+    `linked_entry_ids` (#83) so the frontend can highlight it rather than
+    suggesting what looks like a fresh, unbooked document."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "PAPERLESS_URL", "https://paperless.example.com")
+    monkeypatch.setattr(settings, "PAPERLESS_API_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "PAPERLESS_AMOUNT_CUSTOM_FIELD_ID", "")
+
+    entry = treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-01",
+            "description": "Bueromaterial",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "-20.00"},
+                {"category_id": expense_category.id, "amount": "20.00", "paperless_document_id": "1"},
+            ],
+        },
+    ).json()
+
+    fake_response = {
+        "results": [
+            {"id": 1, "title": "Bereits gebucht", "created": "2026-03-01"},
+            {"id": 2, "title": "Noch offen", "created": "2026-03-01"},
+        ],
+    }
+    with patch("app.services.paperless.httpx.get") as mock_get:
+        mock_get.return_value = httpx.Response(
+            200, json=fake_response, request=httpx.Request("GET", "https://paperless.example.com/api/documents/"),
+        )
+        resp = auditor_client.get("/api/v1/ledger/paperless/suggestions?amount=50.00&target_date=2026-03-01")
+
+    assert resp.status_code == 200
+    docs = {d["id"]: d for d in resp.json()}
+    assert docs[1]["linked_entry_ids"] == [entry["id"]]
+    assert docs[2]["linked_entry_ids"] == []
 
 
 def test_paperless_suggestions_amount_match_ranked_above_closer_date(auditor_client, monkeypatch):

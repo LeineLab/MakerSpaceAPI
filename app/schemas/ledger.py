@@ -716,6 +716,14 @@ class PaperlessDocumentResult(BaseModel):
     # PAPERLESS_AMOUNT_CUSTOM_FIELD_ID isn't configured, or the document has
     # no value for it.
     amount: Optional[Decimal] = None
+    # Which already-booked entries (if any) already link this document (#83)
+    # — same computed field/shape as PaperlessDocumentOverviewItem.
+    # Deliberately never excludes an already-linked document from search/
+    # suggestions outright (a partial payment against the same invoice is a
+    # legitimate reason to link one document more than once, see #28) — the
+    # frontend highlights it instead, so the treasurer can still pick it
+    # deliberately.
+    linked_entry_ids: list[int] = []
 
 
 class PaperlessDocumentOverviewItem(BaseModel):

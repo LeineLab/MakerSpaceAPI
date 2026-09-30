@@ -1917,11 +1917,21 @@
                       <div>
                         <button type="button" x-show="line.paperlessSuggestions[i - 1]"
                                 @click="line.paperlessSuggestions[i - 1] && pickPaperlessDocForLine(line, line.paperlessSuggestions[i - 1])"
-                                class="flex items-center justify-between gap-2 w-full text-left px-2 py-1 text-xs rounded border dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700">
+                                :title="(line.paperlessSuggestions[i - 1] || {}).linked_entry_ids && line.paperlessSuggestions[i - 1].linked_entry_ids.length ? PAPERLESS_ALREADY_LINKED_HINT_L : null"
+                                :class="(line.paperlessSuggestions[i - 1] || {}).linked_entry_ids && line.paperlessSuggestions[i - 1].linked_entry_ids.length ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/50' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'"
+                                class="flex items-center justify-between gap-2 w-full text-left px-2 py-1 text-xs rounded border">
                           <span class="truncate">
                             <span x-text="(line.paperlessSuggestions[i - 1] || {}).title || ''"></span>
                             <span class="text-gray-400 dark:text-gray-500"
                                   x-text="(line.paperlessSuggestions[i - 1] || {}).created ? ' · ' + paperlessDocDate(line.paperlessSuggestions[i - 1].created) : ''"></span>
+                            <!-- #83: already-linked suggestions are never
+                                 excluded (a partial payment against the same
+                                 invoice is a legitimate reason to link it
+                                 again, #28) — just highlighted amber, with
+                                 this inline hint, so it doesn't look like a
+                                 fresh, unbooked document. -->
+                            <span x-show="(line.paperlessSuggestions[i - 1] || {}).linked_entry_ids && line.paperlessSuggestions[i - 1].linked_entry_ids.length"
+                                  class="text-amber-700 dark:text-amber-400" x-text="' · ' + PAPERLESS_ALREADY_LINKED_HINT_L"></span>
                           </span>
                           <!-- Real bug (#66): a separate match/no-match
                                badge here could make a matching row wider
@@ -1956,13 +1966,18 @@
                            configured and the document has a value for it —
                            always the muted color here (never green), since
                            a plain search result has no target amount to
-                           match against. -->
+                           match against. An already-linked result (#83) is
+                           highlighted amber, same as a suggestion. -->
                       <template x-for="doc in line.paperlessResults" :key="doc.id">
                         <div @click="pickPaperlessDocForLine(line, doc)"
-                             class="flex items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
+                             :title="doc.linked_entry_ids && doc.linked_entry_ids.length ? PAPERLESS_ALREADY_LINKED_HINT_L : null"
+                             :class="doc.linked_entry_ids && doc.linked_entry_ids.length ? 'bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 dark:hover:bg-amber-900/50' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"
+                             class="flex items-center justify-between gap-2 px-3 py-2 text-sm cursor-pointer">
                           <span class="truncate">
                             <span x-text="doc.title"></span>
                             <span class="text-gray-400 dark:text-gray-500 text-xs" x-text="'#' + doc.id + (doc.created ? ' · ' + paperlessDocDate(doc.created) : '')"></span>
+                            <span x-show="doc.linked_entry_ids && doc.linked_entry_ids.length"
+                                  class="text-amber-700 dark:text-amber-400 text-xs" x-text="' · ' + PAPERLESS_ALREADY_LINKED_HINT_L"></span>
                           </span>
                           <span x-show="doc.amount != null" class="shrink-0 font-mono text-xs text-gray-400 dark:text-gray-500"
                                 x-text="fmt(doc.amount)"></span>
@@ -2135,11 +2150,15 @@
                       <div>
                         <button type="button" x-show="line.paperlessSuggestions[i - 1]"
                                 @click="line.paperlessSuggestions[i - 1] && pickPaperlessDocForLine(line, line.paperlessSuggestions[i - 1])"
-                                class="flex items-center justify-between gap-2 w-full text-left px-2 py-1 text-xs rounded border dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700">
+                                :title="(line.paperlessSuggestions[i - 1] || {}).linked_entry_ids && line.paperlessSuggestions[i - 1].linked_entry_ids.length ? PAPERLESS_ALREADY_LINKED_HINT_L : null"
+                                :class="(line.paperlessSuggestions[i - 1] || {}).linked_entry_ids && line.paperlessSuggestions[i - 1].linked_entry_ids.length ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/50' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'"
+                                class="flex items-center justify-between gap-2 w-full text-left px-2 py-1 text-xs rounded border">
                           <span class="truncate">
                             <span x-text="(line.paperlessSuggestions[i - 1] || {}).title || ''"></span>
                             <span class="text-gray-400 dark:text-gray-500"
                                   x-text="(line.paperlessSuggestions[i - 1] || {}).created ? ' · ' + paperlessDocDate(line.paperlessSuggestions[i - 1].created) : ''"></span>
+                            <span x-show="(line.paperlessSuggestions[i - 1] || {}).linked_entry_ids && line.paperlessSuggestions[i - 1].linked_entry_ids.length"
+                                  class="text-amber-700 dark:text-amber-400" x-text="' · ' + PAPERLESS_ALREADY_LINKED_HINT_L"></span>
                           </span>
                           <!-- Real bug (#66): a separate match/no-match
                                badge here could make a matching row wider
@@ -2174,13 +2193,18 @@
                            configured and the document has a value for it —
                            always the muted color here (never green), since
                            a plain search result has no target amount to
-                           match against. -->
+                           match against. An already-linked result (#83) is
+                           highlighted amber, same as a suggestion. -->
                       <template x-for="doc in line.paperlessResults" :key="doc.id">
                         <div @click="pickPaperlessDocForLine(line, doc)"
-                             class="flex items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
+                             :title="doc.linked_entry_ids && doc.linked_entry_ids.length ? PAPERLESS_ALREADY_LINKED_HINT_L : null"
+                             :class="doc.linked_entry_ids && doc.linked_entry_ids.length ? 'bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 dark:hover:bg-amber-900/50' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"
+                             class="flex items-center justify-between gap-2 px-3 py-2 text-sm cursor-pointer">
                           <span class="truncate">
                             <span x-text="doc.title"></span>
                             <span class="text-gray-400 dark:text-gray-500 text-xs" x-text="'#' + doc.id + (doc.created ? ' · ' + paperlessDocDate(doc.created) : '')"></span>
+                            <span x-show="doc.linked_entry_ids && doc.linked_entry_ids.length"
+                                  class="text-amber-700 dark:text-amber-400 text-xs" x-text="' · ' + PAPERLESS_ALREADY_LINKED_HINT_L"></span>
                           </span>
                           <span x-show="doc.amount != null" class="shrink-0 font-mono text-xs text-gray-400 dark:text-gray-500"
                                 x-text="fmt(doc.amount)"></span>
@@ -2789,6 +2813,7 @@ const NO_REVIEW_NOTES_IN_PERIOD_L = {{ _('ledger.no_review_notes_in_period') | t
 const REVIEW_NOTES_HEADING_L = {{ _('ledger.review_notes_heading') | tojson }};
 const PAPERLESS_DUPLICATE_TMPL = {{ _('ledger.paperless_duplicate_warning') | tojson }};
 const PAPERLESS_SUGGESTIONS_LABEL_L = {{ _('ledger.paperless_suggestions_label') | tojson }};
+const PAPERLESS_ALREADY_LINKED_HINT_L = {{ _('ledger.paperless_already_linked_hint') | tojson }};
 const SHIFT_ENTER_HINT_L = {{ _('ledger.shift_enter_hint') | tojson }};
 const SKIP_LINE_HINT_L = {{ _('ledger.skip_line_hint') | tojson }};
 // Fixed slot count for the Paperless suggestion placeholders (#66) — must
