@@ -3415,6 +3415,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
       if (tab === 'audit-reports') this.loadAuditReports();
       if (tab === 'belege') this.loadPaperlessDocuments();
+      if (tab === 'accounts') this.loadAccountBalances();
     },
 
     get importSummaryText() {
