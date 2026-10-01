@@ -512,6 +512,7 @@
   "ledger.book_transfer_no_link": "Keine Verknüpfung (später manuell abgleichen)",
   "ledger.paperless_search_label": "Beleg in Paperless suchen (optional)",
   "ledger.paperless_search_placeholder": "z. B. Rechnungsnummer, Firma …",
+  "ledger.paperless_remove_document": "Beleg entfernen",
   "ledger.btn_submit_booking":  "Buchung anlegen",
 
   "ledger.btn_export_pdf":      "Als PDF exportieren",

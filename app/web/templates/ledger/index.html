@@ -1985,12 +1985,20 @@
                       </template>
                     </div>
                   </template>
-                  <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5" x-show="line.paperless_document_id">
+                  <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5 flex items-center gap-2" x-show="line.paperless_document_id">
                     <!-- Clickable so the picked document can be opened and
                          double-checked right from the booking dialog. -->
                     <a x-show="config.paperless_url" :href="paperlessDocUrl(line.paperless_document_id)" target="_blank" rel="noopener"
                        class="text-blue-600 dark:text-blue-400 hover:underline" x-text="'ID: ' + line.paperless_document_id"></a>
                     <span x-show="!config.paperless_url" x-text="'ID: ' + line.paperless_document_id"></span>
+                    <!-- Picking a document hid the suggestions/search box
+                         entirely (x-show="... && !line.paperless_document_id"
+                         above) with no way back — real gap the user
+                         reported. Clearing it here just blanks the field;
+                         the suggestions/search UI reappears on its own via
+                         that same x-show. -->
+                    <button type="button" @click="clearPaperlessDocForLine(line)"
+                            class="text-red-500 dark:text-red-400 hover:underline" title="{{ _('ledger.paperless_remove_document') }}">✕</button>
                   </p>
                   <p x-show="line.paperlessDuplicateWarning" class="text-xs text-amber-600 dark:text-amber-400 mt-0.5" x-text="line.paperlessDuplicateWarning"></p>
                 </div>
@@ -2212,12 +2220,14 @@
                       </template>
                     </div>
                   </template>
-                  <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5" x-show="line.paperless_document_id">
+                  <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5 flex items-center gap-2" x-show="line.paperless_document_id">
                     <!-- Clickable so the picked document can be opened and
                          double-checked right from the booking dialog. -->
                     <a x-show="config.paperless_url" :href="paperlessDocUrl(line.paperless_document_id)" target="_blank" rel="noopener"
                        class="text-blue-600 dark:text-blue-400 hover:underline" x-text="'ID: ' + line.paperless_document_id"></a>
                     <span x-show="!config.paperless_url" x-text="'ID: ' + line.paperless_document_id"></span>
+                    <button type="button" @click="clearPaperlessDocForLine(line)"
+                            class="text-red-500 dark:text-red-400 hover:underline" title="{{ _('ledger.paperless_remove_document') }}">✕</button>
                   </p>
                   <p x-show="line.paperlessDuplicateWarning" class="text-xs text-amber-600 dark:text-amber-400 mt-0.5" x-text="line.paperlessDuplicateWarning"></p>
                 </div>
@@ -4882,6 +4892,17 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       line.paperlessSuggestions = [];
       line.paperlessQuery = doc.title;
       this.checkPaperlessDuplicateForLine(line);
+    },
+
+    // Real gap the user reported: once a document was picked, there was no
+    // way back to the suggestions/search UI short of cancelling the whole
+    // modal — the "ID: N" display had no remove control at all. Clearing
+    // paperless_document_id alone is enough: the suggestions/search box's
+    // own x-show="... && !line.paperless_document_id" reappears on its own.
+    clearPaperlessDocForLine(line) {
+      line.paperless_document_id = '';
+      line.paperlessQuery = '';
+      line.paperlessDuplicateWarning = null;
     },
 
     async checkPaperlessDuplicateForLine(line) {

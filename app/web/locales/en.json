@@ -512,6 +512,7 @@
   "ledger.book_transfer_no_link": "No link (reconcile manually later)",
   "ledger.paperless_search_label": "Search Paperless for a document (optional)",
   "ledger.paperless_search_placeholder": "e.g. invoice number, company …",
+  "ledger.paperless_remove_document": "Remove document",
   "ledger.btn_submit_booking":  "Create Entry",
 
   "ledger.btn_export_pdf":      "Export as PDF",
