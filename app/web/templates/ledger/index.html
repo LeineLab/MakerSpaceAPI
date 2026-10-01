@@ -1298,7 +1298,14 @@
             <option :value="y" x-text="y"></option>
           </template>
         </select>
+        <button @click="exportAnlagenspiegelPdf()" :disabled="anlagenspiegelPdfExporting"
+                class="bg-gray-600 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-700 disabled:opacity-50">
+          <span x-show="!anlagenspiegelPdfExporting">{{ _('ledger.btn_export_pdf') }}</span>
+          <span x-show="anlagenspiegelPdfExporting">…</span>
+        </button>
       </div>
+
+      <div x-show="anlagenspiegelPdfExportError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="anlagenspiegelPdfExportError"></div>
 
       <div x-show="anlagenspiegelError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="anlagenspiegelError"></div>
 
@@ -3220,6 +3227,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     anlagenspiegel: null,
     loadingAnlagenspiegel: false,
     anlagenspiegelError: null,
+    anlagenspiegelPdfExporting: false,
+    anlagenspiegelPdfExportError: null,
     showAssetModal: false,
     editingAssetId: null,
     assetSourceLabel: '',
@@ -4101,6 +4110,34 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         if (e !== 'unauthenticated') this.pdfExportError = e.message || String(e);
       } finally {
         this.pdfExporting = false;
+      }
+    },
+
+    async exportAnlagenspiegelPdf() {
+      this.anlagenspiegelPdfExporting = true;
+      this.anlagenspiegelPdfExportError = null;
+      try {
+        const lang = document.documentElement.lang || 'de';
+        const r = await apiFetch(`/api/v1/ledger/report/anlagenspiegel/pdf?year=${this.anlagenspiegelYear}&lang=${lang}`);
+        if (!r.ok) {
+          const data = await r.json().catch(() => ({}));
+          throw new Error(data.detail || 'Error generating PDF');
+        }
+        const blob = await r.blob();
+        const cd = r.headers.get('content-disposition') || '';
+        const match = cd.match(/filename="([^"]+)"/);
+        const filename = match ? match[1] : `anlagenspiegel_${this.anlagenspiegelYear}.pdf`;
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+      } catch (e) {
+        if (e !== 'unauthenticated') this.anlagenspiegelPdfExportError = e.message || String(e);
+      } finally {
+        this.anlagenspiegelPdfExporting = false;
       }
     },
 

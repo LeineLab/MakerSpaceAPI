@@ -523,6 +523,9 @@
   "ledger.pdf_generated":       "Erstellt am",
   "ledger.pdf_empty":           "Keine Buchungen.",
   "ledger.pdf_disclaimer":      "Automatisch erstellt aus den gebuchten Kategorien. Die inhaltliche Zuordnung der Kategorien und Sphären wurde nicht durch einen Steuerberater geprüft.",
+  "ledger.anlagenspiegel_pdf_title": "Anlagenspiegel",
+  "ledger.anlagenspiegel_pdf_empty": "Keine Anlagegüter mit Bezug zu diesem Jahr.",
+  "ledger.anlagenspiegel_pdf_disclaimer": "Automatisch erstellt aus den erfassten Anlagegütern und der berechneten AfA. Die inhaltliche Richtigkeit (Nutzungsdauer, Zuordnung) wurde nicht durch einen Steuerberater geprüft.",
 
   "ledger.fints_title":         "FinTS-Abruf",
   "ledger.fints_label_server":  "FinTS-Server-URL",

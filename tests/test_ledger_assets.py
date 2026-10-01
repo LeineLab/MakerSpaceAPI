@@ -776,6 +776,23 @@ def test_anlagenspiegel_requires_auth(client):
     assert resp.status_code == 401
 
 
+def test_anlagenspiegel_pdf_export(treasurer_client, bank_account, purchase_category, afa_category):
+    entry = _book_purchase(treasurer_client, bank_account, purchase_category, "1200.00", entry_date="2024-03-15")
+    _capitalize(treasurer_client, entry, afa_category, useful_life_years=5)
+
+    resp = treasurer_client.get("/api/v1/ledger/report/anlagenspiegel/pdf?year=2024&lang=de")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert resp.content.startswith(b"%PDF")
+
+
+def test_anlagenspiegel_pdf_export_empty_year(treasurer_client):
+    """Must not crash when there's nothing to report (no assets booked)."""
+    resp = treasurer_client.get("/api/v1/ledger/report/anlagenspiegel/pdf?year=1999&lang=en")
+    assert resp.status_code == 200
+    assert resp.content.startswith(b"%PDF")
+
+
 def test_anlagenspiegel_acquisition_year(treasurer_client, bank_account, purchase_category, afa_category):
     entry = _book_purchase(treasurer_client, bank_account, purchase_category, "1200.00", entry_date="2024-03-15")
     asset = _capitalize(treasurer_client, entry, afa_category, useful_life_years=5)

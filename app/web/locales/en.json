@@ -523,6 +523,9 @@
   "ledger.pdf_generated":       "Generated on",
   "ledger.pdf_empty":           "No entries.",
   "ledger.pdf_disclaimer":      "Generated automatically from booked categories. The category and sphere assignments have not been reviewed by a tax advisor.",
+  "ledger.anlagenspiegel_pdf_title": "Fixed Asset Register",
+  "ledger.anlagenspiegel_pdf_empty": "No fixed assets relevant to this year.",
+  "ledger.anlagenspiegel_pdf_disclaimer": "Generated automatically from the recorded fixed assets and computed depreciation. The accuracy of useful-life and category assignments has not been reviewed by a tax advisor.",
 
   "ledger.fints_title":         "FinTS Live-Pull",
   "ledger.fints_label_server":  "FinTS server URL",

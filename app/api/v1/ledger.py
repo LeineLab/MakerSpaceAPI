@@ -2318,6 +2318,91 @@ def anlagenspiegel_report(
     return _compute_anlagenspiegel(db, year)
 
 
+_ANLAGENSPIEGEL_TYP_PATH = Path(__file__).parent.parent.parent.parent / "statements" / "anlagenspiegel.typ"
+
+
+def _compile_anlagenspiegel_pdf(report: AnlagenspiegelResponse, lang: str) -> bytes:
+    import typst  # optional dependency
+
+    _ = get_translator(lang)
+
+    def _row(r: AnlagenspiegelRow) -> dict:
+        return {
+            "name": r.name,
+            "category_name": r.category.name if r.category else "—",
+            "acquisition_cost": f"{r.acquisition_cost_end_of_year:.2f} {settings.CURRENCY}",
+            "opening_value": f"{r.opening_book_value:.2f} {settings.CURRENCY}",
+            "zugang": f"{r.zugang:.2f} {settings.CURRENCY}",
+            "abgang": f"{r.abgang:.2f} {settings.CURRENCY}",
+            "afa": f"{r.afa:.2f} {settings.CURRENCY}",
+            "closing_value": f"{r.closing_book_value:.2f} {settings.CURRENCY}",
+        }
+
+    totals = {
+        "acquisition_cost": sum((r.acquisition_cost_end_of_year for r in report.rows), Decimal("0.00")),
+        "opening_value": sum((r.opening_book_value for r in report.rows), Decimal("0.00")),
+        "zugang": sum((r.zugang for r in report.rows), Decimal("0.00")),
+        "abgang": sum((r.abgang for r in report.rows), Decimal("0.00")),
+        "afa": sum((r.afa for r in report.rows), Decimal("0.00")),
+        "closing_value": sum((r.closing_book_value for r in report.rows), Decimal("0.00")),
+    }
+
+    labels = {
+        "col_name": _("common.name"),
+        "col_category": _("ledger.label_afa_category"),
+        "col_acquisition_cost": _("ledger.col_acquisition_cost"),
+        "col_opening_value": _("ledger.col_opening_value"),
+        "col_zugang": _("ledger.col_zugang"),
+        "col_abgang": _("ledger.col_abgang"),
+        "col_afa": _("ledger.col_afa"),
+        "col_closing_value": _("ledger.col_closing_value"),
+        "row_total": _("ledger.row_total"),
+        "generated": _("ledger.pdf_generated"),
+        "empty": _("ledger.anlagenspiegel_pdf_empty"),
+        "disclaimer": _("ledger.anlagenspiegel_pdf_disclaimer"),
+    }
+    data = {
+        "title": _("ledger.anlagenspiegel_pdf_title"),
+        "period": _("ledger.pdf_period", year=report.year),
+        "rows": [_row(r) for r in report.rows],
+        "totals": {k: f"{v:.2f} {settings.CURRENCY}" for k, v in totals.items()},
+        "labels": labels,
+    }
+
+    font_paths = [settings.TYPST_FONT_DIR] if settings.TYPST_FONT_DIR else []
+    return typst.compile(
+        input=str(_ANLAGENSPIEGEL_TYP_PATH),
+        sys_inputs={"data": json.dumps(data, ensure_ascii=False)},
+        font_paths=font_paths,
+    )
+
+
+@router.get("/report/anlagenspiegel/pdf", response_class=Response, responses={**HTTP_400})
+def anlagenspiegel_report_pdf(
+    year: int = Query(...),
+    lang: str = Query(default="de"),
+    _viewer: dict = Depends(require_ledger_viewer_user),
+    db: Session = Depends(get_db),
+):
+    """PDF rendering of the same Anlagenspiegel data `GET
+    /ledger/report/anlagenspiegel` returns — reuses `_compute_anlagenspiegel()`
+    so the two representations can never disagree, same convention as the
+    EÜR's own JSON/PDF pair above. A standalone document rather than a page
+    appended to the EÜR PDF, since the Anlagenspiegel is its own statutory
+    statement (Anlagenverzeichnis) independent of the EÜR."""
+    report = _compute_anlagenspiegel(db, year)
+    try:
+        pdf = _compile_anlagenspiegel_pdf(report, lang)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {e}") from e
+    filename = f"anlagenspiegel_{year}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/report/kontostaende", response_model=AccountBalancesYearReport)
 def account_balances_by_year(
     year: int = Query(...),
