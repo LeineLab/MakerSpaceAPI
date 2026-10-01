@@ -731,6 +731,24 @@ def test_euer_report_ignores_other_years(treasurer_client, db, donation_target, 
     assert resp.json()["total_income"] == "30.00"
 
 
+def test_euer_report_includes_cashless_topup(treasurer_client, db, donation_target, donation_category, test_user):
+    """A topup_cashless (#85 — e.g. a pre-MakerSpaceAPI QR-code/PayPal-
+    funded topup, never real physical cash) is still genuine income to the
+    Verein and must stay recognized in the EÜR exactly like a real cash
+    topup — only the Kassenbestand clearing account's own cash-in
+    computation excludes it (see test_clearing_account_balance_excludes_
+    cashless_topup below)."""
+    treasurer_client.put(f"/api/v1/ledger/targets/{donation_target.id}", json={"default_category_id": donation_category.id})
+    db.add(Transaction(
+        user_id=test_user.id, amount=Decimal("10.00"), type=TransactionType.topup_cashless,
+        target_id=donation_target.id, created_at=datetime(2026, 3, 1),
+    ))
+    db.commit()
+
+    resp = treasurer_client.get("/api/v1/ledger/report/euer", params={"year": 2026})
+    assert resp.json()["total_income"] == "10.00"
+
+
 def test_euer_report_ignores_booked_payout_transfer(
     treasurer_client, db, donation_target, donation_category, bank_account, clearing_account,
 ):
@@ -940,6 +958,23 @@ def test_clearing_account_balance_includes_shortfall_adjustment(
 
     balance = treasurer_client.get(f"/api/v1/ledger/accounts/{clearing_account.id}/balance").json()
     assert balance["computed_balance"] == "90.00"
+
+
+def test_clearing_account_balance_excludes_cashless_topup(
+    treasurer_client, db, donation_target, clearing_account,
+):
+    """Real bug (#85): a topup_cashless (e.g. a pre-MakerSpaceAPI QR-code/
+    PayPal-funded topup — credits the user's/target's balance without any
+    physical cash ever entering a Kassen box) was, before this type existed,
+    indistinguishable from a real cash topup and inflated the Kassenbestand
+    clearing account's computed balance above the real physical cash total.
+    Only a genuine cash-in type (topup/booking_target_topup/
+    booking_target_adjustment) may contribute here."""
+    _make_cash_in(db, donation_target, TransactionType.topup, "100.00")
+    _make_cash_in(db, donation_target, TransactionType.topup_cashless, "50.00")
+
+    balance = treasurer_client.get(f"/api/v1/ledger/accounts/{clearing_account.id}/balance").json()
+    assert balance["computed_balance"] == "100.00"
 
 
 def test_create_entry_rejects_clearing_account_line(treasurer_client, clearing_account, donation_category):

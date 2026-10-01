@@ -282,6 +282,7 @@
   "me.load_more":          "Load more",
   "me.type_purchase":      "Purchase",
   "me.type_topup":         "Top-up",
+  "me.type_topup_cashless": "Top-up (cashless)",
   "me.type_transfer_in":   "Transfer received",
   "me.type_transfer_out":  "Transfer sent",
   "me.type_machine_login": "Machine login",

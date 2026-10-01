@@ -187,6 +187,28 @@ def create_account(
     return account
 
 
+# Target-balance events that represent PHYSICAL cash arriving in a Kassen
+# box — used by _computed_balance() below to compute the shared
+# Kassenbestand clearing account's balance (#34/#46). Deliberately excludes
+# TransactionType.topup_cashless (#85): a topup that credited a user's/
+# target's balance without any real cash ever entering the box (e.g. a
+# pre-MakerSpaceAPI QR-code/PayPal-funded topup) must never be counted here,
+# or the clearing account's balance drifts above the real physical cash
+# total by exactly the sum of every such cashless topup.
+_CASH_IN_TRANSACTION_TYPES = (
+    TransactionType.topup,
+    TransactionType.booking_target_topup,
+    TransactionType.booking_target_adjustment,
+)
+
+# The superset used by _compute_euer_report() below to recognize Kassen
+# target events as income (#34) — includes topup_cashless on top of
+# _CASH_IN_TRANSACTION_TYPES, since a cashless topup is still genuine income
+# to the Verein (the money just never passed through physical cash) and
+# must stay recognized in the EÜR exactly like a real cash topup.
+_INCOME_RECOGNIZED_TRANSACTION_TYPES = _CASH_IN_TRANSACTION_TYPES + (TransactionType.topup_cashless,)
+
+
 def _computed_balance(db: Session, account: BankAccount, as_of: date) -> Decimal:
     booked_sum = (
         db.query(func.coalesce(func.sum(LedgerEntryLine.amount), Decimal("0.00")))
@@ -207,11 +229,7 @@ def _computed_balance(db: Session, account: BankAccount, as_of: date) -> Decimal
         # collected but not yet deposited" — found by the user comparing a
         # real installation's Kassenbestand balance against reality.
         cash_in = db.query(func.coalesce(func.sum(Transaction.amount), Decimal("0.00"))).filter(
-            Transaction.type.in_([
-                TransactionType.topup,
-                TransactionType.booking_target_topup,
-                TransactionType.booking_target_adjustment,
-            ]),
+            Transaction.type.in_(_CASH_IN_TRANSACTION_TYPES),
             Transaction.created_at < f"{as_of + timedelta(days=1)}",
         ).scalar()
         balance += cash_in
@@ -1941,11 +1959,7 @@ def _compute_euer_report(db: Session, year: int, cumulative: bool = False) -> Eu
         .join(BookingTarget, Transaction.target_id == BookingTarget.id)
         .filter(
             Transaction.created_at < f"{year + 1}-01-01",
-            Transaction.type.in_([
-                TransactionType.topup,
-                TransactionType.booking_target_topup,
-                TransactionType.booking_target_adjustment,
-            ]),
+            Transaction.type.in_(_INCOME_RECOGNIZED_TRANSACTION_TYPES),
             BookingTarget.default_category_id.isnot(None),
         )
     )

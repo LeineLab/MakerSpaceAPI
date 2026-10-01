@@ -289,6 +289,7 @@
   "me.load_more":          "Mehr laden",
   "me.type_purchase":      "Kauf",
   "me.type_topup":         "Aufladung",
+  "me.type_topup_cashless": "Aufladung (bargeldlos)",
   "me.type_transfer_in":   "Überweisung erhalten",
   "me.type_transfer_out":  "Überweisung gesendet",
   "me.type_machine_login": "Maschinen-Login",
