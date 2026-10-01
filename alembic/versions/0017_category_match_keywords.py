@@ -6,7 +6,7 @@ paid with the purpose text "Mitgliedsbeitrag", a "Spenden" category with
 "Spende". match_keywords is a JSON list of terms (case-insensitive substring
 match against purpose_text); GET /ledger/import/lines uses it to compute a
 suggested_category_id per staging line, which the frontend pre-fills in the
-booking modal (advisory only, never enforced — see Key Design Decision #45).
+booking modal (advisory only, never enforced).
 
 Revision ID: 0017
 Revises: 0016

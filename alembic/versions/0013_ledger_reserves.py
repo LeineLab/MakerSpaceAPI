@@ -3,8 +3,7 @@
 Tracks Rücklagen (frei/zweckgebunden/betriebsmittel/wiederbeschaffung) as a
 logical allocation on top of already-recognized surplus — not a real cash
 movement, so these tables are never joined against bank_accounts/
-ledger_entries. Feeds the new Mittelverwendungsrechnung report. See Key
-Design Decision #36.
+ledger_entries. Feeds the new Mittelverwendungsrechnung report.
 
 Revision ID: 0013
 Revises: 0012

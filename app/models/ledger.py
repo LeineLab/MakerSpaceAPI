@@ -88,9 +88,9 @@ class BankAccount(Base):
     # (still editable) on the next upload instead of starting from scratch.
     csv_mapping: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     # The one shared "Kassenbestand" clearing account used as the technical
-    # counter-leg when booking a Kassen payout (see Key Design Decision #34)
-    # — at most one account has this set at a time (enforced in the API
-    # layer, not the DB: setting it on one account clears it on every other).
+    # counter-leg when booking a Kassen payout — at most one account has this
+    # set at a time (enforced in the API layer, not the DB: setting it on one
+    # account clears it on every other).
     is_cash_clearing_account: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
 
@@ -126,7 +126,7 @@ class LedgerCategory(Base):
     # Migration 0017: terms matched case-insensitively (substring) against a
     # staging line's purpose_text to compute a suggested_category_id — advisory
     # only, never enforced. No two categories may have overlapping keywords
-    # (checked in the API layer, not the DB) — see Key Design Decision #45.
+    # (checked in the API layer, not the DB).
     match_keywords: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
 
 
@@ -150,19 +150,19 @@ class LedgerEntry(Base):
     )
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
-    # Kassenprüfung checkoff (migration 0021, Key Design Decision #56): an
-    # auditor-writer "abhakt" (ticks off) this entry as checked, recording
-    # who and when. Both NULL = not yet reviewed. Not a financial fact — a
-    # review annotation on top of an already-immutable booking, freely
-    # toggleable (POST/DELETE .../review), same as LedgerReserveMovement/
-    # LedgerAuditReport aren't part of the immutable audit trail either.
+    # Kassenprüfung checkoff (migration 0021): an auditor-writer "abhakt"
+    # (ticks off) this entry as checked, recording who and when. Both NULL =
+    # not yet reviewed. Not a financial fact — a review annotation on top of
+    # an already-immutable booking, freely toggleable (POST/DELETE
+    # .../review), same as LedgerReserveMovement/LedgerAuditReport aren't
+    # part of the immutable audit trail either.
     reviewed_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    # Discrepancy note (migration 0022, #58) — independent of reviewed_by/
+    # Discrepancy note (migration 0022) — independent of reviewed_by/
     # reviewed_at: an auditor can flag something worth following up on
     # whether or not the entry is (currently) checked off, and un-checking
     # it doesn't clear a standing note. Same VARCHAR(500) width convention
-    # as description/note (#48).
+    # as description/note.
     review_note: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     lines: Mapped[list["LedgerEntryLine"]] = relationship(
@@ -218,7 +218,7 @@ class LedgerTargetPayoutEntry(Base):
     the entry covers exactly one payout (whether the full amount or a
     partial split), or the payout's own full amount when the entry bundles
     several payouts together (bundling always covers each payout in full —
-    no partial bundling). See Key Design Decision #38."""
+    no partial bundling)."""
     __tablename__ = "ledger_target_payout_entries"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -237,30 +237,30 @@ class LedgerAsset(Base):
     of an already-booked, category-side `ledger_entry_lines` row's amount to
     this asset. `acquisition_cost` (see the property below) is the sum of
     its components' amounts, excluded from the EÜR in the booking year(s)
-    once linked — see Key Design Decision #35 — and replaced, at report-
-    computation time, by the linear/monatsgenau AfA amount computed per
-    component (see Key Design Decision #50) for each year of the asset's
-    useful life. No yearly booking rows are ever created for this (same
-    read-time-aggregation approach as the Kassen bridge, #34) — deleting a
-    `LedgerAsset` simply reverts its lines' un-attributed amounts to being
-    counted normally again.
+    once linked, and replaced, at report-computation time, by the linear/
+    monatsgenau AfA amount computed per component for each year of the
+    asset's useful life. No yearly booking rows are ever created for this
+    (the AfA contribution is computed at read time, the same way the Kassen-
+    target cash-in bridge folds its own figures into the EÜR without writing
+    separate booking rows) — deleting a `LedgerAsset` simply reverts its
+    lines' un-attributed amounts to being counted normally again.
 
-    Splitting the cost across several components (#49) covers two real
-    cases: a single booked line only partially qualifying as a capital
-    asset (the remainder stays a normal one-off expense), and several
-    separately-booked purchases that only have functional value together
-    (e.g. a computer's individually-bought parts) — German tax law requires
-    treating those as one Wirtschaftsgut once combined, which a 1:1 asset-
-    to-line link couldn't represent at all. `acquisition_date`/`disposed_at`
-    live on each *component* (#50), not here — a component can be added
-    long after the asset's original acquisition (nachträgliche
-    Anschaffungskosten, e.g. a genuine upgrade — not a repair, which is
-    ordinary Erhaltungsaufwand and never capitalized at all) and must
-    depreciate from its own date, not retroactively from the asset's
-    original one; similarly only *one* component (e.g. a since-replaced
-    graphics card) might be disposed of while the rest of the asset stays
-    in service. `acquisition_date`/`disposed_at` below are read-only
-    properties derived from the components for convenience/display.
+    Splitting the cost across several components covers two real cases: a
+    single booked line only partially qualifying as a capital asset (the
+    remainder stays a normal one-off expense), and several separately-booked
+    purchases that only have functional value together (e.g. a computer's
+    individually-bought parts) — German tax law requires treating those as
+    one Wirtschaftsgut once combined, which a 1:1 asset-to-line link
+    couldn't represent at all. `acquisition_date`/`disposed_at` live on each
+    *component*, not here — a component can be added long after the asset's
+    original acquisition (nachträgliche Anschaffungskosten, e.g. a genuine
+    upgrade — not a repair, which is ordinary Erhaltungsaufwand and never
+    capitalized at all) and must depreciate from its own date, not
+    retroactively from the asset's original one; similarly only *one*
+    component (e.g. a since-replaced graphics card) might be disposed of
+    while the rest of the asset stays in service. `acquisition_date`/
+    `disposed_at` below are read-only properties derived from the
+    components for convenience/display.
 
     `category_id` is the AfA target category (e.g. "Abschreibungen"), which
     may differ from whatever category the original purchase(s) were booked
@@ -306,14 +306,14 @@ class LedgerAsset(Base):
 
 
 class LedgerAssetComponent(Base):
-    """One booked-line contribution toward a LedgerAsset's acquisition cost
-    (Key Design Decision #49). `amount` need not be the line's full amount —
-    a purchase can be partially capitalized, the rest staying a normal one-
-    off expense — and a single entry line may itself contribute to more
-    than one asset (e.g. one invoice split across two separate purchases).
+    """One booked-line contribution toward a LedgerAsset's acquisition cost.
+    `amount` need not be the line's full amount — a purchase can be
+    partially capitalized, the rest staying a normal one-off expense — and a
+    single entry line may itself contribute to more than one asset (e.g. one
+    invoice split across two separate purchases).
 
-    `acquisition_date`/`disposed_at` are per-component (#50), not on the
-    asset: a component added well after the asset's original purchase
+    `acquisition_date`/`disposed_at` are per-component, not on the asset: a
+    component added well after the asset's original purchase
     (nachträgliche Anschaffungskosten) depreciates from its own date, and a
     single component (e.g. one part of a multi-part asset) can be disposed
     of independently of the rest."""
@@ -338,8 +338,8 @@ class LedgerReserve(Base):
     """A Rücklage (§62 AO) — a named pot that part of the Verein's already-
     recognized surplus is earmarked into. This is NOT a real cash movement
     (the money stays in whichever bank account it already sits in); it's a
-    logical allocation used to compile the Mittelverwendungsrechnung (see Key
-    Design Decision #36). `sphere` is purely informational here (unlike
+    logical allocation used to compile the Mittelverwendungsrechnung.
+    `sphere` is purely informational here (unlike
     LedgerCategory, it's never required even when LEDGER_SPHERES_ENABLED) —
     it doesn't affect the report computation. `purpose`/`target_date` are the
     concrete-plan-and-timeframe a `zweckgebunden` reserve legally needs;
@@ -381,9 +381,9 @@ class LedgerAuditReport(Base):
     the Vorstand's Entlastung. `auditors` is free text, not a FK to `users`
     — Kassenprüfer are elected members and not necessarily app users at all.
     Writing these is gated by `require_auditor_writer_user` (admin or
-    explicit auditor-group membership, deliberately NOT a plain treasurer —
-    see Key Design Decision #37) since a treasurer authoring the report that
-    audits their own bookkeeping would defeat the point. Freely editable/
+    explicit auditor-group membership, deliberately NOT a plain treasurer)
+    since a treasurer authoring the report that audits their own bookkeeping
+    would defeat the point. Freely editable/
     deletable like LedgerReserve(Movement) — not part of the immutable
     financial audit trail itself, just a record about it."""
     __tablename__ = "ledger_audit_reports"
@@ -402,8 +402,8 @@ class LedgerAuditReport(Base):
 
 class LedgerSyncToken(Base):
     """A narrowly-scoped bearer token for an unattended, external FinTS-sync
-    script (Key Design Decision #52) — deliberately NOT a way to store bank
-    login/PIN in this app. The credentials that matter (the actual FinTS
+    script — deliberately NOT a way to store bank login/PIN in this app. The
+    credentials that matter (the actual FinTS
     login/PIN) never touch this table, or this app, at all: they stay on
     whatever host the treasurer trusts to run scripts/ledger_fints_sync.py,
     same trust boundary the treasurer already has when running the manual
@@ -416,8 +416,8 @@ class LedgerSyncToken(Base):
     of accounts) — least privilege: a leaked token can only ever read/submit
     for the one account it was minted for, never move across the Verein's
     other accounts. `paused` is the "repeated sync problems -> stop until a
-    human looks at it" mechanism the user asked for directly: every report-
-    error call increments `consecutive_failures`; hitting the threshold sets
+    human looks at it" mechanism: every report-error call increments
+    `consecutive_failures`; hitting the threshold sets
     `paused=True`, which the read/import endpoints then reject with a clear
     403 until a treasurer explicitly resumes it (PUT .../resume: true) — see
     _SYNC_PAUSE_THRESHOLD in app/api/v1/ledger.py. `active=False` is a plain

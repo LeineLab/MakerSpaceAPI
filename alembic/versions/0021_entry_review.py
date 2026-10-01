@@ -1,16 +1,16 @@
-"""add reviewed_by/reviewed_at to ledger_entries (Kassenprüfung checkoff, #56)
+"""add reviewed_by/reviewed_at to ledger_entries (Kassenprüfung checkoff)
 
-Raised by the user directly: an authorized person (Kassenprüfer) should be
-able to "abhaken" (tick off) an individual booking as checked during a
-Kassenprüfung, recording who checked it and when, and see that on the
-entry's own detail view. Modeled as two plain nullable columns directly on
-ledger_entries — the simplest shape for a binary checked/unchecked flag with
-attribution, in the same spirit as ledger_entries.reverses_entry_id already
-living directly on the entry rather than in a side table. Not part of the
-immutable financial audit trail itself (entries are still never edited/
-deleted for their financial content) — this is a review annotation on top,
-freely toggleable, same "not a financial event" precedent as
-ledger_reserve_movements/ledger_audit_reports (see Key Design Decision #56).
+Lets an authorized person (Kassenprüfer) "abhaken" (tick off) an individual
+booking as checked during a Kassenprüfung, recording who checked it and
+when, and see that on the entry's own detail view. Modeled as two plain
+nullable columns directly on ledger_entries — the simplest shape for a
+binary checked/unchecked flag with attribution, in the same spirit as
+ledger_entries.reverses_entry_id already living directly on the entry
+rather than in a side table. Not part of the immutable financial audit
+trail itself (entries are still never edited/deleted for their financial
+content) — this is a review annotation on top, freely toggleable, the same
+"not a financial event" precedent as
+ledger_reserve_movements/ledger_audit_reports.
 
 Revision ID: 0021
 Revises: 0020

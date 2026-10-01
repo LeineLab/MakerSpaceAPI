@@ -4,7 +4,9 @@ Records the Verein's Kassenprüfung (annual or ad-hoc audit) — period
 covered, auditor names (free text, not tied to `users`), findings, and
 whether the Kassenprüfer recommend the Vorstand's Entlastung. Writing these
 is gated by a new, narrower permission (admin or explicit auditor-group
-membership, not a plain treasurer) — see Key Design Decision #37.
+membership, not a plain treasurer) — a deliberate exception to the usual
+treasurer-inclusive ledger role hierarchy, since a treasurer auditing their
+own bookkeeping would defeat the point of an independent Kassenprüfung.
 
 Revision ID: 0014
 Revises: 0013

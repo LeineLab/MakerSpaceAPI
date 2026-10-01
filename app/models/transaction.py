@@ -29,8 +29,8 @@ class TransactionType(str, enum.Enum):
     admin_adjustment = "admin_adjustment"
     # A topup that credited a user's/target's balance without any physical
     # cash ever entering a Kassenbestand box (e.g. a pre-MakerSpaceAPI
-    # QR-code/PayPal-funded topup) — see Key Design Decision #85. Still
-    # genuine income (recognized in the EÜR the same way a plain `topup` is,
+    # QR-code/PayPal-funded topup). Still genuine income (recognized in the
+    # EÜR the same way a plain `topup` is,
     # via the target's default_category_id) but deliberately excluded from
     # the Kassenbestand clearing account's cash-in computation in
     # `_computed_balance()`, which assumes every `topup`/`booking_target_

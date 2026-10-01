@@ -79,10 +79,9 @@ class CsvPreviewResponse(BaseModel):
 class LedgerCategoryCreate(BaseModel):
     """`sphere` is required when settings.LEDGER_SPHERES_ENABLED is True (checked
     in the endpoint), otherwise ignored and stored as None. `match_keywords`
-    (Key Design Decision #45) are matched case-insensitively as a substring
-    against a staging line's purpose_text to suggest this category at booking
-    time — no two categories may have an overlapping keyword (checked in the
-    endpoint)."""
+    are matched case-insensitively as a substring against a staging line's
+    purpose_text to suggest this category at booking time — no two
+    categories may have an overlapping keyword (checked in the endpoint)."""
     name: str = Field(examples=["Mitgliedsbeiträge"])
     slug: str = Field(examples=["mitgliedsbeitraege"])
     kind: LedgerCategoryKind
@@ -174,9 +173,9 @@ class LedgerImportLineResponse(BaseModel):
     status: LedgerImportStatus
     matched_entry_id: Optional[int]
     created_at: datetime
-    # Computed in list_import_lines() (Key Design Decision #45) from active
-    # categories' match_keywords against purpose_text — advisory only, not
-    # persisted; None if no keyword matched.
+    # Computed in list_import_lines() from active categories' match_keywords
+    # against purpose_text — advisory only, not persisted; None if no
+    # keyword matched.
     suggested_category_id: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -189,12 +188,12 @@ class LedgerEntryResponse(BaseModel):
     reverses_entry_id: Optional[int]
     created_by: str
     created_at: datetime
-    # Kassenprüfung checkoff (#56) — both None until an auditor-writer marks
+    # Kassenprüfung checkoff — both None until an auditor-writer marks
     # this entry reviewed via POST .../review; cleared again by DELETE
     # .../review. Not a financial fact, just an annotation.
     reviewed_by: Optional[str] = None
     reviewed_at: Optional[datetime] = None
-    # Discrepancy note (#58) — independent of reviewed_by/reviewed_at, set/
+    # Discrepancy note — independent of reviewed_by/reviewed_at, set/
     # cleared via PUT .../review-note; survives an un-review.
     review_note: Optional[str] = None
     lines: list[LedgerEntryLineResponse]
@@ -203,7 +202,7 @@ class LedgerEntryResponse(BaseModel):
     # — empty if this entry was booked manually and never linked to one.
     # Carries the bank's own booking_date/purpose_text/counterparty/
     # bank_reference for the entry-detail view and the "show bank text"
-    # toggle (both derive from this one field client-side — see #40).
+    # toggle (both derive from this one field client-side).
     matched_import_lines: list[LedgerImportLineResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
@@ -211,16 +210,16 @@ class LedgerEntryResponse(BaseModel):
 
 class LedgerEntryReviewNoteUpdate(BaseModel):
     """Set (a string) or clear (`null`/omitted) an entry's discrepancy note
-    (#58) — a single-purpose PUT, so unlike most partial-update schemas in
-    this module there's no separate `clear_*` flag: the field's own value
-    is the entire request."""
+    — a single-purpose PUT, so unlike most partial-update schemas in this
+    module there's no separate `clear_*` flag: the field's own value is the
+    entire request."""
     note: Optional[str] = Field(default=None, max_length=500)
 
 
 class LedgerTargetUpdate(BaseModel):
     """Set (or clear, with `null`) a booking target's default EÜR category —
     used to pre-fill (not force) the category when booking one of its
-    payouts. See Key Design Decision #34."""
+    payouts."""
     default_category_id: Optional[int] = None
 
 
@@ -228,10 +227,10 @@ class LedgerTargetPayoutResponse(BaseModel):
     """A `booking_target_payout` transaction from the legacy NFC-Kassen
     system, shown here so the treasurer can book it into the ledger (or see
     how much of it already has been). No category here — the income was
-    already recognized when the cash arrived in the target (see Key Design
-    Decision #34); booking a payout is a pure transfer. `booked_amount`/
-    `remaining_amount` (see #38) replace a plain `booked` bool because a
-    payout can now be partially booked (split across several transfers);
+    already recognized when the cash arrived in the target; booking a
+    payout is a pure transfer. `booked_amount`/`remaining_amount` replace a
+    plain `booked` bool because a payout can now be partially booked (split
+    across several transfers);
     `booked` is `True` only once `remaining_amount <= 0`. `entry_ids` lists
     every ledger entry that covers some part of this payout — usually one,
     more than one only for a split booking."""
@@ -250,8 +249,8 @@ class LedgerTargetPayoutResponse(BaseModel):
 
 class TargetPayoutCategorySplit(BaseModel):
     """A category-side top-up line for `POST /ledger/target-payouts/book`
-    (Key Design Decision #42) — used when the real bank amount is larger
-    than the selected payouts' combined remaining amount (e.g. a donation
+    — used when the real bank amount is larger than the selected payouts'
+    combined remaining amount (e.g. a donation
     deposited together with a Kassen payout in one transfer). Unlike
     `LedgerImportLineCategorySplit`, there's no `bank_account_id` option
     here — topping up with another transfer leg isn't a case this endpoint
@@ -263,9 +262,9 @@ class TargetPayoutCategorySplit(BaseModel):
 
 class BookTargetPayoutsRequest(BaseModel):
     """Books one or more Kassen payouts as a single transfer leg from the
-    shared Kassenbestand clearing account to `bank_account_id`. See Key
-    Design Decision #38 for the allocation rule: the amount actually owed to
-    the selected payouts is distributed smallest-remaining-first, filling
+    shared Kassenbestand clearing account to `bank_account_id`. Allocation
+    rule: the amount actually owed to the selected payouts is distributed
+    smallest-remaining-first, filling
     each one's own remaining amount before moving to the next-larger one,
     regardless of the order given in `payout_transaction_ids` — a single id
     with a partial amount is a split (that payout can be booked again later
@@ -276,13 +275,13 @@ class BookTargetPayoutsRequest(BaseModel):
     doesn't reach every payout selected.
 
     If `amount` exceeds the selected payouts' combined remaining amount, the
-    difference is no longer rejected outright (see #42) — it's booked
-    against `category_lines` instead (e.g. a donation deposited together
-    with a Kassen payout in one transfer), which must sum to exactly the
-    negative of that difference so the entry still balances to zero. Leave
+    difference is not rejected outright — it's booked against
+    `category_lines` instead (e.g. a donation deposited together with a
+    Kassen payout in one transfer), which must sum to exactly the negative
+    of that difference so the entry still balances to zero. Leave
     `category_lines` empty when `amount` doesn't exceed the combined
-    remaining (the normal case, unchanged from #38) — 400 if they don't
-    exactly cover the excess.
+    remaining (the normal case) — 400 if they don't exactly cover the
+    excess.
 
     `entry_date`/`description` default to a generated label (the single
     payout's own date, or today for a bundle of several). `matched_import_
@@ -290,7 +289,7 @@ class BookTargetPayoutsRequest(BaseModel):
     for this deposit (found via `GET /ledger/import/lines?bank_account_id=&
     amount=&status=new&status=duplicate`, or now also `?q=` free-text) —
     same "explicitly matched, not guessed" pattern as transfer-booking an
-    import line (#32)."""
+    import line."""
     payout_transaction_ids: list[int] = Field(min_length=1)
     bank_account_id: int
     amount: Decimal = Field(gt=0, examples=[Decimal("20.00")])
@@ -301,14 +300,14 @@ class BookTargetPayoutsRequest(BaseModel):
 
 
 class LedgerAssetComponentCreate(BaseModel):
-    """One booked-line contribution toward a LedgerAsset's cost (Key Design
-    Decision #49). `amount` need not be the line's full amount — a purchase
-    can be partially capitalized, the remainder staying a normal one-off
-    expense — and must not exceed that line's own remaining capitalizable
-    amount (its amount minus whatever other assets already claim).
-    `acquisition_date` defaults to the entry's own `entry_date`; it's this
-    component's own depreciation start (#50), not backdated to the asset's
-    other components — a component added long after the rest (nachträgliche
+    """One booked-line contribution toward a LedgerAsset's cost. `amount`
+    need not be the line's full amount — a purchase can be partially
+    capitalized, the remainder staying a normal one-off expense — and must
+    not exceed that line's own remaining capitalizable amount (its amount
+    minus whatever other assets already claim). `acquisition_date` defaults
+    to the entry's own `entry_date`; it's this component's own depreciation
+    start, not backdated to the asset's other components — a component
+    added long after the rest (nachträgliche
     Anschaffungskosten) depreciates from its own date, not retroactively."""
     entry_line_id: int
     amount: Decimal = Field(gt=0, examples=[Decimal("450.00")])
@@ -320,14 +319,14 @@ class LedgerAssetCreate(BaseModel):
     a partial amount of each) as a single capital asset. More than one
     component covers a purchase that's split across several booked lines,
     or several separate purchases that only have functional value together
-    (e.g. a computer's individually-bought parts — see #49). `category_id`
-    is the AfA target category (e.g. "Abschreibungen") — may differ from
-    whatever category the purchase(s) were originally booked against.
+    (e.g. a computer's individually-bought parts). `category_id` is the AfA
+    target category (e.g. "Abschreibungen") — may differ from whatever
+    category the purchase(s) were originally booked against.
     `useful_life_years=0` is Sofortabschreibung (e.g. a GWG, or the
     optional immediate-write-off elected for computer hardware/software) —
     the full amount is recognized as AfA in the acquisition month itself,
     still fully appearing in the Anlagevermögen list and Anlagenspiegel
-    rather than only as a plain expense (see #77)."""
+    rather than only as a plain expense."""
     name: str = Field(examples=["Lasercutter Speedy 400"])
     components: list[LedgerAssetComponentCreate] = Field(min_length=1)
     useful_life_years: int = Field(ge=0, examples=[7])
@@ -337,7 +336,7 @@ class LedgerAssetCreate(BaseModel):
 
 class LedgerAssetComponentUpdate(BaseModel):
     """Every field is independently optional — provide only what's changing.
-    `disposed_at`/`clear_disposed_at` (#50) stop future AfA for just *this*
+    `disposed_at`/`clear_disposed_at` stop future AfA for just *this*
     component after that month, without affecting the asset's other
     components (e.g. one part of a multi-part asset sold or scrapped while
     the rest stays in service) — it does not book a write-off of any
@@ -353,8 +352,8 @@ class LedgerAssetUpdate(BaseModel):
     """Every field may be corrected at any time; since AfA is computed at
     report time (not stored per-year), a correction here retroactively
     changes the AfA shown in past EÜR reports too — same as fixing any
-    other historical data. Components (including their own dates/disposal,
-    #50) are managed separately via POST/PUT/DELETE
+    other historical data. Components (including their own dates/disposal)
+    are managed separately via POST/PUT/DELETE
     /ledger/assets/{id}/components, not here."""
     name: Optional[str] = None
     useful_life_years: Optional[int] = Field(default=None, ge=0)
@@ -390,8 +389,8 @@ class LedgerAssetResponse(BaseModel):
 
 
 class AnlagenspiegelRow(BaseModel):
-    """One asset's line in the Anlagenspiegel (Key Design Decision #50) —
-    the standard German fixed-asset-register columns needed for the tax
+    """One asset's line in the Anlagenspiegel — the standard German
+    fixed-asset-register columns needed for the tax
     return: opening/closing book value, additions/disposals at cost, and
     the year's depreciation. `acquisition_cost_end_of_year` is the gross
     (pre-depreciation) cost still on the books at year end — components
@@ -416,11 +415,10 @@ class AnlagenspiegelResponse(BaseModel):
 
 class AccountBalanceYearRow(BaseModel):
     """One account's computed balance at the start and end of a calendar
-    year — see Key Design Decision #79. `opening_balance` is the same
-    figure `GET /ledger/accounts/{id}/balance?as_of=` would return for
-    31.12 of the *previous* year (the double-entry ledger's own running
-    total, not a bank statement's), `closing_balance` for 31.12 of `year`
-    itself."""
+    year. `opening_balance` is the same figure `GET
+    /ledger/accounts/{id}/balance?as_of=` would return for 31.12 of the
+    *previous* year (the double-entry ledger's own running total, not a
+    bank statement's), `closing_balance` for 31.12 of `year` itself."""
     account_id: int
     name: str
     iban: Optional[str] = None
@@ -432,9 +430,8 @@ class AccountBalanceYearRow(BaseModel):
 class AccountBalancesYearReport(BaseModel):
     """Rows omit any account that was at exactly 0.00 both at the start and
     the end of `year` AND had no booked line dated within it — a genuinely
-    dormant/unused account, per the user's own explicit request (#79). An
-    account with real activity that happens to net back to 0.00 is still
-    included."""
+    dormant/unused account. An account with real activity that happens to
+    net back to 0.00 is still included."""
     year: int
     rows: list[AccountBalanceYearRow]
 
@@ -540,7 +537,7 @@ class LedgerAuditReportCreate(BaseModel):
     """A Kassenprüfungsprotokoll. `auditors` is free text (e.g. "Max
     Mustermann, Erika Musterfrau") — Kassenprüfer are elected members, not
     necessarily app users. Writing requires the narrower auditor-only
-    permission (see Key Design Decision #37), not just any treasurer."""
+    permission, not just any treasurer."""
     period_start: date
     period_end: date
     audit_date: date
@@ -585,8 +582,8 @@ class LedgerImportSummary(BaseModel):
     total_count: int
 
 
-# --- Ledger sync tokens (#52): narrowly-scoped auth for the external,
-# unattended FinTS-sync script — see Key Design Decision #52. ---
+# --- Ledger sync tokens: narrowly-scoped auth for the external,
+# unattended FinTS-sync script. ---
 
 class LedgerSyncTokenCreate(BaseModel):
     name: str = Field(examples=["Vereinskonto Cron-Sync"])
@@ -629,7 +626,7 @@ class LedgerSyncAccountResponse(BaseModel):
     """What the external script's very first call learns: which account it's
     scoped to, and how far the ledger's own import history already reaches
     for it — the basis for the script's own date_from computation (mirrors
-    fintsDefaultDatesForAccount() in ledger/index.html, see #51)."""
+    fintsDefaultDatesForAccount() in ledger/index.html)."""
     id: int
     iban: str
     name: str
@@ -640,8 +637,8 @@ class LedgerSyncImportLine(BaseModel):
     """One already-fetched-from-FinTS transaction, in the same shape as
     ParsedStatementLine (app/services/bank_statement.py) — the script does
     its own FinTS parsing (reusing lines_from_mt940_transactions(), so the
-    #19 sign/IBAN fixes apply identically) and hands over already-normalized
-    lines, not raw FinTS data."""
+    sign/IBAN normalization fixes apply identically) and hands over
+    already-normalized lines, not raw FinTS data."""
     booking_date: date
     amount: Decimal = Field(examples=[Decimal("-12.34")])
     purpose_text: Optional[str] = Field(default=None, max_length=500)
@@ -703,25 +700,24 @@ class PaperlessDocumentResult(BaseModel):
     id: int
     title: str
     created: Optional[str] = None
-    # Only ever set by GET /ledger/paperless/suggestions (#65) — whether this
+    # Only ever set by GET /ledger/paperless/suggestions — whether this
     # document's own PAPERLESS_AMOUNT_CUSTOM_FIELD_ID value matched the
     # booking line's amount exactly; always False for a plain search result,
     # which has no target amount to compare against.
     amount_match: bool = False
-    # The document's own parsed custom-field value (#66) — shown
-    # right-aligned in the row instead of a separate match/no-match badge, so
-    # the row stays a single line. Populated for both a suggestion and a
-    # plain manual search result (#77 — search_documents() parses it the
-    # same way suggest_documents() already did); None if
-    # PAPERLESS_AMOUNT_CUSTOM_FIELD_ID isn't configured, or the document has
-    # no value for it.
+    # The document's own parsed custom-field value — shown right-aligned in
+    # the row instead of a separate match/no-match badge, so the row stays a
+    # single line. Populated for both a suggestion and a plain manual search
+    # result (search_documents() parses it the same way suggest_documents()
+    # does); None if PAPERLESS_AMOUNT_CUSTOM_FIELD_ID isn't configured, or
+    # the document has no value for it.
     amount: Optional[Decimal] = None
-    # Which already-booked entries (if any) already link this document (#83)
-    # — same computed field/shape as PaperlessDocumentOverviewItem.
+    # Which already-booked entries (if any) already link this document —
+    # same computed field/shape as PaperlessDocumentOverviewItem.
     # Deliberately never excludes an already-linked document from search/
     # suggestions outright (a partial payment against the same invoice is a
-    # legitimate reason to link one document more than once, see #28) — the
-    # frontend highlights it instead, so the treasurer can still pick it
+    # legitimate reason to link one document more than once) — the frontend
+    # highlights it instead, so the treasurer can still pick it
     # deliberately.
     linked_entry_ids: list[int] = []
 
@@ -731,7 +727,7 @@ class PaperlessDocumentOverviewItem(BaseModel):
     a Paperless document alongside whether it's already linked to a booked
     ledger_entry_lines row. `linked_entry_ids` can hold more than one entry:
     the same document may legitimately be linked more than once (e.g. a
-    partial payment against the same invoice, see Key Design Decision #28)."""
+    partial payment against the same invoice)."""
     id: int
     title: str
     created: Optional[str] = None

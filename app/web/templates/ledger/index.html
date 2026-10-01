@@ -70,7 +70,7 @@
             <option :value="y" x-text="y"></option>
           </template>
         </select>
-        <!-- Filter panel (#61): the less-frequently-changed filters (account,
+        <!-- Filter panel: the less-frequently-changed filters (account,
              category, search, Kassenprüfung status, the bank-text display
              toggle) collapse behind one button + badge instead of sitting
              permanently in the bar — only Jahr, the one control changed
@@ -139,8 +139,8 @@
                 <option value="false">{{ _('ledger.filter_is_reversal_exclude') }}</option>
               </select>
             </div>
-            <!-- Custom date range (#62): overrides the Jahr selector rather
-                 than composing with it — entriesQueryParams()/
+            <!-- Custom date range: overrides the Jahr selector rather than
+                 composing with it — entriesQueryParams()/
                  entryMatchesCurrentFilters() send date_from/date_to instead
                  of year whenever either is set, since a range spanning more
                  than one year would otherwise be silently clipped back down
@@ -224,7 +224,7 @@
                   </template>
                 </td>
                 <td class="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">
-                  <!-- Each line's own document is the source of truth (#44) —
+                  <!-- Each line's own document is the source of truth —
                        one link when every line shares the same single
                        document (or there's just one), a stacked list when
                        several invoices in this entry each link a different
@@ -240,10 +240,10 @@
                   <span x-show="entryPaperlessDocs(e).length === 0">—</span>
                 </td>
                 <td class="px-4 py-3 whitespace-nowrap">
-                  <!-- Kassenprüfung checkoff (#56): informational for every
+                  <!-- Kassenprüfung checkoff: informational for every
                        viewer, but only an auditor-writer (admin or explicit
-                       auditor-group member — same permission as writing a
-                       Kassenprüfungsprotokoll, see #37) can tick/untick it —
+                       auditor-group member — same permission required to
+                       write a Kassenprüfungsprotokoll) can tick/untick it —
                        a treasurer checking off their own booking would
                        defeat the point of an independent review. -->
                   <span x-show="e.reviewed_by" :title="reviewedLabel(e)" class="inline-flex items-center gap-1 text-green-600 dark:text-green-400">
@@ -264,7 +264,7 @@
                   <!-- A Storno (e.reverses_entry_id set) can't itself be reversed
                        — that link only ever lives on the original entry, so
                        chaining a second reversal on top would risk double-
-                       booking once re-instated (see #28). -->
+                       booking once re-instated. -->
                   <button x-show="!reversedByMap[e.id] && !e.reverses_entry_id" @click.stop="reverseEntry(e)"
                           class="text-xs text-red-600 dark:text-red-400 hover:underline">
                     {{ _('ledger.btn_reverse_entry') }}
@@ -283,8 +283,8 @@
                         <span x-show="e.reviewed_by" class="text-green-600 dark:text-green-400" x-text="reviewedLabel(e)"></span>
                         <span x-show="!e.reviewed_by" class="text-gray-400 dark:text-gray-500">{{ _('ledger.detail_not_reviewed') }}</span>
                       </p>
-                      <!-- Discrepancy note (#58) — independent of the
-                           reviewed checkbox above: editable only by an
+                      <!-- Discrepancy note — independent of the reviewed
+                           checkbox above: editable only by an
                            auditor-writer, but its current value is shown
                            to every viewer (a treasurer should be able to
                            see what was flagged, just not edit it). -->
@@ -411,10 +411,10 @@
                 </td>
                 <td class="px-4 py-3">
                   <!-- Radio, not checkbox — only one account can be the shared
-                       Kassenbestand clearing account at a time (see #34).
-                       Only offline accounts are eligible — a real bank
-                       account already has its own IBAN/statement and is
-                       never "cash in hand" (enforced server-side too). -->
+                       Kassenbestand clearing account at a time. Only
+                       offline accounts are eligible — a real bank account
+                       already has its own IBAN/statement and is never
+                       "cash in hand" (enforced server-side too). -->
                   <label x-show="a.is_offline" class="inline-flex items-center gap-2" :class="userIsTreasurer ? 'cursor-pointer' : 'opacity-60'"
                          :title="CASH_CLEARING_HINT_L">
                     <input type="radio" name="cash_clearing_account" :checked="a.is_cash_clearing_account" :disabled="!userIsTreasurer"
@@ -889,21 +889,18 @@
           <option value="booked" x-text="IMPORT_STATUS_L.booked"></option>
           <option value="ignored" x-text="IMPORT_STATUS_L.ignored"></option>
         </select>
-        <!-- Filter panel (#61), same pattern as the Buchungen tab above —
-             but right-anchored (right-0), not left. On the Buchungen/Belege
-             tabs this button sits near the LEFT edge of its row (the
-             filter-controls group is the left child of a justify-between
-             row there), so a left-anchored panel growing rightward stays
-             on-screen. Here the *heading* is the left child instead and
-             the filter-controls group (Status + this button) is the RIGHT
-             child, so the button itself sits near the row's right edge —
-             a left-anchored w-72 panel growing further right pushed past
-             the page edge. Anchoring to the button's right edge instead,
-             growing leftward, keeps it on-screen regardless of how far
-             right the button sits. Found live by the user, not caught by
-             this feature's own verification (#61), which only checked a
-             viewport where the Import tab's button hadn't drifted far
-             enough right yet to expose it. -->
+        <!-- Filter panel, same collapsible-panel pattern as the Buchungen
+             tab above — but right-anchored (right-0), not left. On the
+             Buchungen/Belege tabs this button sits near the LEFT edge of
+             its row (the filter-controls group is the left child of a
+             justify-between row there), so a left-anchored panel growing
+             rightward stays on-screen. Here the *heading* is the left
+             child instead and the filter-controls group (Status + this
+             button) is the RIGHT child, so the button itself sits near the
+             row's right edge — a left-anchored w-72 panel growing further
+             right pushed past the page edge. Anchoring to the button's
+             right edge instead, growing leftward, keeps it on-screen
+             regardless of how far right the button sits. -->
         <div class="relative">
           <button type="button" @click.stop="showImportFilters = !showImportFilters"
                   class="inline-flex items-center gap-1.5 border dark:border-gray-700 rounded px-3 py-1.5 text-sm bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700">
@@ -1123,14 +1120,13 @@
           </thead>
           <template x-for="(p, idx) in targetPayouts" :key="p.transaction_id">
             <tbody :class="idx > 0 && 'border-t border-gray-100 dark:border-gray-700'">
-              <!-- Row-click detail expansion (#88), same pattern as the
-                   Buchungen tab's toggleEntryDetail() — a sibling <tbody>
-                   per iteration, NOT a wrapping outer <tbody>, since a
-                   nested table-row-group breaks column alignment once
-                   Alpine's x-for clones it into the live DOM (the exact
-                   bug class documented at Key Design Decision #40). Only
-                   rows with at least one linked entry (p.entry_ids.length)
-                   are clickable — an open payout has nothing to expand. -->
+              <!-- Row-click detail expansion, same pattern as the Buchungen
+                   tab's toggleEntryDetail() — a sibling <tbody> per
+                   iteration, NOT a wrapping outer <tbody>, since a nested
+                   table-row-group breaks column alignment once Alpine's
+                   x-for clones it into the live DOM. Only rows with at
+                   least one linked entry (p.entry_ids.length) are
+                   clickable — an open payout has nothing to expand. -->
               <tr class="hover:bg-gray-50 dark:hover:bg-gray-700"
                   :class="p.entry_ids.length > 0 && 'cursor-pointer'"
                   @click="p.entry_ids.length > 0 && togglePayoutDetail(p)">
@@ -1216,7 +1212,7 @@
     <p class="text-xs text-gray-400 dark:text-gray-500 mb-1">{{ _('ledger.assets_howto_hint') }}</p>
     <p class="text-xs text-gray-400 dark:text-gray-500 mb-4">{{ _('ledger.asset_gwg_hint') }}</p>
 
-    <!-- Active/disposed filter (#62) — purely client-side, since this list
+    <!-- Active/disposed filter — purely client-side, since this list
          (unlike Buchungen/Transaktionen/Belege) never paginates and is
          typically short enough that filtering the already-loaded array is
          simpler than adding a backend param for it. -->
@@ -1288,8 +1284,8 @@
       </div>
     </template>
 
-    <!-- Anlagenspiegel (#50): the fixed-asset-register columns needed for
-         the tax return, per year — reuses the same per-component AfA math
+    <!-- Anlagenspiegel: the fixed-asset-register columns needed for the
+         tax return, per year — reuses the same per-component AfA math
          as the live table above, so the two can never disagree. -->
     <div class="mt-10">
       <h2 class="text-xl font-semibold mb-1">{{ _('ledger.anlagenspiegel_title') }}</h2>
@@ -1410,7 +1406,7 @@
     </div>
     <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">{{ _('ledger.reserves_hint') }}</p>
 
-    <!-- Kind filter (#62) — purely client-side, same reasoning as the
+    <!-- Kind filter — purely client-side, same reasoning as the
          Anlagevermögen status filter above: this list never paginates. -->
     <div class="flex items-center gap-2 mb-4">
       <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.col_kind') }}</label>
@@ -1560,9 +1556,9 @@
         <option value="linked">{{ _('ledger.paperless_filter_linked') }}</option>
         <option value="unlinked">{{ _('ledger.target_payouts_filter_open') }}</option>
       </select>
-      <!-- Filter panel (#61), same pattern as the Buchungen/Transaktionen
-           tabs — only the search box lives inside here, since Status is
-           this tab's one primary, frequently-changed selector. -->
+      <!-- Filter panel, same pattern as the Buchungen/Transaktionen tabs —
+           only the search box lives inside here, since Status is this
+           tab's one primary, frequently-changed selector. -->
       <div class="relative">
         <button type="button" @click.stop="showPaperlessFilters = !showPaperlessFilters"
                 class="inline-flex items-center gap-1.5 border dark:border-gray-700 rounded px-3 py-1.5 text-sm bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700">
@@ -1747,12 +1743,11 @@
                class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800">
         <p x-show="bookingTargetPayouts.length > 1" class="text-xs text-gray-400 dark:text-gray-500 mt-1"
            x-text="TARGET_PAYOUT_BUNDLE_AMOUNT_TMPL.replace('{amount}', fmt(targetPayoutTotalRemaining()))"></p>
-        <!-- Always-visible, not conditional on the excess already being
-             entered (#88) — the excess hint below only appears once the
-             amount is already higher, so nothing told the treasurer this
-             was even possible in the first place; the user had to be told
-             directly that typing a higher amount here is the way to add an
-             extra donation/category booking to the same transfer (#42). -->
+        <!-- Always visible, not conditional on the excess already being
+             entered — the excess hint below only appears once the amount
+             is already higher, which would otherwise leave no indication
+             that typing a higher amount here is the supported way to add
+             an extra donation/category booking onto the same transfer. -->
         <p x-show="targetPayoutExcess() <= 0.005" class="text-xs text-gray-400 dark:text-gray-500 mt-1"
            x-text="TARGET_PAYOUT_AMOUNT_HINT_L"></p>
       </div>
@@ -1901,12 +1896,11 @@
               {{ _('ledger.book_label_bank_amount') }}
               <span class="text-gray-400 dark:text-gray-500" x-text="bookingLine && ('(' + bookingLine.booking_date + ')')"></span>
             </div>
-            <!-- Gegenkonto (counterparty), raised by the user directly — the
-                 modal previously showed only the amount/date, giving no way
-                 to tell two similar-amount staging lines apart at a glance
-                 without leaving the dialog. Both fields were already on
-                 bookingLine (LedgerImportLineResponse), just never rendered
-                 here. -->
+            <!-- Counterparty name/IBAN: the modal previously showed only
+                 the amount/date, giving no way to tell two similar-amount
+                 staging lines apart at a glance without leaving the
+                 dialog. Both fields were already on bookingLine
+                 (LedgerImportLineResponse), just never rendered here. -->
             <div x-show="bookingLine && (bookingLine.counterparty_name || bookingLine.counterparty_iban)" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
               <span x-text="bookingLine && bookingLine.counterparty_name"></span>
               <span x-show="bookingLine && bookingLine.counterparty_name && bookingLine.counterparty_iban">, </span>
@@ -1955,18 +1949,18 @@
                 </div>
                 <p x-show="categoryIdSignWarning(line.category_id, line.amount)" class="text-xs text-amber-600 dark:text-amber-400 mt-0.5"
                    x-text="categoryIdSignWarning(line.category_id, line.amount)"></p>
-                <!-- Per-line document (#44): several invoices paid together
-                     in one bank debit each link their own — only relevant
+                <!-- Per-line document: several invoices paid together in
+                     one bank debit each link their own — only relevant
                      for a category split line, not a transfer counter-
                      account line (bank_account_id set instead). -->
                 <div class="relative mt-1" x-show="!line.bank_account_id">
-                  <!-- Proactive suggestions (#65/#66) — alongside the manual
-                       search below, not instead of it. Ranked server-side
-                       (amount match first, then closest date); a ✓ badge
-                       marks the ones matching this line's own amount.
-                       Real bug (#66): the block used to only exist in the
-                       DOM once at least one suggestion had actually loaded
-                       — so the debounced fetch resolving mid-typing made the
+                  <!-- Proactive suggestions — alongside the manual search
+                       below, not instead of it. Ranked server-side (amount
+                       match first, then closest date); a ✓ badge marks the
+                       ones matching this line's own amount.
+                       The suggestion block used to only exist in the DOM
+                       once at least one suggestion had actually loaded, so
+                       a debounced fetch resolving mid-typing made the
                        search box (and everything below it) suddenly jump
                        down, right when the treasurer might be about to click
                        something there. Fixed by always reserving space for
@@ -1988,25 +1982,24 @@
                             <span x-text="(line.paperlessSuggestions[i - 1] || {}).title || ''"></span>
                             <span class="text-gray-400 dark:text-gray-500"
                                   x-text="(line.paperlessSuggestions[i - 1] || {}).created ? ' · ' + paperlessDocDate(line.paperlessSuggestions[i - 1].created) : ''"></span>
-                            <!-- #83: already-linked suggestions are never
-                                 excluded (a partial payment against the same
-                                 invoice is a legitimate reason to link it
-                                 again, #28) — just highlighted amber, with
-                                 this inline hint, so it doesn't look like a
-                                 fresh, unbooked document. -->
+                            <!-- Already-linked suggestions are never
+                                 excluded — a partial payment against the
+                                 same invoice is a legitimate reason to
+                                 link it again — just highlighted amber,
+                                 with this inline hint, so it doesn't look
+                                 like a fresh, unbooked document. -->
                             <span x-show="(line.paperlessSuggestions[i - 1] || {}).linked_entry_ids && line.paperlessSuggestions[i - 1].linked_entry_ids.length"
                                   class="text-amber-700 dark:text-amber-400" x-text="' · ' + PAPERLESS_ALREADY_LINKED_HINT_L"></span>
                           </span>
-                          <!-- Real bug (#66): a separate match/no-match
-                               badge here could make a matching row wider
-                               than a non-matching one, occasionally
-                               wrapping onto a second line and growing the
-                               reserved slot height — exactly the "spontaner
-                               Sprung" the user reported. Showing the
-                               document's own amount right-aligned instead
-                               (green on a match, muted otherwise) fixes
-                               that AND is more informative: every row with
-                               a known amount shows it, not just matches. -->
+                          <!-- A separate match/no-match badge here could
+                               make a matching row wider than a non-matching
+                               one, occasionally wrapping onto a second line
+                               and growing the reserved slot height, causing
+                               a visible layout jump. Showing the document's
+                               own amount right-aligned instead (green on a
+                               match, muted otherwise) avoids that and is
+                               more informative: every row with a known
+                               amount shows it, not just matches. -->
                           <span x-show="(line.paperlessSuggestions[i - 1] || {}).amount != null" class="shrink-0 font-mono"
                                 :class="(line.paperlessSuggestions[i - 1] || {}).amount_match ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'"
                                 x-text="fmt((line.paperlessSuggestions[i - 1] || {}).amount)"></span>
@@ -2021,16 +2014,16 @@
                          class="w-full border dark:border-gray-700 rounded px-2 py-1.5 text-xs bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
                   <template x-if="line.paperlessResults.length > 0">
                     <div class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border dark:border-gray-700 rounded shadow max-h-40 overflow-y-auto">
-                      <!-- Doc id (and, #59, its date) shown alongside the
+                      <!-- The document id and date are shown alongside the
                            title (not just on pick) so two documents with
                            the same title are distinguishable before
-                           picking, not just after. The amount (#77, right-
+                           picking, not just after. The amount (right-
                            aligned like the suggestion rows above) is shown
                            whenever PAPERLESS_AMOUNT_CUSTOM_FIELD_ID is
                            configured and the document has a value for it —
                            always the muted color here (never green), since
                            a plain search result has no target amount to
-                           match against. An already-linked result (#83) is
+                           match against. An already-linked result is
                            highlighted amber, same as a suggestion. -->
                       <template x-for="doc in line.paperlessResults" :key="doc.id">
                         <div @click="pickPaperlessDocForLine(line, doc)"
@@ -2055,12 +2048,12 @@
                     <a x-show="config.paperless_url" :href="paperlessDocUrl(line.paperless_document_id)" target="_blank" rel="noopener"
                        class="text-blue-600 dark:text-blue-400 hover:underline" x-text="'ID: ' + line.paperless_document_id"></a>
                     <span x-show="!config.paperless_url" x-text="'ID: ' + line.paperless_document_id"></span>
-                    <!-- Picking a document hid the suggestions/search box
+                    <!-- Picking a document hides the suggestions/search box
                          entirely (x-show="... && !line.paperless_document_id"
-                         above) with no way back — real gap the user
-                         reported. Clearing it here just blanks the field;
-                         the suggestions/search UI reappears on its own via
-                         that same x-show. -->
+                         above), so an explicit way back is needed. Clearing
+                         it here just blanks the field; the suggestions/
+                         search UI reappears on its own via that same
+                         x-show. -->
                     <button type="button" @click="clearPaperlessDocForLine(line)"
                             class="text-red-500 dark:text-red-400 hover:underline" title="{{ _('ledger.paperless_remove_document') }}">✕</button>
                   </p>
@@ -2200,8 +2193,8 @@
                 </div>
                 <p x-show="categoryLineSignWarning(line.ref, line.amount)" class="text-xs text-amber-600 dark:text-amber-400 mt-0.5"
                    x-text="categoryLineSignWarning(line.ref, line.amount)"></p>
-                <!-- Per-line document (#44): several invoices paid in one
-                     bank debit each get their own — only meaningful on a
+                <!-- Per-line document: several invoices paid in one bank
+                     debit each get their own — only meaningful on a
                      category line, same gating as the sign warning above.
                      Same search-with-picker UI as the Book Import Line
                      Modal (reuses searchPaperlessForLine()/
@@ -2211,11 +2204,11 @@
                      one), so it needs the same search, not just an ID
                      field. -->
                 <div class="relative mt-1" x-show="line.ref && line.ref.startsWith('category:')">
-                  <!-- Proactive suggestions (#65/#66) — see the identical,
-                       fixed-slot block in the Book Import Line Modal above
-                       for the full explanation; here ranked against the
-                       whole entry's own typed date instead of a staging
-                       line's booking_date. -->
+                  <!-- Proactive suggestions — see the identical, fixed-slot
+                       block in the Book Import Line Modal above for the
+                       full explanation; here ranked against the whole
+                       entry's own typed date instead of a staging line's
+                       booking_date. -->
                   <div x-show="config.paperless_enabled && !line.paperless_document_id" class="mb-1 space-y-1">
                     <p class="text-xs text-gray-400 dark:text-gray-500" x-text="PAPERLESS_SUGGESTIONS_LABEL_L + ':'"></p>
                     <template x-for="i in PAPERLESS_SUGGESTION_SLOTS" :key="i">
@@ -2232,16 +2225,15 @@
                             <span x-show="(line.paperlessSuggestions[i - 1] || {}).linked_entry_ids && line.paperlessSuggestions[i - 1].linked_entry_ids.length"
                                   class="text-amber-700 dark:text-amber-400" x-text="' · ' + PAPERLESS_ALREADY_LINKED_HINT_L"></span>
                           </span>
-                          <!-- Real bug (#66): a separate match/no-match
-                               badge here could make a matching row wider
-                               than a non-matching one, occasionally
-                               wrapping onto a second line and growing the
-                               reserved slot height — exactly the "spontaner
-                               Sprung" the user reported. Showing the
-                               document's own amount right-aligned instead
-                               (green on a match, muted otherwise) fixes
-                               that AND is more informative: every row with
-                               a known amount shows it, not just matches. -->
+                          <!-- A separate match/no-match badge here could
+                               make a matching row wider than a non-matching
+                               one, occasionally wrapping onto a second line
+                               and growing the reserved slot height, causing
+                               a visible layout jump. Showing the document's
+                               own amount right-aligned instead (green on a
+                               match, muted otherwise) avoids that and is
+                               more informative: every row with a known
+                               amount shows it, not just matches. -->
                           <span x-show="(line.paperlessSuggestions[i - 1] || {}).amount != null" class="shrink-0 font-mono"
                                 :class="(line.paperlessSuggestions[i - 1] || {}).amount_match ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'"
                                 x-text="fmt((line.paperlessSuggestions[i - 1] || {}).amount)"></span>
@@ -2256,16 +2248,16 @@
                          class="w-full border dark:border-gray-700 rounded px-2 py-1.5 text-xs bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
                   <template x-if="line.paperlessResults.length > 0">
                     <div class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border dark:border-gray-700 rounded shadow max-h-40 overflow-y-auto">
-                      <!-- Doc id (and, #59, its date) shown alongside the
+                      <!-- The document id and date are shown alongside the
                            title (not just on pick) so two documents with
                            the same title are distinguishable before
-                           picking, not just after. The amount (#77, right-
+                           picking, not just after. The amount (right-
                            aligned like the suggestion rows above) is shown
                            whenever PAPERLESS_AMOUNT_CUSTOM_FIELD_ID is
                            configured and the document has a value for it —
                            always the muted color here (never green), since
                            a plain search result has no target amount to
-                           match against. An already-linked result (#83) is
+                           match against. An already-linked result is
                            highlighted amber, same as a suggestion. -->
                       <template x-for="doc in line.paperlessResults" :key="doc.id">
                         <div @click="pickPaperlessDocForLine(line, doc)"
@@ -2431,8 +2423,8 @@
       <p x-show="assetSourceLabel" class="text-xs text-gray-500 dark:text-gray-400 mb-3 font-mono" x-text="assetSourceLabel"></p>
       <div x-show="assetError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="assetError"></div>
       <form @submit.prevent="submitAsset()" class="space-y-4">
-        <!-- Mode toggle + amount (#49): only relevant when capitalizing a
-             line, not when editing an already-existing asset's own fields. -->
+        <!-- Mode toggle + amount: only relevant when capitalizing a line,
+             not when editing an already-existing asset's own fields. -->
         <div x-show="!editingAssetId" class="space-y-3">
           <div class="flex gap-4 text-sm">
             <label class="inline-flex items-center gap-2 cursor-pointer">
@@ -2452,7 +2444,7 @@
                      class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm font-mono bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
             </div>
             <div>
-              <!-- This component's own acquisition date (#50) — a component
+              <!-- This component's own acquisition date — a component
                    added long after the rest (nachträgliche Anschaffungs-
                    kosten) depreciates from here, never backdated to another
                    component's date. -->
@@ -2500,7 +2492,7 @@
           </div>
         </template>
 
-        <!-- Components (#50): each has its own acquisition/disposal date,
+        <!-- Components: each has its own acquisition/disposal date,
              independent of the asset's other components — e.g. only the
              graphics card can be marked disposed while the rest stays in
              service. -->
@@ -2693,7 +2685,7 @@
     </div>
   </div>
 
-  <!-- ============ Ledger Sync Tokens Modal (#52) ============ -->
+  <!-- ============ Ledger Sync Tokens Modal ============ -->
   <div x-show="showSyncTokensModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
        @mousedown.self="modalMousedownOutside = true">
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg p-6" style="max-height: 90vh; overflow-y: auto;"
@@ -2890,8 +2882,8 @@ const PAPERLESS_SUGGESTIONS_LABEL_L = {{ _('ledger.paperless_suggestions_label')
 const PAPERLESS_ALREADY_LINKED_HINT_L = {{ _('ledger.paperless_already_linked_hint') | tojson }};
 const SHIFT_ENTER_HINT_L = {{ _('ledger.shift_enter_hint') | tojson }};
 const SKIP_LINE_HINT_L = {{ _('ledger.skip_line_hint') | tojson }};
-// Fixed slot count for the Paperless suggestion placeholders (#66) — must
-// match the `limit` GET /ledger/paperless/suggestions is called with below.
+// Fixed slot count for the Paperless suggestion placeholders — must match
+// the `limit` GET /ledger/paperless/suggestions is called with below.
 const PAPERLESS_SUGGESTION_SLOTS = 3;
 const DUPLICATE_HINT_L = {{ _('ledger.import_duplicate_hint') | tojson }};
 const TRANSFER_AMOUNT_HINT_L = {{ _('ledger.book_transfer_amount_hint') | tojson }};
@@ -2961,8 +2953,8 @@ const CSV_FIELDS = [
 // Deep-linkable tab URLs (/ledger/<slug>) — kept in sync by hand with
 // LEDGER_TAB_SLUGS in app/web/router.py (server-side, for resolving the
 // initial page load) since there's no shared implementation possible across
-// Python/JS, same convention as #51/#52's date-range mirroring. This is the
-// tab->slug direction, used when pushState-ing a new URL on tab switch;
+// Python/JS. This is the tab->slug direction, used when pushState-ing a new
+// URL on tab switch;
 // LEDGER_SLUG_TO_TAB (the reverse) is derived from it below rather than
 // duplicated by hand a second time.
 const LEDGER_TAB_SLUGS = {
@@ -2987,7 +2979,7 @@ const LEDGER_SLUG_TO_TAB = Object.fromEntries(Object.entries(LEDGER_TAB_SLUGS).m
 // entriesQueryParams()/importLinesQueryParams() — those build the *API*
 // request's query string (English param names, the backend's own contract);
 // this builds the *browser's* shareable URL. Same "no shared implementation,
-// kept in sync by hand" precedent as #51/#52's JS/Python date-range mirror,
+// kept in sync by hand" approach as the JS/Python date-range mirror above,
 // just JS-to-JS here for two genuinely different audiences (the API vs. the
 // person reading the address bar). `build()` omits a param entirely when
 // it's at its default (page 1, the default import status, no search/filter)
@@ -3070,9 +3062,8 @@ const LEDGER_TAB_QUERY = {
 // Rendered server-side from the requested URL (/ledger or /ledger/<slug>) —
 // see ledger_tab_page() in app/web/router.py. Not embedded via the x-data
 // attribute itself: tojson on a string produces literal `"..."` delimiters
-// that would terminate the double-quoted HTML attribute early (see Key
-// Design Decision #16's gotcha) — safe here only because a <script> block
-// isn't HTML-attribute-parsed.
+// that would terminate a double-quoted HTML attribute early — safe here
+// only because a <script> block isn't HTML-attribute-parsed.
 const INITIAL_TAB = {{ initial_tab | tojson }};
 
 function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
@@ -3105,12 +3096,12 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     showBankPurposeText: false,
     showEntriesFilters: false,
     expandedEntryId: null,
-    // Kassen payout detail expansion (#88) — mirrors the Buchungen tab's
-    // own expandedEntryId/row-detail pattern, just keyed by the payout's
+    // Kassen payout detail expansion — mirrors the Buchungen tab's own
+    // expandedEntryId/row-detail pattern, just keyed by the payout's
     // transaction_id instead of an entry id (a booked payout can link more
-    // than one entry — a split across several transfers, or a bundle, see
-    // #38 — so the detail shows every linked entry, fetched by id via the
-    // same GET /ledger/entries?ids= the Buchungen list itself uses).
+    // than one entry — a split across several transfers, or a bundle — so
+    // the detail shows every linked entry, fetched by id via the same
+    // GET /ledger/entries?ids= the Buchungen list itself uses).
     expandedPayoutId: null,
     payoutDetailEntries: {},
     loadingPayoutDetail: false,
@@ -3234,9 +3225,9 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     assetSourceLabel: '',
     assetSourceLine: null,
     // 'new' = capitalize into a brand-new asset; 'existing' = add as another
-    // component of an already-existing asset (#49) — e.g. a graphics card
-    // bought weeks after the rest of a PC, which only forms one
-    // Wirtschaftsgut together with it. Irrelevant while editing.
+    // component of an already-existing asset — e.g. a graphics card bought
+    // weeks after the rest of a PC, which only forms one Wirtschaftsgut
+    // together with it. Irrelevant while editing.
     assetCapitalizeMode: 'new',
     assetForm: {
       name: '', component_amount: '', component_acquisition_date: '', target_asset_id: '',
@@ -3245,7 +3236,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     assetError: null,
     assetSubmitting: false,
     expandedAssetId: null,
-    // Per-component disposal (#50) — inline within the edit-asset modal's
+    // Per-component disposal — inline within the edit-asset modal's
     // components list, one component at a time.
     disposingComponentId: null,
     disposeDate: '',
@@ -3275,7 +3266,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     movementError: null,
     movementSubmitting: false,
 
-    // Ledger sync tokens (#52): unattended external FinTS-sync script auth,
+    // Ledger sync tokens: unattended external FinTS-sync script auth,
     // managed per bank account from the Bankkonten tab.
     showSyncTokensModal: false,
     syncTokensAccount: null,
@@ -3327,10 +3318,10 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       return this.assets.find(a => a.id === this.editingAssetId) || { components: [] };
     },
 
-    // Active/disposed filter (#62) — client-side, since this list never
-    // paginates (unlike Buchungen/Transaktionen/Belege); asset.disposed_at
-    // is only non-null once EVERY component is disposed (#50), so "active"
-    // here means "at least one component still in service".
+    // Active/disposed filter — client-side, since this list never paginates
+    // (unlike Buchungen/Transaktionen/Belege); asset.disposed_at is only
+    // non-null once EVERY component is disposed, so "active" here means
+    // "at least one component still in service".
     get filteredAssets() {
       if (this.assetStatusFilter === 'active') return this.assets.filter(a => !a.disposed_at);
       if (this.assetStatusFilter === 'disposed') return this.assets.filter(a => a.disposed_at);
@@ -3338,8 +3329,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     },
 
     // How much of each entry line is already claimed by some asset's
-    // component(s) (#49) — a line can be partially capitalized, so this is
-    // an amount per line, not just a boolean "is it capitalized" set.
+    // component(s) — a line can be partially capitalized, so this is an
+    // amount per line, not just a boolean "is it capitalized" set.
     get capitalizedAmountByLineId() {
       const m = new Map();
       for (const a of this.assets) {
@@ -3359,7 +3350,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       // Used for manual-entry line pickers — offline accounts are meant to be
       // booked against directly (transfers in, invoices out), so they're
       // included here. The Kassenbestand clearing account is excluded: its
-      // balance accounts for cash-in events implicitly (see #34/#46), so a
+      // computed balance accounts for cash-in events implicitly, so a
       // manual line against it would corrupt that balance — the backend
       // rejects it outright, this just keeps it from being offered at all.
       return this.accounts.filter(a => a.tracked && !a.is_cash_clearing_account);
@@ -3424,11 +3415,11 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       // /ledger/kassenpruefung, resolved server-side into INITIAL_TAB) —
       // switchTab() itself is never called for that initial load (there's
       // no click), so its lazy-loading has to be triggered explicitly here
-      // too, or the tab would render empty until the user clicked away and
-      // back. Entries is now handled the same lazy way as every other tab
-      // (see loadTabData()) rather than always eagerly loaded, since #54
-      // needs it to respect a page/filter restored from the URL, and
-      // nothing outside the Buchungen tab's own template reads `entries`.
+      // too, or the tab would render empty until manually switched away and
+      // back. Entries is handled the same lazy way as every other tab (see
+      // loadTabData()) rather than always eagerly loaded, so it respects a
+      // page/filter restored from the URL, and nothing outside the
+      // Buchungen tab's own template reads `entries`.
       this.loadTabData(this.activeTab);
       window.addEventListener('popstate', async () => {
         this.activeTab = this.tabFromLocation();
@@ -3455,9 +3446,9 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     // bar. `push` creates a new history entry (used only for an actual tab
     // switch, see switchTab()); every in-tab filter/page change instead
     // uses replaceState (called from loadEntries()/loadImportLines()/
-    // loadPaperlessDocuments() themselves — see #54) so paging through
-    // results or typing a search query doesn't spam the browser's Back
-    // button with one entry per click/keystroke.
+    // loadPaperlessDocuments() themselves) so paging through results or
+    // typing a search query doesn't spam the browser's Back button with
+    // one entry per click/keystroke.
     syncUrl(push) {
       const path = this.activeTab === 'entries' ? '/ledger' : `/ledger/${LEDGER_TAB_SLUGS[this.activeTab] || 'buchungen'}`;
       const spec = LEDGER_TAB_QUERY[this.activeTab];
@@ -3519,10 +3510,10 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     },
 
     entriesQueryParams() {
-      // A custom date range (#62) replaces the Jahr filter rather than
-      // composing with it — the backend would otherwise AND both together
-      // (see #58), silently clipping a range spanning more than one year
-      // back down to just the selected year.
+      // A custom date range replaces the Jahr filter rather than composing
+      // with it — the backend would otherwise AND both together, silently
+      // clipping a range spanning more than one year back down to just the
+      // selected year.
       let params;
       if (this.filterDateFrom || this.filterDateTo) {
         params = '';
@@ -3534,8 +3525,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       if (this.filterAccountId) params += `&bank_account_id=${this.filterAccountId}`;
       if (this.filterCategoryId) params += `&category_id=${this.filterCategoryId}`;
       if (this.filterQuery) params += `&q=${encodeURIComponent(this.filterQuery)}`;
-      // filterReviewed also carries a third value ('noted', #58) that isn't
-      // a reviewed-state at all — it maps to the independent has_note filter
+      // filterReviewed also carries a third value ('noted') that isn't a
+      // reviewed-state at all — it maps to the independent has_note filter
       // instead, so 'true'/'false' and 'noted' can't both be expressed as
       // one query param on the API side (unlike in the shareable URL, where
       // they're all just the one `geprueft=` value, see LEDGER_TAB_QUERY).
@@ -3553,8 +3544,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       return params;
     },
 
-    // Counts for the "Filter" button's badge (#61) — a filter panel replaces
-    // the always-visible row of selects/inputs, so the badge is the only
+    // Counts for the "Filter" button's badge — a filter panel replaces the
+    // always-visible row of selects/inputs, so the badge is the only
     // at-a-glance sign that something is narrowing the list. filterYear is
     // deliberately excluded — there's no "all years" option, so it's never
     // really "off" the way the others are.
@@ -3643,8 +3634,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         // to decide whether a just-created/reversed entry belongs in the
         // locally-spliced view (see insertEntryLocally() below), not a
         // second search implementation the server's results depend on.
-        // Deliberately excludes category name (see #60/#61) — that's a
-        // dedicated filterCategoryId dropdown instead, not folded into q.
+        // Deliberately excludes category name — that's a dedicated
+        // filterCategoryId dropdown instead, not folded into q.
         const needle = this.filterQuery.toLowerCase();
         const haystack = [
           entry.description || '',
@@ -3655,7 +3646,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
       // A just-created/reversed entry is always freshly unreviewed and
       // unnoted (reviewed_by/review_note are only ever set after the fact
-      // via #56/#58's checkoff/note) — so it only belongs in a
+      // via the checkoff/note actions) — so it only belongs in a
       // "reviewed=true"/"noted" locally-spliced view once that's no longer
       // true, which insertEntryLocally() never handles anyway (it's for
       // new entries, not toggling review state).
@@ -3707,7 +3698,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
     },
 
-    // Kassenprüfung checkoff (#56) — a plain in-place mutation of the
+    // Kassenprüfung checkoff — a plain in-place mutation of the
     // already-loaded entry object, same pattern as toggleTracked()/
     // setCashClearingAccount(): this never changes the entry's position/
     // sort order or the page's totals, so there's nothing to re-splice or
@@ -3751,7 +3742,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
     },
 
-    // Sets or clears an entry's discrepancy note (#58) — independent of the
+    // Sets or clears an entry's discrepancy note — independent of the
     // reviewed_by/reviewed_at checkoff above, same PUT-a-single-field
     // pattern as toggleTracked()/setCashClearingAccount(). An empty/
     // whitespace-only draft clears the note (sent as `null`) rather than
@@ -3796,8 +3787,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       return this.config.paperless_url ? `${this.config.paperless_url.replace(/\/+$/, '')}/documents/${docId}` : null;
     },
 
-    // Distinct, non-null documents across an entry's lines (#44) — usually
-    // one (a single receipt, or several invoices that happen to share one
+    // Distinct, non-null documents across an entry's lines — usually one (a
+    // single receipt, or several invoices that happen to share one
     // combined document), occasionally several (invoices each with their
     // own document).
     entryPaperlessDocs(e) {
@@ -3908,10 +3899,10 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       return this.bookingTargetPayouts.reduce((sum, p) => sum + parseFloat(p.remaining_amount), 0);
     },
 
-    // Key Design Decision #42: once the entered amount exceeds what's owed
-    // to the selected payouts, the difference is booked against
-    // targetPayoutForm.category_lines instead of being rejected — e.g. a
-    // donation deposited together with a Kassen payout in one transfer.
+    // Once the entered amount exceeds what's owed to the selected payouts,
+    // the difference is booked against targetPayoutForm.category_lines
+    // instead of being rejected — e.g. a donation deposited together with
+    // a Kassen payout in one transfer.
     targetPayoutExcess() {
       return (parseFloat(this.targetPayoutForm.amount) || 0) - this.targetPayoutTotalRemaining();
     },
@@ -4043,8 +4034,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         const data = await r.json();
         this.showTargetPayoutModal = false;
         // Booking a payout also creates a journal entry, visible in the
-        // Buchungen tab — insert it locally (#40's pattern) rather than
-        // leaving that already-loaded list silently stale.
+        // Buchungen tab — insert it locally rather than leaving that
+        // already-loaded list silently stale.
         this.insertEntryLocally(data);
         await this.loadTargetPayouts();
       } catch (e) {
@@ -4068,7 +4059,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
     },
 
-    // Kontostände zu Jahresbeginn/-ende (#79) — shares the EÜR tab's own
+    // Kontostände zu Jahresbeginn/-ende — shares the EÜR tab's own
     // reportYear picker rather than a second one, since both describe the
     // same fiscal year.
     async loadAccountBalancesYear() {
@@ -4117,9 +4108,10 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     // Same shape searchPaperlessForLine()/pickPaperlessDocForLine() already
     // expect on a Book Import Line Modal category line — reused as-is here
     // so the New Entry Modal gets the same search-with-picker UI instead of
-    // a plain ID field (found missing by the user: an offline-account
-    // payment can only ever be booked here, since there's no staging line
-    // to book from, so it had no way to search for a document at all).
+    // a plain ID field. An offline-account payment can only ever be booked
+    // here, since there's no staging line to book it from, so it needs its
+    // own way to search for a document rather than relying on the staging
+    // flow's search.
     newEntryLine() {
       return {
         ref: '', amount: '',
@@ -4155,8 +4147,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       return Math.abs(this.lineSum) < 0.005;
     },
 
-    // A pure Umbuchung (account-to-account transfer, #23) has no category
-    // line at all — nothing here needs a Beleg, since no external receipt
+    // A pure Umbuchung (account-to-account transfer) has no category line
+    // at all — nothing here needs a Beleg, since no external receipt
     // justifies an internal transfer the way one does an actual expense/income.
     get entryIsTransfer() {
       return this.entryForm.lines.length > 0 && this.entryForm.lines.every(l => l.ref.startsWith('account:'));
@@ -4328,9 +4320,9 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         if (this.editingCategoryId) {
           // Only send fields that actually changed — slug/kind/sphere
           // reclassify the category and are rejected (409) once it has
-          // booked lines (see #45/#28), so always resending the form's
-          // current values would 409 even a plain rename or match_keywords
-          // edit on a category that's already in use.
+          // booked lines, so always resending the form's current values
+          // would 409 even a plain rename or match_keywords edit on a
+          // category that's already in use.
           const original = this.categories.find(c => c.id === this.editingCategoryId) || {};
           payload = {};
           if (this.categoryForm.name !== original.name) payload.name = this.categoryForm.name;
@@ -4404,7 +4396,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
 
     // Paperless's own `created` timestamp, date-only — shown next to the
     // #id in a search-results dropdown so two same-titled documents are
-    // distinguishable by date too, not just id (#59).
+    // distinguishable by date too, not just id.
     paperlessDocDate(created) {
       return created ? created.slice(0, 10) : '';
     },
@@ -4412,7 +4404,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     toggleEntryDetail(entryId) {
       this.expandedEntryId = this.expandedEntryId === entryId ? null : entryId;
       if (this.expandedEntryId === null) return;
-      // Draft state for the review-note editor (#58) lives directly on the
+      // Draft state for the review-note editor lives directly on the
       // entry object (like every other bit of per-entry UI state in this
       // list) rather than a parallel drafts map keyed by id — initialized
       // once on first expand so re-collapsing/re-expanding without saving
@@ -4421,13 +4413,13 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       if (entry && entry._noteDraft === undefined) entry._noteDraft = entry.review_note || '';
     },
 
-    // Kassen payout detail expansion (#88) — same toggle pattern as
+    // Kassen payout detail expansion — same toggle pattern as
     // toggleEntryDetail() above, keyed by transaction_id. Fetches the
-    // linked entry/entries by id (GET /ledger/entries?ids=, same endpoint/
-    // shape the Buchungen list itself uses, so the detail view shows
-    // exactly the same fields — lines, notes, documents, matched bank
-    // transaction — the user already knows from there) only once per
-    // payout, caching the result in payoutDetailEntries.
+    // linked entry/entries by id (GET /ledger/entries?ids=, the same
+    // endpoint/shape the Buchungen list itself uses, so the detail view
+    // shows exactly the same already-familiar fields — lines, notes,
+    // documents, matched bank transaction) only once per payout, caching
+    // the result in payoutDetailEntries.
     async togglePayoutDetail(p) {
       this.expandedPayoutId = this.expandedPayoutId === p.transaction_id ? null : p.transaction_id;
       if (this.expandedPayoutId === null) return;
@@ -4710,17 +4702,17 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     openBookModal(line) {
       this.bookingLine = line;
       const firstLine = this.newBookCategoryLine();
-      // Autofill (#45): the staging line's own suggested_category_id
-      // (computed server-side from active categories' match_keywords
-      // against purpose_text) pre-fills the single default line's category
-      // — purely a starting point, freely overridable, same
-      // "advisory, not enforced" precedent as the sign warning and the GWG
-      // hint. The full negated bank amount is now ALWAYS pre-filled (#72
-      // follow-up), independent of whether a category was suggested — it's
-      // what suggestPaperlessForLine() below needs to fire at all, so even
-      // an unrecognized purpose text still gets Paperless suggestions to
-      // help pick the right category from, instead of waiting for the
-      // treasurer to type the amount in by hand first.
+      // Autofill: the staging line's own suggested_category_id (computed
+      // server-side from active categories' match_keywords against
+      // purpose_text) pre-fills the single default line's category —
+      // purely a starting point, freely overridable, same "advisory, not
+      // enforced" approach as the sign warning and the GWG hint. The full
+      // negated bank amount is always pre-filled, independent of whether a
+      // category was suggested — it's what suggestPaperlessForLine() below
+      // needs to fire at all, so even an unrecognized purpose text still
+      // gets Paperless suggestions to help pick the right category from,
+      // instead of waiting for the treasurer to type the amount in by hand
+      // first.
       this.bookCategorySuggested = !!line.suggested_category_id;
       firstLine.amount = (-parseFloat(line.amount)).toFixed(2);
       this.bookForm = {
@@ -4733,14 +4725,14 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       this.transferCandidates = [];
       this.bookError = null;
       this.showBookModal = true;
-      // Fetch suggestions (#65) for the pre-filled amount right away — the
+      // Fetch suggestions for the pre-filled amount right away — the
       // amount input's own @input.debounce handler never fires here since
       // this write is programmatic, not typed. Reads back through the
       // reactive this.bookForm... chain rather than the closed-over
       // `firstLine`, same reasoning as the category_id fix below.
       this.suggestPaperlessForLine(this.bookForm.category_lines[0], line.booking_date);
-      // Auto-focus (#72 follow-up): Shift+Enter ("und weiter") is bound as
-      // a keydown handler on the <form> itself, which only ever sees the
+      // Auto-focus: Shift+Enter ("und weiter") is bound as a keydown
+      // handler on the <form> itself, which only ever sees the
       // event if some element inside the form already has focus — a fresh
       // browser tab/page load, or a modal reopened after clicking anywhere
       // outside a field, leaves nothing focused at all, silently dropping
@@ -4756,29 +4748,29 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       this.$nextTick(() => {
         if (this.bookingLine === line) this.$refs.bookDescriptionInput?.focus();
       });
-      // Real bug (2026-09-21): the category <select>'s <option>s (a nested
-      // x-for over activeCategories) only get mounted into the DOM the
-      // moment bookForm.category_lines goes from empty to populated — the
-      // very same step this function just did above. Alpine applies a
+      // The category <select>'s <option>s (a nested x-for over
+      // activeCategories) only get mounted into the DOM the moment
+      // bookForm.category_lines goes from empty to populated — the very
+      // same step this function just did above. Alpine applies a
       // <select>'s own x-model binding before walking into its children, so
-      // setting category_id in that same synchronous pass raced the
-      // <option>s' own mount: the browser found no matching <option> yet,
-      // silently fell back to the empty placeholder, and — since nothing
+      // setting category_id in that same synchronous pass races the
+      // <option>s' own mount: the browser finds no matching <option> yet,
+      // silently falls back to the empty placeholder, and — since nothing
       // about the <option>s appearing a moment later re-triggers x-model's
-      // already-run effect — stayed stuck there even though the underlying
-      // state was already correct. That empty *DOM* value then tripped the
+      // already-run effect — stays stuck there even though the underlying
+      // state is already correct. That empty *DOM* value then trips the
       // <select>'s native `required` validation on submit, silently
       // blocking the whole form (a browser-native tooltip, easy to miss) —
-      // exactly the "amount fills in, category doesn't, needs another try"
-      // the user reported, and reproduced live: the modal's first-ever open
-      // in a page session showed the placeholder despite bookForm already
-      // holding the right id; closing and reopening (now hitting the
-      // already-mounted <option>s) worked first time. Same root cause class
-      // as #54's Jahr-select bug — fixed the same way, by deferring the
-      // value-setting write to $nextTick() so the <option>s are guaranteed
-      // to exist first. Goes through the reactive `this.bookForm...` chain,
-      // not the closed-over `firstLine` reference, since mutating the raw
-      // pre-reactive object directly wouldn't trigger the DOM update at all.
+      // on the modal's very first open in a page session the placeholder
+      // shows despite bookForm already holding the right id; closing and
+      // reopening (now hitting the already-mounted <option>s) works first
+      // time. This is the same class of Alpine timing race as the year
+      // <select> elsewhere in this file — fixed the same way, by deferring
+      // the value-setting write to $nextTick() so the <option>s are
+      // guaranteed to exist first. Goes through the reactive
+      // `this.bookForm...` chain, not the closed-over `firstLine`
+      // reference, since mutating the raw pre-reactive object directly
+      // wouldn't trigger the DOM update at all.
       if (line.suggested_category_id) {
         this.$nextTick(() => {
           if (this.bookingLine === line && this.bookForm.category_lines[0]) {
@@ -4801,8 +4793,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       this.loadingTransferCandidates = true;
       try {
         const targetAmount = (-parseFloat(this.bookingLine.amount)).toFixed(2);
-        // status=new&status=duplicate — a duplicate-flagged line (a heuristic
-        // dedup false positive is possible, see #19) is still a valid transfer
+        // status=new&status=duplicate — a duplicate-flagged line (the dedup
+        // heuristic can produce false positives) is still a valid transfer
         // candidate, not just a fresh one.
         const r = await apiFetch(
           `/api/v1/ledger/import/lines?bank_account_id=${this.bookForm.transferAccountId}&amount=${targetAmount}&status=new&status=duplicate`
@@ -4922,7 +4914,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     },
 
     // Local update, same "don't refetch for one small state change" idea as
-    // insertEntryLocally (#40): if a category line just booked (from either
+    // insertEntryLocally: if a category line just booked (from either
     // this modal or the New Entry Modal) carries a paperless_document_id
     // that happens to be visible in the currently-loaded Belege list, mark
     // it linked immediately instead of leaving it to show a stale "Offen"
@@ -4937,12 +4929,12 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
     },
 
-    // --- Paperless search — per line (#44), since each split line now
-    // carries its own document instead of one for the whole booking. Takes
-    // the line object itself (bookForm.category_lines item, or an
-    // entryForm.lines item for the plain-text duplicate check) and mutates
-    // its own paperlessQuery/paperlessResults/paperless_document_id/
-    // paperlessDuplicateWarning fields. `referenceDate` (#68, same as
+    // --- Paperless search — per line, since each split line carries its
+    // own document instead of one for the whole booking. Takes the line
+    // object itself (bookForm.category_lines item, or an entryForm.lines
+    // item for the plain-text duplicate check) and mutates its own
+    // paperlessQuery/paperlessResults/paperless_document_id/
+    // paperlessDuplicateWarning fields. `referenceDate` (same as
     // suggestPaperlessForLine's) has the backend re-sort the matches by
     // date proximity instead of leaving Paperless's own relevance ordering
     // as-is — several textually-similar invoices (e.g. every month's
@@ -4961,8 +4953,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
     },
 
-    // Proactive suggestions (#65) — alongside, not instead of, the manual
-    // search above: up to 3 documents ranked by an exact amount match (if
+    // Proactive suggestions — alongside, not instead of, the manual search
+    // above: up to 3 documents ranked by an exact amount match (if
     // PAPERLESS_AMOUNT_CUSTOM_FIELD_ID is configured) first, then by
     // ascending distance between the document's own date and
     // `referenceDate` (the staging line's booking_date in the Book Import
@@ -4992,11 +4984,11 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       this.checkPaperlessDuplicateForLine(line);
     },
 
-    // Real gap the user reported: once a document was picked, there was no
-    // way back to the suggestions/search UI short of cancelling the whole
-    // modal — the "ID: N" display had no remove control at all. Clearing
+    // Once a document is picked, the suggestions/search UI disappears
+    // behind x-show="... && !line.paperless_document_id", so there needs to
+    // be a way back to it short of cancelling the whole modal. Clearing
     // paperless_document_id alone is enough: the suggestions/search box's
-    // own x-show="... && !line.paperless_document_id" reappears on its own.
+    // own x-show reappears on its own.
     clearPaperlessDocForLine(line) {
       line.paperless_document_id = '';
       line.paperlessQuery = '';
@@ -5068,7 +5060,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     // matching bank transaction instead of the other way around (the
     // existing per-line Paperless search on the Book Import Line Modal
     // starts from a transaction and searches for a document) — same idea
-    // as the target-payout matching workflow (#38), mirrored for documents.
+    // as the target-payout matching workflow, mirrored for documents.
     openPaperlessDocSearch(doc) {
       this.paperlessDocSearchDoc = doc;
       this.paperlessDocSearchQuery = doc.title;
@@ -5372,8 +5364,9 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     // Any asset/component mutation (create, edit, delete, dispose) can
     // change the Anlagenspiegel too — refresh both together rather than
     // leaving that already-loaded section silently stale (same lesson as
-    // #36's Rücklagen/Mittelverwendung pairing). Skips the Anlagenspiegel
-    // fetch if it was never loaded yet (tab not visited this session).
+    // the Rücklagen/Mittelverwendung pairing below). Skips the
+    // Anlagenspiegel fetch if it was never loaded yet (tab not visited
+    // this session).
     async reloadAssetsAndSpiegel() {
       const tasks = [this.loadAssets()];
       if (this.anlagenspiegel) tasks.push(this.loadAnlagenspiegel());
@@ -5409,7 +5402,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
 
     // Opens the shared asset modal to capitalize `line` — either into a
     // brand-new asset, or as another component of an already-existing one
-    // (#49, e.g. a graphics card bought weeks after the rest of a PC).
+    // (e.g. a graphics card bought weeks after the rest of a PC).
     // `component_amount` defaults to whatever's left uncapitalized on this
     // line (its full amount, the common case, unless part of it was already
     // claimed elsewhere) but is freely editable for a partial capitalization.
@@ -5514,7 +5507,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
     },
 
-    // --- per-component disposal (#50): independent of the asset's other
+    // --- per-component disposal: independent of the asset's other
     // components — e.g. only the graphics card of a multi-part asset gets
     // marked disposed while the rest stays in service.
     startDisposeComponent(component) {
@@ -5578,7 +5571,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     },
 
     // --- reserves (Rücklagen) ---
-    // Kind filter (#62) — client-side, same reasoning as filteredAssets above.
+    // Kind filter — client-side, same reasoning as filteredAssets above.
     get filteredReserves() {
       if (!this.reserveKindFilter) return this.reserves;
       return this.reserves.filter(r => r.kind === this.reserveKindFilter);
@@ -5760,7 +5753,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
     },
 
-    // --- Ledger sync tokens (#52) ---
+    // --- Ledger sync tokens ---
     async openSyncTokensModal(account) {
       this.syncTokensAccount = account;
       this.newSyncTokenName = '';
@@ -5895,7 +5888,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       this.showAuditReportModal = true;
     },
 
-    // Pulls every entry's discrepancy note (#58) from within the currently
+    // Pulls every entry's discrepancy note from within the currently
     // entered Prüfzeitraum into the Findings textarea — a convenience so
     // the auditor doesn't have to re-type notes already left on individual
     // bookings while reviewing them. Appends rather than overwrites, so

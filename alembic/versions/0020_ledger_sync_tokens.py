@@ -1,10 +1,10 @@
-"""add ledger_sync_tokens table (external FinTS-sync script auth, #52)
+"""add ledger_sync_tokens table (external FinTS-sync script auth)
 
-Raised by the user as a follow-up to the manual FinTS wizard: automated,
-scheduled bank sync without storing bank login/PIN anywhere in this app.
-Rather than a server-side encrypted credential store (which would put real
-banking credentials inside the always-on, internet-facing app process — a
-much higher-value target than anything else here), the credentials stay
+Supports automated, scheduled bank sync without storing bank login/PIN
+anywhere in this app. Rather than a server-side encrypted credential store
+(which would put real banking credentials inside the always-on,
+internet-facing app process — a much higher-value target than anything
+else here), the credentials stay
 entirely on a host the treasurer trusts, run via the new standalone
 scripts/ledger_fints_sync.py. This table only holds a narrowly-scoped bearer
 token (hashed at rest, same convention as machines.api_token_hash) that can
@@ -50,5 +50,6 @@ def upgrade() -> None:
 def downgrade() -> None:
     # A single DROP TABLE removes the index/FK/UNIQUE together in one
     # statement on every backend — no separate op.drop_index() needed (and
-    # actively wrong on MariaDB while the FK is still attached, see #43).
+    # actively wrong on MariaDB, where dropping an index while its FK is
+    # still attached fails with errno 1553).
     op.drop_table("ledger_sync_tokens")

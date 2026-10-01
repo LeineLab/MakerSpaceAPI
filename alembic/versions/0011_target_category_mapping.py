@@ -5,7 +5,7 @@ ledger. A target carries a default EÜR category (e.g. "Kasse Spenden" ->
 "Spenden") used purely at EÜR-computation time — cash arriving in a target
 (topup/target-topup/adjustment) is never written as its own ledger_entries
 row, only aggregated on read, since it's the same money already tracked by
-booking_targets/transactions (see Key Design Decision #34). A payout (cash
+booking_targets/transactions. A payout (cash
 physically leaving a target) still IS booked, manually, as a transfer from
 the one shared "Kassenbestand" clearing account (bank_accounts.
 is_cash_clearing_account, at most one True at a time) to whichever real

@@ -2,13 +2,12 @@
 per-component acquisition/disposal dates
 
 The 1:1 `ledger_assets.entry_line_id` (UNIQUE) couldn't represent two real
-cases raised by the user: a single booked line only partially qualifying as
-a capital asset (the rest should stay a normal one-off expense), and several
+cases: a single booked line only partially qualifying as a capital asset
+(the rest should stay a normal one-off expense), and several
 separately-booked purchases that only have functional value together (e.g.
 a computer's individually-bought parts) — German tax law requires treating
 those as one Wirtschaftsgut once their combined cost crosses the GWG
-threshold, which a strict one-line-per-asset link can't model at all. See
-Key Design Decision #49.
+threshold, which a strict one-line-per-asset link can't model at all.
 
 `ledger_asset_components` replaces the old `entry_line_id`/`acquisition_cost`
 columns with a proper many-to-many: one row per (asset, entry line, amount)
@@ -17,8 +16,8 @@ contribution, `amount` allowed to be less than the line's full amount.
 model's `acquisition_cost` property) instead of a stored column.
 
 `acquisition_date`/`disposed_at` move from `ledger_assets` onto each
-component too (Key Design Decision #50): a component added well after an
-asset's original purchase (nachträgliche Anschaffungskosten — a genuine
+component too: a component added well after an asset's original purchase
+(nachträgliche Anschaffungskosten — a genuine
 value-increasing upgrade, not a repair, which is ordinary Erhaltungsaufwand
 and never capitalized at all) must depreciate from *its own* acquisition
 date, not retroactively from the asset's original one — a shared
@@ -34,11 +33,11 @@ from the asset it came from.
 Rather than dropping `entry_line_id`'s FK/UNIQUE constraint in place (the
 original migration, 0012, never gave that FK an explicit name — so on a real
 MariaDB database it's whatever name InnoDB auto-assigned at creation, which
-this migration has no reliable way to know; see the drop-order lessons in
-Key Design Decision #43), this rebuilds `ledger_assets` under a temporary
-name and swaps it in, then drops the old table as a single atomic statement
-(which needs no constraint name — see #43's own reasoning). No individual
-column/constraint is ever dropped by name here.
+this migration has no reliable way to know), this rebuilds `ledger_assets`
+under a temporary name and swaps it in, then drops the old table as a single
+atomic statement (which needs no constraint name, since dropping a table
+removes its indexes and constraints together regardless of their names). No
+individual column/constraint is ever dropped by name here.
 
 Revision ID: 0019
 Revises: 0018
@@ -103,8 +102,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Best-effort, same convention as every other downgrade in this file that
-    # generalized a 1:1 link into a many-to-many (see #16, #38): the old
+    # Best-effort, the same convention used elsewhere in this project when a
+    # 1:1 link is generalized into a many-to-many: the old
     # single-line shape can't represent an asset with several components, so
     # this picks the first component (by id) as the sole line and sums every
     # component's amount into acquisition_cost — an asset built from more

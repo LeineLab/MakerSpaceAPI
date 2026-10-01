@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unattended FinTS sync for ONE bank account — Key Design Decision #52.
+Unattended FinTS sync for ONE bank account.
 
 Run this on a host YOU trust (your own machine, a small cron box) — never on
 the MakerSpaceAPI server itself. Your bank login/PIN live only in this
@@ -27,19 +27,18 @@ WHAT THIS DOES, EACH RUN
      date_to   = today - 3 days
    This is NOT independently invented here — it mirrors
    fintsDefaultDatesForAccount() in app/web/templates/ledger/index.html
-   exactly (see Key Design Decision #51). date_to stays a few days short of
-   today so a transaction near the edge is only pulled once its Wertstellung
-   has actually settled with the bank; date_from tracks the ledger's own
-   history (not a fixed lookback) so re-running this script daily, weekly,
-   or after a gap never re-fetches an already-imported range — the whole
-   point being to avoid the guaranteed-duplicate-flagging that motivated
-   #51 in the first place.
+   exactly. date_to stays a few days short of today so a transaction near
+   the edge is only pulled once its Wertstellung has actually settled with
+   the bank; date_from tracks the ledger's own history (not a fixed
+   lookback) so re-running this script daily, weekly, or after a gap never
+   re-fetches an already-imported range, which would otherwise repeatedly
+   flag the same transactions as duplicates on every run.
 3. Connects via FinTS (python-fints) and fetches transactions for that
    window, converting them with the exact same
    app.services.bank_statement.lines_from_mt940_transactions() the rest of
    this app already uses for file imports and the manual FinTS wizard — so
-   the sign/IBAN-parsing fixes documented there (Key Design Decision #19)
-   apply identically here. This is why the script needs to run from within
+   the sign/IBAN-parsing fixes applied there apply identically here. This is
+   why the script needs to run from within
    a checkout of this repo (with its venv active), not as a standalone
    single file — reusing that function is deliberate, not incidental.
 4. POSTs the parsed lines to /api/v1/ledger/sync/import, which stages them
@@ -63,9 +62,9 @@ LIMITATIONS — READ BEFORE RELYING ON THIS UNATTENDED
   PSD2 strong-customer-authentication. In practice this mostly means:
   running the sync frequently (so each pull's date range stays short,
   thanks to date_from tracking above) keeps you inside whatever recurring-
-  access SCA exemption window your bank grants — see Key Design Decision
-  #26 for when this app last saw a >90-day fetch trigger SCA against a real
-  bank, and a short window not. A one-time TAN-registration/FinTS-access
+  access SCA exemption window your bank grants — a long (>90-day) fetch has
+  been observed to trigger SCA against a real bank where a short window did
+  not. A one-time TAN-registration/FinTS-access
   setup step on your bank's own online-banking site still has to happen
   before ANY of this works, same as it does before the manual web wizard.
 - One account per run. A sync token is scoped to exactly one bank account
@@ -148,10 +147,10 @@ def _add_days_iso(iso_date: str, days: int) -> str:
 
 def default_date_range(last_transaction_date: str | None) -> tuple[str, str]:
     """Mirrors fintsDefaultDatesForAccount() in
-    app/web/templates/ledger/index.html exactly — see the module docstring
-    and Key Design Decision #51/#52. There is deliberately no shared
-    implementation between the two (one's JS, one's Python); keep both in
-    sync by hand if this rule ever changes."""
+    app/web/templates/ledger/index.html exactly — see the module docstring.
+    There is deliberately no shared implementation between the two (one's
+    JS, one's Python); keep both in sync by hand if this rule ever
+    changes."""
     today = date.today().isoformat()
     date_to = _add_days_iso(today, -3)
     if last_transaction_date:
@@ -227,8 +226,8 @@ def main() -> None:
         sys.exit(1)
 
     # Reuses the app's own MT940-transaction normalization — same sign/IBAN
-    # fixes as every other import path (Key Design Decision #19). This is
-    # why the script must run from within this repo's own venv/checkout.
+    # fixes as every other import path. This is why the script must run
+    # from within this repo's own venv/checkout.
     from app.services.bank_statement import lines_from_mt940_transactions
 
     lines = lines_from_mt940_transactions(result)

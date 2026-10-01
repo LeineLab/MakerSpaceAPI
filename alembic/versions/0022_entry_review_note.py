@@ -1,12 +1,12 @@
-"""add ledger_entries.review_note — Kassenprüfung discrepancy notes (#58)
+"""add ledger_entries.review_note — Kassenprüfung discrepancy notes
 
-Raised by the user as a direct follow-up to #56/#57's checkoff: besides just
-ticking a booking off as checked, an auditor should be able to attach a free-
-text note when something looks off ("falls eine Unstimmigkeit auffällt"),
-independent of the checked/unchecked state (a discrepancy note may exist on
-an entry that's deliberately left unreviewed pending follow-up, or on one
-that's already been checked off with a remark attached). VARCHAR(500), same
-width as ledger_entries.description/ledger_entry_lines.note (see #48).
+A follow-up to the Kassenprüfung checkoff: besides just ticking a booking
+off as checked, an auditor can attach a free-text note when something looks
+off ("falls eine Unstimmigkeit auffällt"), independent of the
+checked/unchecked state (a discrepancy note may exist on an entry that's
+deliberately left unreviewed pending follow-up, or on one that's already
+been checked off with a remark attached). VARCHAR(500), the same width as
+ledger_entries.description/ledger_entry_lines.note.
 
 Revision ID: 0022
 Revises: 0021

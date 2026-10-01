@@ -72,8 +72,7 @@ class Settings(BaseSettings):
     # ONLY if the field was still empty on that document (never overwrites an
     # already-set value, e.g. one Paperless itself derived or a treasurer set
     # by hand). Empty = this fill-in is skipped entirely. Find the field's ID
-    # in Paperless's own admin UI (Settings → Custom fields). See Key Design
-    # Decision #72.
+    # in Paperless's own admin UI (Settings → Custom fields).
     PAPERLESS_PAID_DATE_CUSTOM_FIELD_ID: str = ""
 
     # Optional: Paperless tag IDs (comma-separated, e.g. "12,5") to hide from
@@ -81,7 +80,7 @@ class Settings(BaseSettings):
     # "Duplikat" tag used to mark documents that were already scanned once
     # and shouldn't clutter the list of things still needing to be booked.
     # Empty = no exclusion, every document (subject to
-    # PAPERLESS_DOCUMENT_TYPE_IDS) is listed. See Key Design Decision #72.
+    # PAPERLESS_DOCUMENT_TYPE_IDS) is listed.
     PAPERLESS_EXCLUDED_TAG_IDS: str = ""
 
     # Manual FinTS bank statement live-pull (Phase 3). Empty = disabled — no

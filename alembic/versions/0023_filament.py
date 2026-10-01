@@ -71,7 +71,8 @@ def downgrade() -> None:
     # Drop the whole table rather than its indexes individually — dropping a
     # table removes its indexes/constraints atomically on every backend,
     # sidestepping the InnoDB "index still covers an FK" drop-order error
-    # documented for migrations 0007/0008/0013/0015 (see CLAUDE.md #43).
+    # that earlier migrations' downgrade() functions hit before adopting this
+    # convention.
     op.drop_table("filament_rolls")
     op.drop_table("filament_types")
     op.drop_table("filament_brands")

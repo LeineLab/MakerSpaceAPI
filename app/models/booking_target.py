@@ -22,8 +22,8 @@ class BookingTarget(Base):
         Numeric(10, 2), nullable=False, default=Decimal("0.00")
     )
     # The EÜR category a payout from this target is booked against by default
-    # (e.g. "Kasse Spenden" -> "Spenden") — see Key Design Decision #34. Only
-    # a default: POST /ledger/target-payouts/{id}/book can still override it.
+    # (e.g. "Kasse Spenden" -> "Spenden"). Only a default: POST
+    # /ledger/target-payouts/{id}/book can still override it.
     default_category_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("ledger_categories.id", ondelete="SET NULL"), nullable=True
     )

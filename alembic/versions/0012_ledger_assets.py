@@ -3,10 +3,11 @@
 A ledger_assets row links an already-booked, category-side ledger_entry_line
 (the real cash outflow at purchase) to a depreciation schedule (useful_life_years,
 a target "Abschreibungen" category). Once linked, that line's full amount is
-excluded from the EÜR in its booking year (see Key Design Decision #35) and
-replaced, at report-computation time, by the linear/monatsgenau AfA amount for
-each year of the asset's useful life — no separate yearly booking rows, same
-read-time-aggregation approach as the Kassen bridge (#34).
+excluded from the EÜR in its booking year and replaced, at report-computation
+time, by the linear/monatsgenau AfA amount for each year of the asset's
+useful life — no separate yearly booking rows, the same read-time
+aggregation approach already used for folding Kassen cash-in events into
+the EÜR.
 
 Revision ID: 0012
 Revises: 0011

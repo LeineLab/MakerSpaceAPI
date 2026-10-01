@@ -114,8 +114,8 @@ from app.web.i18n import get_translator
 router = APIRouter()
 
 # Separate HTTPBearer instance from the one used for device tokens — same
-# scheme, just a distinct auth boundary (#52's sync tokens are validated
-# against LedgerSyncToken.token_hash, never against machines.api_token_hash).
+# scheme, just a distinct auth boundary (sync tokens are validated against
+# LedgerSyncToken.token_hash, never against machines.api_token_hash).
 _sync_bearer = HTTPBearer(auto_error=False)
 
 
@@ -189,9 +189,9 @@ def create_account(
 
 # Target-balance events that represent PHYSICAL cash arriving in a Kassen
 # box — used by _computed_balance() below to compute the shared
-# Kassenbestand clearing account's balance (#34/#46). Deliberately excludes
-# TransactionType.topup_cashless (#85): a topup that credited a user's/
-# target's balance without any real cash ever entering the box (e.g. a
+# Kassenbestand clearing account's balance. Deliberately excludes
+# TransactionType.topup_cashless: a topup that credited a user's/target's
+# balance without any real cash ever entering the box (e.g. a
 # pre-MakerSpaceAPI QR-code/PayPal-funded topup) must never be counted here,
 # or the clearing account's balance drifts above the real physical cash
 # total by exactly the sum of every such cashless topup.
@@ -202,7 +202,7 @@ _CASH_IN_TRANSACTION_TYPES = (
 )
 
 # The superset used by _compute_euer_report() below to recognize Kassen
-# target events as income (#34) — includes topup_cashless on top of
+# target events as income — includes topup_cashless on top of
 # _CASH_IN_TRANSACTION_TYPES, since a cashless topup is still genuine income
 # to the Verein (the money just never passed through physical cash) and
 # must stay recognized in the EÜR exactly like a real cash topup.
@@ -219,15 +219,14 @@ def _computed_balance(db: Session, account: BankAccount, as_of: date) -> Decimal
     balance = account.opening_balance + booked_sum
 
     if account.is_cash_clearing_account:
-        # Kassen cash-in events (topup/target-topup/adjustment, #34) are
+        # Kassen cash-in events (topup/target-topup/adjustment) are
         # deliberately never written as ledger_entries — they're the actual
         # physical cash arriving in the pool this account represents, only
         # ever booked *out* again via a real POST /target-payouts/book
         # transfer. Without adding that cash-in total back in here, this
         # account's computed balance would only ever accumulate payout
-        # debits and drift further negative forever, never reflecting "cash
-        # collected but not yet deposited" — found by the user comparing a
-        # real installation's Kassenbestand balance against reality.
+        # debits and drift further negative, never reflecting cash
+        # collected but not yet deposited.
         cash_in = db.query(func.coalesce(func.sum(Transaction.amount), Decimal("0.00"))).filter(
             Transaction.type.in_(_CASH_IN_TRANSACTION_TYPES),
             Transaction.created_at < f"{as_of + timedelta(days=1)}",
@@ -238,7 +237,7 @@ def _computed_balance(db: Session, account: BankAccount, as_of: date) -> Decimal
 
 
 def _reject_cash_clearing_account_line(account: BankAccount) -> None:
-    """The shared Kassenbestand clearing account (#34) may only ever be
+    """The shared Kassenbestand clearing account may only ever be
     debited via POST /ledger/target-payouts/book (which builds its own
     entry directly, bypassing this check) — its balance computation
     (_computed_balance above) accounts for cash-in events implicitly rather
@@ -257,11 +256,11 @@ def _reject_cash_clearing_account_line(account: BankAccount) -> None:
 
 def _fill_paperless_paid_dates(entry: LedgerEntry) -> None:
     """Best-effort fill-in of each freshly-booked line's linked document's
-    "paid on" Paperless custom field (Key Design Decision #72) — called
-    right after a booking commits, for every category-side line carrying a
-    `paperless_document_id`. A no-op per line if that document already has
-    the field set, or if PAPERLESS_PAID_DATE_CUSTOM_FIELD_ID isn't
-    configured (paperless.set_paid_date_if_not_set() checks both). Not
+    "paid on" Paperless custom field — called right after a booking commits,
+    for every category-side line carrying a `paperless_document_id`. A no-op
+    per line if that document already has the field set, or if
+    PAPERLESS_PAID_DATE_CUSTOM_FIELD_ID isn't configured
+    (paperless.set_paid_date_if_not_set() checks both). Not
     called from reverse_entry() — a Storno's `entry_date` is today, not the
     original booking's date, and the field (if set) was already correctly
     filled in when the original was booked."""
@@ -329,7 +328,7 @@ def update_account(
 ):
     """Rename an account, toggle `tracked` (e.g. to permanently ignore a private
     account), or set/clear `is_cash_clearing_account` — the one shared
-    Kassenbestand counter-account for booking Kassen payouts (#34); setting
+    Kassenbestand counter-account for booking Kassen payouts; setting
     it true here clears it on every other account first, since only one
     can hold it at a time. Only an offline account can hold the flag — a
     real bank account already has its own statement/IBAN and is never
@@ -357,7 +356,7 @@ def update_account(
     return account
 
 
-# --- Ledger sync tokens (#52): narrowly-scoped, unattended FinTS-sync auth ---
+# --- Ledger sync tokens: narrowly-scoped, unattended FinTS-sync auth ---
 #
 # Deliberately a separate, much smaller auth surface than the treasurer's own
 # OIDC session: a sync token can only ever act for the ONE bank account it
@@ -491,7 +490,7 @@ def get_sync_account(
     """First call the script makes: which account, and how far the ledger's
     own import history already reaches — the basis for the script's own
     date_from computation (see scripts/ledger_fints_sync.py, mirrors
-    fintsDefaultDatesForAccount() in ledger/index.html, #51)."""
+    fintsDefaultDatesForAccount() in ledger/index.html)."""
     account = db.query(BankAccount).filter(BankAccount.id == token.bank_account_id).first()
     if not account or not account.iban:
         raise HTTPException(status_code=404, detail="Bank account not found")
@@ -511,9 +510,10 @@ def sync_import(
     """Stage already-fetched-from-FinTS transactions through the same dedup
     pipeline as every other import path (file/CSV/manual FinTS wizard) — the
     script has already done its own FinTS talk and normalization
-    (lines_from_mt940_transactions, same #19 fixes apply), so this is purely
-    the staging step. A successful call resets the failure counter — the
-    token proved it still works."""
+    (lines_from_mt940_transactions, which applies the same MT940 parsing
+    fixes as every other path), so this is purely the staging step. A
+    successful call resets the failure counter — the token proved it still
+    works."""
     account = db.query(BankAccount).filter(BankAccount.id == token.bank_account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Bank account not found")
@@ -551,9 +551,8 @@ def sync_report_error(
     reachable even on an already-paused token (unlike the two endpoints
     above), so a script that still tries once more can always at least
     record why. Auto-pauses once _SYNC_PAUSE_THRESHOLD consecutive failures
-    are reached, per the user's own request: several problems in a row
-    should stop unattended retries until a human looks at it, not silently
-    keep failing indefinitely."""
+    are reached: several problems in a row should stop unattended retries
+    until a human looks at it, not silently keep failing indefinitely."""
     token.consecutive_failures += 1
     token.last_error = body.message
     token.last_used_at = datetime.now(UTC).replace(tzinfo=None)
@@ -617,7 +616,8 @@ def _suggest_category_id(
     purpose_text: Optional[str], categories_with_keywords: list[tuple[int, list[str]]]
 ) -> Optional[int]:
     """First category (in the given order) whose match_keywords contains a
-    case-insensitive substring of purpose_text — advisory only, see #45."""
+    case-insensitive substring of purpose_text — an advisory suggestion
+    only, never automatically applied or enforced."""
     if not purpose_text:
         return None
     text_lower = purpose_text.lower()
@@ -704,7 +704,7 @@ def update_category(
     if body.active is not None:
         category.active = body.active
     if body.match_keywords is not None:
-        # Purely advisory (#45) — never reclassifies past bookings, so this
+        # Purely advisory — never reclassifies past bookings, so this
         # is freely editable regardless of whether the category is in use,
         # unlike slug/kind/sphere above.
         match_keywords = _normalize_match_keywords(body.match_keywords)
@@ -752,41 +752,40 @@ def list_entries(
     independent subquery rather than a single shared join, so combining two
     of them (e.g. an account and a category) correctly finds an entry where
     *some* line matches one and *some other* line matches the other,
-    instead of requiring a single line to impossibly match both at once
-    (see #80). Same substring-match convention as the import staging queue's own `q`
-    filter (#38). Deliberately does NOT also match category name by
-    substring (see #60) — `category_id` (exact match, below) is the
-    correct tool for "show me this category's bookings" instead, since a
-    substring match against a short category name risks matching unrelated
-    entries whose free text happens to contain the same word.
+    instead of requiring a single line to impossibly match both at once.
+    Same substring-match convention as the import staging queue's own `q`
+    filter. Deliberately does NOT also match category name by substring —
+    `category_id` (exact match, below) is the correct tool for "show me
+    this category's bookings" instead, since a substring match against a
+    short category name risks matching unrelated entries whose free text
+    happens to contain the same word.
 
-    `reviewed` (Kassenprüfung checkoff, #56/#57) filters on whether
-    `reviewed_by` is set — `true` for already-checked entries, `false` for
-    still-unchecked ones, omitted for both. `has_note` (#58) filters
-    likewise on whether `review_note` is set — independent of `reviewed`,
-    since a discrepancy note can exist whether or not the entry is
-    currently checked off.
+    `reviewed` (Kassenprüfung checkoff) filters on whether `reviewed_by` is
+    set — `true` for already-checked entries, `false` for still-unchecked
+    ones, omitted for both. `has_note` filters likewise on whether
+    `review_note` is set — independent of `reviewed`, since a discrepancy
+    note can exist whether or not the entry is currently checked off.
 
-    `date_from`/`date_to` (#58) filter on `entry_date` directly, for an
-    arbitrary period rather than a calendar year — used to pull the
-    discrepancy notes from an entire Kassenprüfung period (which need not
-    align to `year`) into an audit report's `findings`. Composes with
-    `year` rather than replacing it (both apply if both are given), though
-    in practice a caller uses one or the other.
+    `date_from`/`date_to` filter on `entry_date` directly, for an arbitrary
+    period rather than a calendar year — used to pull the discrepancy notes
+    from an entire Kassenprüfung period (which need not align to `year`)
+    into an audit report's `findings`. Composes with `year` rather than
+    replacing it (both apply if both are given), though in practice a
+    caller uses one or the other.
 
-    `has_document` (#62) filters on whether any of an entry's lines carries
-    a `paperless_document_id` (that field lives per line since #44, so this
-    checks "any line", not a single column). `is_reversal` (#62) filters on
-    whether the entry is itself a Storno (`reverses_entry_id` set) —
-    `true` for Stornos only, `false` to exclude them, omitted for both.
+    `has_document` filters on whether any of an entry's lines carries a
+    `paperless_document_id` (that field lives per line, so this checks "any
+    line", not a single column). `is_reversal` filters on whether the entry
+    is itself a Storno (`reverses_entry_id` set) — `true` for Stornos only,
+    `false` to exclude them, omitted for both.
 
-    `ids` (#88, repeatable, e.g. `?ids=1&ids=2`) fetches one or more
-    specific entries directly by id — the Kassen tab's payout-detail
-    expansion uses this to show a booked payout's full entry detail (same
-    shape/fields as the Buchungen tab's own detail panel, #40) without a
-    second, bespoke single-entry endpoint. Composes with every other filter
-    above, though in practice a caller passing `ids` has no reason to also
-    pass a date/account/etc. filter."""
+    `ids` (repeatable, e.g. `?ids=1&ids=2`) fetches one or more specific
+    entries directly by id — the Kassen tab's payout-detail expansion uses
+    this to show a booked payout's full entry detail (same shape/fields as
+    the Buchungen tab's own detail panel) without a second, bespoke
+    single-entry endpoint. Composes with every other filter above, though in
+    practice a caller passing `ids` has no reason to also pass a
+    date/account/etc. filter."""
     query = db.query(LedgerEntry).options(
         joinedload(LedgerEntry.lines).joinedload(LedgerEntryLine.bank_account),
         joinedload(LedgerEntry.lines).joinedload(LedgerEntryLine.category),
@@ -806,11 +805,9 @@ def list_entries(
     # subquery — never a single shared join. A `ledger_entry_lines` row is
     # exclusively a bank line or a category line (the table's own CHECK
     # constraint), so a bank_account_id=X AND category_id=Y filter applied
-    # to one joined row could never match anything — a real bug found by
-    # the user (combining an account and a category filter on the Buchungen
-    # tab silently returned zero rows, even though the same booking clearly
-    # had both a matching bank line and a matching category line, just on
-    # two different lines of the same entry).
+    # to one joined row could never match anything, even for a booking that
+    # has both a matching bank line and a matching category line on two
+    # different lines of the same entry — hence the independent subqueries.
     if bank_account_id is not None:
         query = query.filter(LedgerEntry.id.in_(
             db.query(LedgerEntryLine.entry_id).filter(LedgerEntryLine.bank_account_id == bank_account_id)
@@ -877,7 +874,7 @@ def list_entries(
     # booked from — the source of both the "show bank text" toggle and the
     # entry-detail view's bank data (booking_date, counterparty, bank
     # reference), so there's only ever one query/field for both, not two
-    # that could drift apart (see Key Design Decision #40).
+    # that could drift apart.
     entry_ids = [e.id for e in entries]
     if entry_ids:
         lines_by_entry: dict[int, list[LedgerImportLine]] = {}
@@ -902,8 +899,8 @@ def create_entry(
     """Create a journal entry (Buchungssatz). Lines must sum to zero and each line
     must reference exactly one of an existing bank account or ledger category —
     this is how a single receipt gets split across multiple categories, or
-    (Key Design Decision #44) several invoices paid in one bank debit each
-    get their own `paperless_document_id` on their own line."""
+    several invoices paid in one bank debit each get their own
+    `paperless_document_id` on their own line."""
     total = sum((line.amount for line in body.lines), Decimal("0.00"))
     if total != 0:
         raise HTTPException(status_code=400, detail=f"Lines must sum to zero (got {total})")
@@ -957,12 +954,12 @@ def reverse_entry(
     db: Session = Depends(get_db),
 ):
     """Undo a booking without editing or deleting anything — entries are
-    immutable (Key Design Decision #18), same audit-trail philosophy as
-    `transactions`. Posts a new entry with every line's amount negated,
-    linked back via `reverses_entry_id`. If the original entry came from
-    booking an import staging line, that line is reopened (status back to
-    `new`, `matched_entry_id` cleared) so it can be re-booked correctly. If
-    the original entry booked one or more Kassen payouts (#34/#38), its
+    immutable, same audit-trail philosophy as `transactions`. Posts a new
+    entry with every line's amount negated, linked back via
+    `reverses_entry_id`. If the original entry came from booking an import
+    staging line, that line is reopened (status back to `new`,
+    `matched_entry_id` cleared) so it can be re-booked correctly. If the
+    original entry booked one or more Kassen payouts, its
     `ledger_target_payout_entries` rows are removed so each linked payout's
     covered amount reopens by exactly that entry's slice — for a plain
     (non-split, non-bundled) booking that's the whole payout; for a split or
@@ -970,16 +967,16 @@ def reverse_entry(
     payout's other bookings untouched. The reversal itself gets no such
     links (it isn't a payout booking, just its undo).
 
-    The reversal's `entry_date` is the *original* entry's own `entry_date`
-    (#82), not today — a Storno corrects a booking mistake that existed on
-    that date, so both halves of the correction belong in the same period;
+    The reversal's `entry_date` is the *original* entry's own `entry_date`,
+    not today — a Storno corrects a booking mistake that existed on that
+    date, so both halves of the correction belong in the same period;
     dating it "today" instead would leave the original's period's own EÜR
     permanently wrong (still showing the uncorrected mistake) while
     injecting an unrelated adjustment into whatever period the correction
-    happened to be made in — a real, reported bug when the mistake and its
-    correction straddle a year boundary. "When was this actually corrected"
-    is `created_at` (already `now()`, already tracked on every entry
-    independently of `entry_date` — no separate field needed for it).
+    happened to be made in — this matters especially when the mistake and
+    its correction straddle a year boundary. "When was this actually
+    corrected" is `created_at` (already `now()`, already tracked on every
+    entry independently of `entry_date` — no separate field needed for it).
 
     A reversal entry can't itself be reversed: those links (`matched_entry_id`
     on a staging line, `ledger_target_payout_entries` rows on a payout
@@ -1045,13 +1042,13 @@ def review_entry(
     auditor: dict = Depends(require_auditor_writer_user),
     db: Session = Depends(get_db),
 ):
-    """Kassenprüfung checkoff (Key Design Decision #56): an authorized person
-    "abhakt" this entry as checked, recording who and when. Gated by the same
-    narrower `require_auditor_writer_user` permission as writing a
+    """Kassenprüfung checkoff: an authorized person "abhakt" this entry as
+    checked, recording who and when. Gated by the same narrower
+    `require_auditor_writer_user` permission as writing a
     Kassenprüfungsprotokoll (admin or explicit auditor-group membership, NOT
-    a plain treasurer, see #37) — a treasurer ticking off their own booking
-    as reviewed would defeat the point of an independent check, same
-    reasoning as #37's audit-report-writing restriction. Not a financial
+    a plain treasurer) — a treasurer ticking off their own booking as
+    reviewed would defeat the point of an independent check, the same
+    reasoning behind the audit-report-writing restriction. Not a financial
     event — this never touches the entry's lines/amounts, just annotates it."""
     entry = db.query(LedgerEntry).filter(LedgerEntry.id == entry_id).first()
     if not entry:
@@ -1100,11 +1097,11 @@ def update_entry_review_note(
     db: Session = Depends(get_db),
 ):
     """Set (`note` given) or clear (`note` omitted/`null`) a discrepancy note
-    on an entry (Key Design Decision #58) — deliberately independent of the
-    reviewed_by/reviewed_at checkoff (#56): a note can flag something worth
-    following up on whether or not the entry is currently checked off, and
-    un-reviewing an entry via `DELETE .../review` doesn't clear a standing
-    note. Same `require_auditor_writer_user` gate as the checkoff itself."""
+    on an entry — deliberately independent of the reviewed_by/reviewed_at
+    checkoff: a note can flag something worth following up on whether or
+    not the entry is currently checked off, and un-reviewing an entry via
+    `DELETE .../review` doesn't clear a standing note. Same
+    `require_auditor_writer_user` gate as the checkoff itself."""
     entry = db.query(LedgerEntry).filter(LedgerEntry.id == entry_id).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
@@ -1125,7 +1122,7 @@ def list_ledger_targets(
     """Booking targets (Kassen) with their default EÜR-category mapping —
     read-only mirror of `GET /bankomat/targets` scoped to the ledger's own
     viewer role (that endpoint requires a device token or admin, which the
-    treasurer/auditor roles don't necessarily have). See #34."""
+    treasurer/auditor roles don't necessarily have)."""
     return db.query(BookingTarget).order_by(BookingTarget.name).all()
 
 
@@ -1164,9 +1161,9 @@ def list_target_payouts(
     filtered to just the open (`booked=false`, i.e. `remaining_amount > 0`)
     or fully-booked (`booked=true`) ones. Derived directly from
     `transactions`/`booking_targets` (the legacy NFC-Kassen domain);
-    `ledger_target_payout_entries` (see #38) supplies how much of each has
-    been booked so far — a payout can be partially booked (a split still in
-    progress), so "booked" is a computed threshold, not a stored flag."""
+    `ledger_target_payout_entries` supplies how much of each has been booked
+    so far — a payout can be partially booked (a split still in progress),
+    so "booked" is a computed threshold, not a stored flag."""
     q = (
         db.query(Transaction, BookingTarget)
         .join(BookingTarget, Transaction.target_id == BookingTarget.id)
@@ -1227,26 +1224,24 @@ def book_target_payouts(
     pure transfer with no category line, since the income was already
     recognized when the cash arrived in the target(s) (folded into the EÜR
     at read time, see `_compute_euer_report`). Does not touch `transactions`/
-    `booking_targets` at all (Key Design Decision #18 — this bridge only
-    reads that domain).
+    `booking_targets` at all — this bridge only reads that domain.
 
-    See Key Design Decision #38 for the allocation rule: the amount owed to
-    the selected payouts is distributed smallest-remaining-first, filling
-    each one's own remaining amount before moving to the next-larger one,
-    tracked per (payout, entry) pair via `ledger_target_payout_entries` — 400
-    if it doesn't reach every selected payout. A single id with a partial
-    amount is a split (the same payout can be booked again later for the
-    rest); several ids covering their full combined remaining is a bundle;
-    anything in between — several payouts, an amount that lines up with
-    neither — is exactly the same call, just with a partial slice landing on
-    the largest-remaining payout(s) reached, which can then be finished off
-    in a later booking.
+    Allocation rule: the amount owed to the selected payouts is distributed
+    smallest-remaining-first, filling each one's own remaining amount before
+    moving to the next-larger one, tracked per (payout, entry) pair via
+    `ledger_target_payout_entries` — 400 if it doesn't reach every selected
+    payout. A single id with a partial amount is a split (the same payout
+    can be booked again later for the rest); several ids covering their
+    full combined remaining is a bundle; anything in between — several
+    payouts, an amount that lines up with neither — is exactly the same
+    call, just with a partial slice landing on the largest-remaining
+    payout(s) reached, which can then be finished off in a later booking.
 
-    See Key Design Decision #42: if `body.amount` exceeds the selected
-    payouts' combined remaining amount (e.g. a donation deposited together
-    with a Kassen payout in one transfer), the excess is booked against
-    `body.category_lines` instead of being rejected — 400 if they don't sum
-    to exactly the negative of that excess.
+    If `body.amount` exceeds the selected payouts' combined remaining
+    amount (e.g. a donation deposited together with a Kassen payout in one
+    transfer), the excess is booked against `body.category_lines` instead
+    of being rejected — 400 if they don't sum to exactly the negative of
+    that excess.
 
     If the destination account's own bank statement for this deposit has
     already been imported, `matched_import_line_id` links that staged line
@@ -1324,16 +1319,16 @@ def book_target_payouts(
             ),
         )
 
-    # Key Design Decision #42: any amount left over once every selected
-    # payout is fully covered (`leftover` here, since the loop above only
-    # stops early when it's exhausted before reaching every payout — the
-    # `unreached` check just above already rejected that case) is a real
-    # bank amount beyond what's owed to the Kassen payouts, e.g. a donation
-    # deposited together with a payout in one transfer. It must be booked
-    # against category_lines summing to exactly its negative, so the entry
-    # still balances to zero — the same "sum must balance" rule as a manual
-    # entry or an import-line booking, just computed from the excess instead
-    # of the whole bank amount.
+    # Any amount left over once every selected payout is fully covered
+    # (`leftover` here, since the loop above only stops early when it's
+    # exhausted before reaching every payout — the `unreached` check just
+    # above already rejected that case) is a real bank amount beyond what's
+    # owed to the Kassen payouts, e.g. a donation deposited together with a
+    # payout in one transfer. It must be booked against category_lines
+    # summing to exactly its negative, so the entry still balances to zero —
+    # the same "sum must balance" rule as a manual entry or an import-line
+    # booking, just computed from the excess instead of the whole bank
+    # amount.
     excess = leftover
     category_total = sum((line.amount for line in body.category_lines), Decimal("0.00"))
     if category_total != -excess:
@@ -1433,12 +1428,12 @@ def _component_months_elapsed(component: "LedgerAssetComponent", useful_life_yea
     `acquisition_date` (inclusive) through the end of `through_month`/
     `through_year` (inclusive), capped at the asset's total useful-life
     months and at this component's own disposal month (if any) — never the
-    asset's other components' dates (Key Design Decision #50: a component
-    added long after the rest, e.g. nachträgliche Anschaffungskosten, must
-    depreciate from its own start, not retroactively from an earlier one;
-    symmetrically, one component can be disposed of independently of the
-    rest). Monatsgenau per §7 Abs. 1 EStG: the acquisition month itself
-    already counts as a full depreciation month."""
+    asset's other components' dates: a component added long after the rest,
+    e.g. nachträgliche Anschaffungskosten, must depreciate from its own
+    start, not retroactively from an earlier one; symmetrically, one
+    component can be disposed of independently of the rest. Monatsgenau per
+    §7 Abs. 1 EStG: the acquisition month itself already counts as a full
+    depreciation month."""
     start = component.acquisition_date
     total_months = useful_life_years * 12
     elapsed = (through_year - start.year) * 12 + (through_month - start.month) + 1
@@ -1463,7 +1458,7 @@ def _component_cumulative_depreciation(component: "LedgerAssetComponent", useful
     every other useful life), not spread out — there is no 60-month
     schedule to divide by, so this is a genuinely separate case rather than
     the general formula's zero-months-elapsed limit (which would otherwise
-    divide by zero). See Key Design Decision #77."""
+    divide by zero)."""
     if useful_life_years == 0:
         start = component.acquisition_date
         if (through_year, through_month) < (start.year, start.month):
@@ -1478,7 +1473,7 @@ def _component_cumulative_depreciation(component: "LedgerAssetComponent", useful
 def _asset_cumulative_depreciation(asset: LedgerAsset, through_year: int, through_month: int) -> Decimal:
     """Total AfA recognized across *all* of the asset's components through
     the end of `through_month`/`through_year` — each component depreciates
-    independently from its own acquisition_date/disposed_at (#50) and the
+    independently from its own acquisition_date/disposed_at and the
     results are summed, so a component added mid-life never distorts what
     was already correctly recognized for the others."""
     return sum(
@@ -1527,7 +1522,7 @@ def _asset_response(asset: LedgerAsset, as_of: date) -> LedgerAssetResponse:
 
 
 def _component_year_summary(component: "LedgerAssetComponent", useful_life_years: int, year: int) -> Optional[dict]:
-    """This one component's contribution to the Anlagenspiegel (#50) for
+    """This one component's contribution to the Anlagenspiegel for
     `year` — `None` if it's not relevant at all (not yet acquired, or
     already gone before this year started). `abgang` is the component's
     *remaining book value* at the moment of disposal (not its historical
@@ -1571,7 +1566,7 @@ def _component_year_summary(component: "LedgerAssetComponent", useful_life_years
 
 
 def _compute_anlagenspiegel(db: Session, year: int) -> AnlagenspiegelResponse:
-    """Anlagenspiegel (Key Design Decision #50): the standard fixed-asset-
+    """Anlagenspiegel: the standard fixed-asset-
     register columns needed for the tax return — Anschaffungskosten,
     Anfangswert, Zugang, Abgang, AfA, Endwert — computed per asset for
     `year` by summing each of its components' own year summary. Reuses the
@@ -1610,8 +1605,8 @@ def _capitalizable_line_remaining(
 ) -> tuple[LedgerEntryLine, Decimal]:
     """Fetch and validate a line as a capitalization candidate, and return
     how much of its amount isn't already claimed by some other asset
-    component (Key Design Decision #49) — a purchase can be split across
-    several assets' components, but never claimed twice over."""
+    component — a purchase can be split across several assets' components,
+    but never claimed twice over."""
     line = (
         db.query(LedgerEntryLine).options(joinedload(LedgerEntryLine.entry), joinedload(LedgerEntryLine.category))
         .filter(LedgerEntryLine.id == entry_line_id).first()
@@ -1667,8 +1662,8 @@ def list_assets(
         )
         .all()
     )
-    # acquisition_date is now computed (earliest component), not a DB column
-    # (#50) — sorted in Python instead of via order_by().
+    # acquisition_date is computed (earliest component), not a DB column —
+    # sorted in Python instead of via order_by().
     assets.sort(key=lambda a: a.acquisition_date, reverse=True)
     return [_asset_response(a, as_of) for a in assets]
 
@@ -1683,15 +1678,14 @@ def create_asset(
     of each) as a single depreciable asset instead of a one-off expense.
     From the next EÜR report onward, each component line's capitalized
     amount is excluded and replaced by the computed AfA schedule against
-    `category_id` (see Key Design Decision #35, generalized to several
-    components by #49). Whether a given purchase is even required to be
+    `category_id`. Whether a given purchase is even required to be
     capitalized (GWG threshold, currently 800€ net — and itself not enforced
     here since it changes yearly and, without Vorsteuerabzug, the threshold
     applies to the gross amount) is left to the treasurer's/Kassenprüfer's
     judgment — including whether several separate purchases must be combined
     into one Wirtschaftsgut because they only have functional value together
     (e.g. a computer's individually-bought parts). Each component defaults
-    its own `acquisition_date` to its entry's own date (#50) — no asset-
+    its own `acquisition_date` to its entry's own date — no asset-
     level date to reconcile, since each component tracks its own."""
     category = db.query(LedgerCategory).filter(LedgerCategory.id == body.category_id).first()
     if not category:
@@ -1728,10 +1722,10 @@ def add_asset_component(
 ):
     """Add another booked line (or a partial amount of it) to an already-
     existing asset — e.g. a graphics card bought a few weeks after the rest
-    of a PC, which only forms one Wirtschaftsgut together with it (#49).
+    of a PC, which only forms one Wirtschaftsgut together with it.
     Depreciates from its own `acquisition_date` (defaulting to its entry's
-    own date), never backdated to the asset's other components (#50) —
-    exactly the nachträgliche-Anschaffungskosten case this was built for."""
+    own date), never backdated to the asset's other components — exactly
+    the nachträgliche-Anschaffungskosten case this was built for."""
     asset = db.query(LedgerAsset).filter(LedgerAsset.id == asset_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
@@ -1754,8 +1748,8 @@ def update_asset_component(
     db: Session = Depends(get_db),
 ):
     """Correct a component's line/amount/acquisition_date (e.g. a typo)
-    without deleting and re-adding it, or set/clear its own `disposed_at`
-    (#50) — independent of the asset's other components, so e.g. just the
+    without deleting and re-adding it, or set/clear its own `disposed_at` —
+    independent of the asset's other components, so e.g. just the
     graphics card of a multi-part asset can be marked disposed while the
     rest stays in service. Every field is optional; only what's provided
     changes."""
@@ -1894,8 +1888,8 @@ def _compute_euer_report(db: Session, year: int, cumulative: bool = False) -> Eu
 
     Also folds in cash that arrived in a Kassen booking target this year
     (`topup`/`booking_target_topup`/`booking_target_adjustment` transactions
-    whose target has a `default_category_id`) — see Key Design Decision #34.
-    That cash is never written as its own `ledger_entries` row (it's the same
+    whose target has a `default_category_id`). That cash is never written as
+    its own `ledger_entries` row (it's the same
     money `booking_targets`/`transactions` already track in full, and
     duplicating it into a second ledger table would just be a second figure
     that can drift out of sync); it's folded in here, at read time, exactly
@@ -1907,13 +1901,12 @@ def _compute_euer_report(db: Session, year: int, cumulative: bool = False) -> Eu
     positive (less income, i.e. a write-off).
 
     Also excludes any amount capitalized as an Anlagevermögen (`ledger_asset_
-    components`, see Key Design Decision #35, generalized to partial-line and
-    multi-line components by #49) from this normal per-line aggregation — in
-    every year, not just the purchase year, though it can only ever appear in
-    the one year it was booked. Since a component can cover only *part* of a
-    line's amount, the remainder (if any) still counts normally — only a
-    fully-capitalized line is excluded outright, same net effect as before
-    #49 for the common one-line-fully-capitalized case. The capitalized
+    components`, which can span partial lines and multiple components per
+    line) from this normal per-line aggregation — in every year, not just
+    the purchase year, though it can only ever appear in the one year it was
+    booked. Since a component can cover only *part* of a line's amount, the
+    remainder (if any) still counts normally — only a fully-capitalized line
+    is excluded outright. The capitalized
     amount is instead replaced by the linear, monatsgenau AfA amount computed
     for `year` against the asset's own target category, which may differ
     from whatever category the purchase itself was originally booked
@@ -1922,9 +1915,9 @@ def _compute_euer_report(db: Session, year: int, cumulative: bool = False) -> Eu
     `cumulative=True` sums everything from the beginning of the ledger's
     history through 31.12 of `year` instead of just that calendar year (an
     asset's contribution becomes its cumulative depreciation-to-date rather
-    than one year's installment) — used by the Mittelverwendungsrechnung
-    (#36) to get a running Vortrag without a second aggregation
-    implementation that could drift out of sync with this one."""
+    than one year's installment) — used by the Mittelverwendungsrechnung to
+    get a running Vortrag without a second aggregation implementation that
+    could drift out of sync with this one."""
     capitalized_by_line: dict[int, Decimal] = {}
     for entry_line_id, amount in db.query(
         LedgerAssetComponent.entry_line_id, func.sum(LedgerAssetComponent.amount)
@@ -2118,8 +2111,8 @@ def _reserve_response(db: Session, reserve: LedgerReserve, as_of: date) -> Ledge
 def _validate_reserve_zweckgebunden(kind: LedgerReserveKind, purpose: Optional[str], target_date: Optional[date]) -> None:
     """A zweckgebundene Rücklage (§62 Abs. 1 Nr. 1 AO) legally needs a
     concrete plan and timeframe — checked here as "the descriptive fields
-    are filled in", not a numeric legal check (see Key Design Decision #36,
-    same "advisory, not enforced" precedent as the GWG threshold)."""
+    are filled in", not a numeric legal check, the same "advisory, not
+    enforced" precedent as the GWG threshold."""
     if kind == LedgerReserveKind.zweckgebunden and (not purpose or not target_date):
         raise HTTPException(
             status_code=400,
@@ -2277,9 +2270,9 @@ def mittelverwendung_report(
     db: Session = Depends(get_db),
 ):
     """Rücklagen/Mittelverwendungsrechnung — see MittelverwendungReportResponse
-    docstring and Key Design Decision #36 for the underlying assumptions
-    (which Sphären count toward "zeitnah zu verwendende Mittel", why reserve
-    movements aren't real ledger_entries)."""
+    docstring for the underlying assumptions (which Sphären count toward
+    "zeitnah zu verwendende Mittel", why reserve movements aren't real
+    ledger_entries)."""
     cumulative_euer = _compute_euer_report(db, year, cumulative=True)
     relevant_net = sum(
         (
@@ -2317,7 +2310,7 @@ def anlagenspiegel_report(
     _viewer: dict = Depends(require_ledger_viewer_user),
     db: Session = Depends(get_db),
 ):
-    """Anlagenspiegel (Key Design Decision #50) — the fixed-asset-register
+    """Anlagenspiegel — the fixed-asset-register
     columns needed for the tax return, per asset for `year`: Anschaffungs-
     kosten (gross cost still on the books at year end), Anfangswert, Zugang,
     Abgang, AfA, Endwert. See `_compute_anlagenspiegel()`'s own docstring for
@@ -2331,9 +2324,8 @@ def account_balances_by_year(
     _viewer: dict = Depends(require_ledger_viewer_user),
     db: Session = Depends(get_db),
 ):
-    """Every account's (bank and offline alike, #23) computed balance at the
-    start and end of `year` — Key Design Decision #79, raised by the user
-    directly as a gap for both the Vereins-Vermögensübersicht and the EÜR
+    """Every account's (bank and offline alike) computed balance at the
+    start and end of `year` — a Vereins-Vermögensübersicht for the EÜR
     context. Reuses `_computed_balance()` (the same helper
     `GET /ledger/accounts/{id}/balance` already uses) at 31.12 of the
     previous year (opening) and 31.12 of `year` itself (closing) — a
@@ -2341,19 +2333,17 @@ def account_balances_by_year(
     balance, since there are no future-dated bookings to include.
 
     An account at exactly 0.00 both at the start and end of `year` with no
-    booked line dated within it is omitted entirely, per the user's own
-    explicit request — a genuinely dormant/unused account shouldn't clutter
-    the list. An account whose activity nets back to 0.00 is still shown,
-    since "no bookings at all" is the actual condition, not "ends at 0".
+    booked line dated within it is omitted entirely — a genuinely
+    dormant/unused account shouldn't clutter the list. An account whose
+    activity nets back to 0.00 is still shown, since "no bookings at all" is
+    the actual condition, not "ends at 0".
 
-    An account with `tracked=False` (#23 — "permanently ignored", e.g. a
-    private account only visible through a shared FinTS access and not a
-    Verein account at all) is excluded unconditionally, regardless of
-    activity — the same treatment untracked accounts already get everywhere
-    else (excluded from the manual-entry/booking line pickers via the
-    frontend's `trackedAccounts` getter, rejected by file/CSV/FinTS import).
-    Real bug found by the user: this report was the one place in the ledger
-    that still listed an untracked account."""
+    An account with `tracked=False` ("permanently ignored", e.g. a private
+    account only visible through a shared FinTS access and not a Verein
+    account at all) is excluded unconditionally, regardless of activity —
+    the same treatment untracked accounts already get everywhere else
+    (excluded from the manual-entry/booking line pickers via the frontend's
+    `trackedAccounts` getter, rejected by file/CSV/FinTS import)."""
     year_start = date(year, 1, 1)
     year_end = date(year, 12, 31)
     prev_year_end = date(year - 1, 12, 31)
@@ -2405,8 +2395,9 @@ def create_audit_report(
     db: Session = Depends(get_db),
 ):
     """Writing a Kassenprüfungsprotokoll requires the narrower auditor-only
-    permission (admin or explicit auditor-group membership) — see Key
-    Design Decision #37 for why a plain treasurer can't author this."""
+    permission (admin or explicit auditor-group membership) — a plain
+    treasurer authoring the report that audits their own bookkeeping would
+    defeat the point of an independent Kassenprüfung."""
     if body.period_end < body.period_start:
         raise HTTPException(status_code=400, detail="period_end must not be before period_start")
     report = LedgerAuditReport(
@@ -2763,18 +2754,17 @@ def list_import_lines(
     full amount, so no tolerance/range filtering is needed. That search
     passes `status=new&status=duplicate` (repeat the query param for each
     value): a line flagged `duplicate` by the (heuristic, false-positive-
-    prone — see #19) dedup check is still perfectly bookable, so excluding
+    prone) dedup check is still perfectly bookable, so excluding
     it from transfer candidates would make a real transfer unmatchable
     whenever either side happened to get flagged.
 
     `q` (free-text, case-insensitive substring on purpose_text/
     counterparty_name) is the manual fallback for when exact-amount matching
-    doesn't work — e.g. a split/bundled Kassen payout booking (#38), where
-    a real transfer's amount deliberately doesn't equal any one payout's
-    amount.
+    doesn't work — e.g. a split/bundled Kassen payout booking, where a real
+    transfer's amount deliberately doesn't equal any one payout's amount.
 
-    `date_from`/`date_to` (#62) filter on `booking_date`; `amount_min`/
-    `amount_max` (#62) filter on the line's own signed `amount` — unlike
+    `date_from`/`date_to` filter on `booking_date`; `amount_min`/
+    `amount_max` filter on the line's own signed `amount` — unlike
     the exact-match `amount` above (built for transfer-candidate search),
     these are a general range filter for browsing the staging queue, e.g.
     narrowing to a specific week or to only larger transactions."""
@@ -2804,7 +2794,7 @@ def list_import_lines(
         .offset(offset).limit(limit).all()
     )
 
-    # suggested_category_id (#45): computed here, not stored — active
+    # suggested_category_id is computed here, not stored — active
     # categories' match_keywords against each line's purpose_text.
     categories_with_keywords = [
         (c.id, c.match_keywords) for c in
@@ -2837,8 +2827,8 @@ def book_import_line(
     then link the other account's own staged line for the same transfer so
     it's booked in the same step instead of being reviewed (and risking a
     double-booking) separately later. Each split line's own optional
-    `paperless_document_id` (Key Design Decision #44) covers e.g. several
-    invoices paid together in one debit, each linking its own document."""
+    `paperless_document_id` covers e.g. several invoices paid together in
+    one debit, each linking its own document."""
     staging = db.query(LedgerImportLine).filter(LedgerImportLine.id == line_id).first()
     if not staging:
         raise HTTPException(status_code=404, detail="Import line not found")
@@ -2958,9 +2948,9 @@ def reset_import_line(
     db: Session = Depends(get_db),
 ):
     """Move a `duplicate` or `ignored` line back to `new` — "Kein Duplikat"
-    (a dedup false positive, see #19) or restoring an ignored line. `booked`
+    (a dedup false positive) or restoring an ignored line. `booked`
     is rejected (use `POST /entries/{id}/reverse` on its entry instead — that
-    path also reopens the staging line automatically, see #28); a line
+    path also reopens the staging line automatically); a line
     already `new` is a no-op 400 rather than silently succeeding."""
     staging = db.query(LedgerImportLine).filter(LedgerImportLine.id == line_id).first()
     if not staging:
@@ -2975,9 +2965,9 @@ def reset_import_line(
 # --- Paperless-ngx document search (proxy, read-only) ---
 
 def _linked_entry_ids_by_doc(db: Session, doc_ids: list[str]) -> dict[str, list[int]]:
-    """Which already-booked entries (if any) link each of `doc_ids` (#28/#83)
-    — shared by the Belege overview and the search/suggestions dropdowns so
-    all three compute "already linked" identically."""
+    """Which already-booked entries (if any) link each of `doc_ids` — shared
+    by the Belege overview and the search/suggestions dropdowns so all three
+    compute "already linked" identically."""
     if not doc_ids:
         return {}
     linked_by_doc: dict[str, list[int]] = {}
@@ -2997,12 +2987,12 @@ def search_paperless(
     _viewer: dict = Depends(require_ledger_viewer_user),
     db: Session = Depends(get_db),
 ):
-    """`target_date` (#68), when given, re-sorts the matching documents by
+    """`target_date`, when given, re-sorts the matching documents by
     ascending distance to it (the reference line's own booking/entry date)
     instead of leaving Paperless's own relevance ordering as-is — several
     textually-similar hits (e.g. every monthly "Contabo Server" invoice) are
     otherwise indistinguishable by relevance alone, burying the one actually
-    relevant to this booking. `linked_entry_ids` (#83) is filled in here too,
+    relevant to this booking. `linked_entry_ids` is filled in here too,
     same as suggestions below — never filtered out, just surfaced so the
     frontend can highlight it."""
     results = paperless.search_documents(q, target_date=target_date)
@@ -3020,7 +3010,7 @@ def suggest_paperless_documents(
     _viewer: dict = Depends(require_ledger_viewer_user),
     db: Session = Depends(get_db),
 ):
-    """Proactive per-line document suggestions (#65) — alongside, not instead
+    """Proactive per-line document suggestions — alongside, not instead
     of, the manual search above. Ranked by an exact match against
     PAPERLESS_AMOUNT_CUSTOM_FIELD_ID first (if configured), then by ascending
     distance between the document's own date and `target_date`. `amount`'s
@@ -3029,8 +3019,8 @@ def suggest_paperless_documents(
 
     A document already linked to a booked entry is still suggested here —
     deliberately never excluded, since a partial payment against the same
-    invoice is a legitimate reason to link it again (#28) — but
-    `linked_entry_ids` (#83) is filled in so the frontend can highlight it,
+    invoice is a legitimate reason to link it again — but
+    `linked_entry_ids` is filled in so the frontend can highlight it,
     rather than silently suggesting what looks like a fresh, unbooked
     document."""
     results = paperless.suggest_documents(amount, target_date, limit=limit)
@@ -3070,7 +3060,7 @@ def list_paperless_documents(
     `X-Total-Count` reflects that filtered count, same paging convention as
     GET /ledger/entries and GET /ledger/import/lines.
 
-    `date_from`/`date_to` (#62) filter on the document's own `created` date
+    `date_from`/`date_to` filter on the document's own `created` date
     (a plain string comparison against its ISO date prefix — ISO dates sort
     and compare lexically fine, no parsing needed), applied here for the
     same reason `status` is: it's cheaper than asking Paperless to filter

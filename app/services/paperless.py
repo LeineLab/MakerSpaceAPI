@@ -24,8 +24,8 @@ def is_configured() -> bool:
 def search_documents(query: str, limit: int = 10, target_date: date | None = None) -> list[dict]:
     """Search Paperless for documents matching `query`.
 
-    When `target_date` is given (#68), fetches a wider candidate pool than
-    `limit` and re-sorts it by ascending distance to `target_date` before
+    When `target_date` is given, fetches a wider candidate pool than `limit`
+    and re-sorts it by ascending distance to `target_date` before
     truncating — Paperless's own relevance ordering treats every textual
     match as roughly equal (e.g. "Contabo Server" appears on every monthly
     invoice), so without this the one actually relevant to the booking being
@@ -34,15 +34,13 @@ def search_documents(query: str, limit: int = 10, target_date: date | None = Non
     ordering, `limit` results fetched directly).
 
     Restricted to `PAPERLESS_DOCUMENT_TYPE_IDS` the same way `list_documents()`
-    /`suggest_documents()` already are — found missing here specifically
-    (this function historically never applied it) when the user asked
-    whether the restriction supports a list of IDs at all (it always has,
-    comma-separated); the manual search box was the one place that
-    restriction silently didn't reach, so it could surface a document of an
-    excluded type that neither the Belege overview nor the proactive
-    suggestions would ever show.
+    /`suggest_documents()` already are, so the manual search box can't
+    surface a document of an excluded type that neither the Belege overview
+    nor the proactive suggestions would ever show (`PAPERLESS_DOCUMENT_TYPE_IDS`
+    accepts a comma-separated list of IDs, same as every other setting that
+    restricts by Paperless document type).
 
-    Each result's own `amount` (#77) — the document's parsed
+    Each result's own `amount` — the document's parsed
     PAPERLESS_AMOUNT_CUSTOM_FIELD_ID value, when that field is configured
     and the document has one — is included the same way `suggest_documents()`
     already does, so a treasurer picking between several search hits can see
@@ -111,9 +109,9 @@ def list_documents(q: str | None = None, limit: int = 500) -> list[dict]:
     uses, and/or `q` (Paperless's own full-text search, the same `query`
     param `search_documents()` uses — it searches document content, not just
     the title, which this app can't replicate on its own). Any document
-    carrying one of `PAPERLESS_EXCLUDED_TAG_IDS` (Key Design Decision #72 —
-    e.g. a "Duplikat" tag marking a document that shouldn't clutter this
-    list) is dropped — applied here, not via a Paperless-side query param,
+    carrying one of `PAPERLESS_EXCLUDED_TAG_IDS` (e.g. a "Duplikat" tag
+    marking a document that shouldn't clutter this list) is dropped —
+    applied here, not via a Paperless-side query param,
     same "computed here, not delegated" precedent as the `status`/`date_from`
     /`date_to` filters on `GET /ledger/paperless/documents` already use,
     since Paperless-ngx exposes no simple query-string "tag NOT IN" filter.
@@ -206,8 +204,8 @@ def _amount_custom_field_id() -> int | None:
 def _document_amount(doc: dict, field_id: int | None) -> Decimal | None:
     """This document's own value for PAPERLESS_AMOUNT_CUSTOM_FIELD_ID, or
     `None` if it isn't configured or the document has no value for it —
-    shared by search_documents() and suggest_documents() (#77) so both
-    parse it identically."""
+    shared by search_documents() and suggest_documents() so both parse it
+    identically."""
     if field_id is None:
         return None
     for cf in doc.get("custom_fields") or []:
@@ -258,7 +256,7 @@ def _fetch_documents(params: dict) -> list[dict]:
 
 def suggest_documents(amount: Decimal, target_date: date, limit: int = 3) -> list[dict]:
     """Suggest up to `limit` Paperless documents likely to be the receipt for
-    one booking line (Key Design Decision #65), ranked by:
+    one booking line, ranked by:
       1. An exact match against PAPERLESS_AMOUNT_CUSTOM_FIELD_ID, if
          configured — always ranked above any date-only match, regardless of
          how far its own document date is from `target_date`, since a
@@ -269,14 +267,14 @@ def suggest_documents(amount: Decimal, target_date: date, limit: int = 3) -> lis
          matches, and the only signal used at all when no amount field is
          configured.
 
-    Candidate fetch (#68 — was previously a single "newest 200 documents
-    overall" query, which silently excluded any document older than however
-    many had been added to Paperless since; a still-recent booking whose
-    receipt was uploaded around the time of the transaction routinely fell
-    outside that window once the Verein's Paperless instance held more than
-    a couple hundred documents, so a same-day exact-date match could be
-    missing from the candidates entirely while unrelated, merely-more-recent
-    documents got suggested instead): two date-windowed queries around
+    Candidate fetch: deliberately not a single "newest 200 documents overall"
+    query, which would silently exclude any document older than however many
+    had been added to Paperless since — a still-recent booking whose receipt
+    was uploaded around the time of the transaction would routinely fall
+    outside that window once the Paperless instance held more than a couple
+    hundred documents, so a same-day exact-date match could be missing from
+    the candidates entirely while unrelated, merely-more-recent documents got
+    suggested instead. Instead this uses two date-windowed queries around
     `target_date` — documents at-or-before it (newest-first, so the
     on-target document is always the very first row) and documents strictly
     after it (oldest-first) — so a document dated at or near `target_date`
@@ -342,9 +340,9 @@ def suggest_documents(amount: Decimal, target_date: date, limit: int = 3) -> lis
             "title": doc.get("title") or f"Dokument {doc['id']}",
             "created": doc.get("created"),
             "amount_match": amount_match,
-            # The document's own parsed custom-field value (#66) — shown
-            # instead of a separate match/no-match badge so the row stays
-            # one line and doesn't grow the reserved suggestion slots.
+            # The document's own parsed custom-field value — shown instead
+            # of a separate match/no-match badge so the row stays one line
+            # and doesn't grow the reserved suggestion slots.
             "amount": parsed_amount,
         }
         for _, _, doc, parsed_amount, amount_match in ranked[:limit]
@@ -353,8 +351,8 @@ def suggest_documents(amount: Decimal, target_date: date, limit: int = 3) -> lis
 
 def set_paid_date_if_not_set(document_id: str, paid_date: date) -> None:
     """Fill in a document's "paid on" custom field (`PAPERLESS_PAID_DATE_
-    CUSTOM_FIELD_ID`, Key Design Decision #72) with `paid_date` — ONLY if
-    the field is still empty on that document. Never overwrites an
+    CUSTOM_FIELD_ID`) with `paid_date` — ONLY if the field is still empty on
+    that document. Never overwrites an
     already-set value, whether Paperless itself derived it or a treasurer
     set it by hand; this is a one-way, best-effort convenience fill-in, not
     a source of truth this app keeps in sync going forward.

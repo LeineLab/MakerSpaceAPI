@@ -6,7 +6,7 @@ ledger entry. Real usage needs both directions: one payout split across
 several bank transfers (a transfer-amount limit), and several payouts
 bundled into one transfer. ledger_target_payout_entries(transaction_id,
 entry_id, amount) replaces it — amount is the slice of that payout covered
-by that entry. See Key Design Decision #38.
+by that entry.
 
 Existing 1:1 links are migrated into the new table before the old column is
 dropped, so no booked-payout history is lost. The downgrade path is
