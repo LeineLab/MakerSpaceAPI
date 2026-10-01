@@ -1121,10 +1121,20 @@
               <th class="px-4 py-3 text-left">{{ _('ledger.col_status') }}</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-            <template x-for="p in targetPayouts" :key="p.transaction_id">
-              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
-                <td class="px-4 py-3" x-show="userIsTreasurer">
+          <template x-for="(p, idx) in targetPayouts" :key="p.transaction_id">
+            <tbody :class="idx > 0 && 'border-t border-gray-100 dark:border-gray-700'">
+              <!-- Row-click detail expansion (#88), same pattern as the
+                   Buchungen tab's toggleEntryDetail() — a sibling <tbody>
+                   per iteration, NOT a wrapping outer <tbody>, since a
+                   nested table-row-group breaks column alignment once
+                   Alpine's x-for clones it into the live DOM (the exact
+                   bug class documented at Key Design Decision #40). Only
+                   rows with at least one linked entry (p.entry_ids.length)
+                   are clickable — an open payout has nothing to expand. -->
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700"
+                  :class="p.entry_ids.length > 0 && 'cursor-pointer'"
+                  @click="p.entry_ids.length > 0 && togglePayoutDetail(p)">
+                <td class="px-4 py-3" x-show="userIsTreasurer" @click.stop>
                   <input type="checkbox" x-show="!p.booked" :checked="selectedPayoutIds.includes(p.transaction_id)"
                          @change="togglePayoutSelection(p.transaction_id)"
                          class="rounded border-gray-300 dark:border-gray-600">
@@ -1145,8 +1155,54 @@
                   </span>
                 </td>
               </tr>
-            </template>
-          </tbody>
+              <tr x-show="expandedPayoutId === p.transaction_id" class="bg-gray-50 dark:bg-gray-900">
+                <td colspan="6" class="px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
+                  <p x-show="loadingPayoutDetail && !payoutDetailEntries[p.transaction_id]" class="text-gray-400 dark:text-gray-500">…</p>
+                  <template x-for="entry in (payoutDetailEntries[p.transaction_id] || [])" :key="entry.id">
+                    <div class="mb-3 pb-3 border-b dark:border-gray-700 last:border-0 last:mb-0 last:pb-0">
+                      <p class="font-medium text-gray-700 dark:text-gray-200">
+                        <span x-text="'#' + entry.id + ' — ' + entry.description"></span>
+                        <span class="text-gray-400 dark:text-gray-500 font-normal" x-text="'(' + entry.entry_date + ')'"></span>
+                      </p>
+                      <div class="grid sm:grid-cols-2 gap-3 mt-1">
+                        <div>
+                          <template x-for="l in entry.lines" :key="l.id">
+                            <p>
+                              <span x-text="lineTargetName(l) + ':'"></span>
+                              <span :class="parseFloat(l.amount) < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'"
+                                    class="font-mono" x-text="fmtSigned(l.amount)"></span>
+                              <span x-show="l.note" class="text-gray-400 dark:text-gray-500" x-text="'— ' + l.note"></span>
+                              <a x-show="l.paperless_document_id && config.paperless_url" :href="paperlessDocUrl(l.paperless_document_id)"
+                                 target="_blank" rel="noopener" @click.stop class="ml-1 text-blue-600 dark:text-blue-400 hover:underline">📎</a>
+                              <span x-show="l.paperless_document_id && !config.paperless_url" class="ml-1">📎</span>
+                            </p>
+                          </template>
+                          <p class="mt-1 text-gray-400 dark:text-gray-500">
+                            <span>{{ _('ledger.detail_created_by') }}:</span> <span x-text="entry.created_by"></span>
+                            <span class="ml-2">{{ _('ledger.detail_created_at') }}:</span> <span x-text="fmtDateTime(entry.created_at)"></span>
+                          </p>
+                        </div>
+                        <div>
+                          <p class="font-medium text-gray-500 dark:text-gray-400 mb-1">{{ _('ledger.detail_bank_transaction_title') }}</p>
+                          <template x-if="entry.matched_import_lines.length === 0">
+                            <p class="text-gray-400 dark:text-gray-500">{{ _('ledger.detail_no_bank_transaction') }}</p>
+                          </template>
+                          <template x-for="m in entry.matched_import_lines" :key="m.id">
+                            <div class="mb-2 pb-2 border-b dark:border-gray-700 last:border-0">
+                              <p><span class="text-gray-400 dark:text-gray-500">{{ _('ledger.col_date') }}:</span> <span x-text="m.booking_date"></span>
+                                 <span class="font-mono ml-2" x-text="fmtSigned(m.amount)"></span></p>
+                              <p x-show="m.purpose_text"><span class="text-gray-400 dark:text-gray-500">{{ _('ledger.detail_purpose') }}:</span> <span x-text="m.purpose_text"></span></p>
+                              <p x-show="m.counterparty_name"><span class="text-gray-400 dark:text-gray-500">{{ _('ledger.detail_counterparty') }}:</span> <span x-text="m.counterparty_name"></span></p>
+                            </div>
+                          </template>
+                        </div>
+                      </div>
+                    </div>
+                  </template>
+                </td>
+              </tr>
+            </tbody>
+          </template>
         </table>
         </div>
       </div>
@@ -1691,6 +1747,14 @@
                class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800">
         <p x-show="bookingTargetPayouts.length > 1" class="text-xs text-gray-400 dark:text-gray-500 mt-1"
            x-text="TARGET_PAYOUT_BUNDLE_AMOUNT_TMPL.replace('{amount}', fmt(targetPayoutTotalRemaining()))"></p>
+        <!-- Always-visible, not conditional on the excess already being
+             entered (#88) — the excess hint below only appears once the
+             amount is already higher, so nothing told the treasurer this
+             was even possible in the first place; the user had to be told
+             directly that typing a higher amount here is the way to add an
+             extra donation/category booking to the same transfer (#42). -->
+        <p x-show="targetPayoutExcess() <= 0.005" class="text-xs text-gray-400 dark:text-gray-500 mt-1"
+           x-text="TARGET_PAYOUT_AMOUNT_HINT_L"></p>
       </div>
 
       <div x-show="targetPayoutExcess() > 0.005" class="mb-3">
@@ -2843,6 +2907,7 @@ const BOOK_SELECTED_TMPL = {{ _('ledger.btn_book_selected') | tojson }};
 const TARGET_PAYOUT_REMAINING_TMPL = {{ _('ledger.target_payout_remaining_hint') | tojson }};
 const TARGET_PAYOUT_BUNDLE_AMOUNT_TMPL = {{ _('ledger.target_payout_bundle_amount_hint') | tojson }};
 const TARGET_PAYOUT_EXCESS_HINT_TMPL = {{ _('ledger.target_payout_excess_hint') | tojson }};
+const TARGET_PAYOUT_AMOUNT_HINT_L = {{ _('ledger.target_payout_amount_hint') | tojson }};
 const NO_STATEMENT_BALANCE_L = {{ _('ledger.no_statement_balance') | tojson }};
 const RECONCILIATION_MATCH_TMPL = {{ _('ledger.reconciliation_match') | tojson }};
 const RECONCILIATION_MISMATCH_TMPL = {{ _('ledger.reconciliation_mismatch') | tojson }};
@@ -3040,6 +3105,15 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     showBankPurposeText: false,
     showEntriesFilters: false,
     expandedEntryId: null,
+    // Kassen payout detail expansion (#88) — mirrors the Buchungen tab's
+    // own expandedEntryId/row-detail pattern, just keyed by the payout's
+    // transaction_id instead of an entry id (a booked payout can link more
+    // than one entry — a split across several transfers, or a bundle, see
+    // #38 — so the detail shows every linked entry, fetched by id via the
+    // same GET /ledger/entries?ids= the Buchungen list itself uses).
+    expandedPayoutId: null,
+    payoutDetailEntries: {},
+    loadingPayoutDetail: false,
     showEntryModal: false,
     entryForm: { entry_date: '', description: '', paperless_document_id: '', lines: [] },
     entryError: null,
@@ -4345,6 +4419,30 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       // doesn't lose an in-progress edit.
       const entry = this.entries.find(e => e.id === this.expandedEntryId);
       if (entry && entry._noteDraft === undefined) entry._noteDraft = entry.review_note || '';
+    },
+
+    // Kassen payout detail expansion (#88) — same toggle pattern as
+    // toggleEntryDetail() above, keyed by transaction_id. Fetches the
+    // linked entry/entries by id (GET /ledger/entries?ids=, same endpoint/
+    // shape the Buchungen list itself uses, so the detail view shows
+    // exactly the same fields — lines, notes, documents, matched bank
+    // transaction — the user already knows from there) only once per
+    // payout, caching the result in payoutDetailEntries.
+    async togglePayoutDetail(p) {
+      this.expandedPayoutId = this.expandedPayoutId === p.transaction_id ? null : p.transaction_id;
+      if (this.expandedPayoutId === null) return;
+      if (!p.entry_ids || p.entry_ids.length === 0) return;
+      if (this.payoutDetailEntries[p.transaction_id]) return;
+      this.loadingPayoutDetail = true;
+      try {
+        const idsQuery = p.entry_ids.map(id => `ids=${id}`).join('&');
+        const r = await apiFetch(`/api/v1/ledger/entries?${idsQuery}&limit=${p.entry_ids.length}`);
+        if (r.ok) this.payoutDetailEntries[p.transaction_id] = await r.json();
+      } catch (e) {
+        // non-critical — the payout row itself already shows the essentials
+      } finally {
+        this.loadingPayoutDetail = false;
+      }
     },
 
     // The bank's own purpose_text(s) for an entry, derived from

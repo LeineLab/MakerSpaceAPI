@@ -810,6 +810,48 @@ def test_list_entries_filter_by_category_id(treasurer_client, bank_account, inco
     assert results[0]["id"] == income_entry["id"]
 
 
+def test_list_entries_filter_by_ids(treasurer_client, bank_account, income_category, expense_category):
+    """`ids` (#88, repeatable) fetches specific entries directly by id —
+    used by the Kassen tab's payout-detail expansion to show a booked
+    payout's linked entry/entries without a separate single-entry
+    endpoint."""
+    e1 = treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-01", "description": "Beitrag",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "50.00"},
+                {"category_id": income_category.id, "amount": "-50.00"},
+            ],
+        },
+    ).json()
+    e2 = treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-02", "description": "Einkauf",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "-30.00"},
+                {"category_id": expense_category.id, "amount": "30.00"},
+            ],
+        },
+    ).json()
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-03", "description": "Nicht angefragt",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "-10.00"},
+                {"category_id": expense_category.id, "amount": "10.00"},
+            ],
+        },
+    )
+
+    resp = treasurer_client.get(f"/api/v1/ledger/entries?ids={e1['id']}&ids={e2['id']}")
+    assert resp.status_code == 200
+    results = resp.json()
+    assert {r["id"] for r in results} == {e1["id"], e2["id"]}
+
+
 def test_list_entries_filter_by_bank_account_and_category_together(
     treasurer_client, bank_account, income_category, expense_category,
 ):

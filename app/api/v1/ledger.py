@@ -720,6 +720,7 @@ def update_category(
 @router.get("/entries", response_model=list[LedgerEntryResponse])
 def list_entries(
     response: Response,
+    ids: Optional[list[int]] = Query(default=None),
     year: Optional[int] = Query(default=None),
     date_from: Optional[date] = Query(default=None),
     date_to: Optional[date] = Query(default=None),
@@ -777,11 +778,21 @@ def list_entries(
     a `paperless_document_id` (that field lives per line since #44, so this
     checks "any line", not a single column). `is_reversal` (#62) filters on
     whether the entry is itself a Storno (`reverses_entry_id` set) —
-    `true` for Stornos only, `false` to exclude them, omitted for both."""
+    `true` for Stornos only, `false` to exclude them, omitted for both.
+
+    `ids` (#88, repeatable, e.g. `?ids=1&ids=2`) fetches one or more
+    specific entries directly by id — the Kassen tab's payout-detail
+    expansion uses this to show a booked payout's full entry detail (same
+    shape/fields as the Buchungen tab's own detail panel, #40) without a
+    second, bespoke single-entry endpoint. Composes with every other filter
+    above, though in practice a caller passing `ids` has no reason to also
+    pass a date/account/etc. filter."""
     query = db.query(LedgerEntry).options(
         joinedload(LedgerEntry.lines).joinedload(LedgerEntryLine.bank_account),
         joinedload(LedgerEntry.lines).joinedload(LedgerEntryLine.category),
     )
+    if ids is not None:
+        query = query.filter(LedgerEntry.id.in_(ids))
     if year is not None:
         query = query.filter(
             LedgerEntry.entry_date >= f"{year}-01-01", LedgerEntry.entry_date <= f"{year}-12-31"
