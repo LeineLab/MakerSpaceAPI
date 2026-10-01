@@ -1539,3 +1539,31 @@ def test_account_balances_by_year_includes_offline_account(treasurer_client, db,
     assert row["is_offline"] is True
     assert row["iban"] is None
     assert row["closing_balance"] == "20.00"
+
+
+def test_account_balances_by_year_excludes_untracked_account(treasurer_client, db, income_category):
+    """Real bug: an account with tracked=False (#23 — "permanently
+    ignored", e.g. a private account only visible through a shared FinTS
+    access, not a Verein account at all) still showed up here, even though
+    every other place in the ledger already excludes untracked accounts
+    (the frontend's trackedAccounts picker, file/CSV/FinTS import). Excluded
+    unconditionally here now, regardless of activity."""
+    untracked = BankAccount(
+        iban="DE02120300000000202099", name="Privatkonto", tracked=False, opening_balance=Decimal("0.00"),
+    )
+    db.add(untracked)
+    db.commit()
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-04-01",
+            "description": "Versehentlich hier gebucht",
+            "lines": [
+                {"bank_account_id": untracked.id, "amount": "20.00"},
+                {"category_id": income_category.id, "amount": "-20.00"},
+            ],
+        },
+    )
+    resp = treasurer_client.get("/api/v1/ledger/report/kontostaende?year=2026")
+    assert resp.status_code == 200
+    assert untracked.id not in [r["account_id"] for r in resp.json()["rows"]]

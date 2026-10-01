@@ -2333,7 +2333,16 @@ def account_balances_by_year(
     booked line dated within it is omitted entirely, per the user's own
     explicit request — a genuinely dormant/unused account shouldn't clutter
     the list. An account whose activity nets back to 0.00 is still shown,
-    since "no bookings at all" is the actual condition, not "ends at 0"."""
+    since "no bookings at all" is the actual condition, not "ends at 0".
+
+    An account with `tracked=False` (#23 — "permanently ignored", e.g. a
+    private account only visible through a shared FinTS access and not a
+    Verein account at all) is excluded unconditionally, regardless of
+    activity — the same treatment untracked accounts already get everywhere
+    else (excluded from the manual-entry/booking line pickers via the
+    frontend's `trackedAccounts` getter, rejected by file/CSV/FinTS import).
+    Real bug found by the user: this report was the one place in the ledger
+    that still listed an untracked account."""
     year_start = date(year, 1, 1)
     year_end = date(year, 12, 31)
     prev_year_end = date(year - 1, 12, 31)
@@ -2354,7 +2363,7 @@ def account_balances_by_year(
     }
 
     rows = []
-    for account in db.query(BankAccount).order_by(BankAccount.name).all():
+    for account in db.query(BankAccount).filter(BankAccount.tracked.is_(True)).order_by(BankAccount.name).all():
         opening = _computed_balance(db, account, prev_year_end)
         closing = _computed_balance(db, account, year_end)
         if opening == 0 and closing == 0 and account.id not in active_account_ids:
