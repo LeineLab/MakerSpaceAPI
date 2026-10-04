@@ -695,6 +695,8 @@
   "ledger.btn_import_review_notes": "Anmerkungen übernehmen",
   "ledger.review_notes_heading": "Anmerkungen aus der Buchungsprüfung:",
   "ledger.no_review_notes_in_period": "Keine Anmerkungen im gewählten Prüfzeitraum gefunden.",
+  "ledger.open_import_badge_title": "Offene Transaktionen (noch nicht gebucht oder ignoriert)",
+  "ledger.open_payout_badge_title": "Offene Kassen-Auszahlungen (noch nicht vollständig gebucht)",
   "ledger.review_note_label": "Anmerkung",
   "ledger.confirm_overwrite_findings": "Der aktuelle Inhalt des Feldes \"Feststellungen\" wird durch die übernommenen Anmerkungen überschrieben. Fortfahren?",
   "ledger.detail_bank_transaction_title": "Bank-Transaktion",

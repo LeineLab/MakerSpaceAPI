@@ -26,11 +26,15 @@
             class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
             :class="activeTab === 'import' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
       {{ _('ledger.tab_import') }}
+      <span x-show="openImportCount > 0" x-text="openImportCount" :title="OPEN_IMPORT_BADGE_TITLE_L"
+            class="ml-1 inline-block min-w-[1.25rem] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 text-xs font-semibold text-center"></span>
     </button>
     <button @click="switchTab('targets')"
             class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
             :class="activeTab === 'targets' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
       {{ _('ledger.tab_targets') }}
+      <span x-show="openPayoutCount > 0" x-text="openPayoutCount" :title="OPEN_PAYOUT_BADGE_TITLE_L"
+            class="ml-1 inline-block min-w-[1.25rem] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 text-xs font-semibold text-center"></span>
     </button>
     <button @click="switchTab('accounts')"
             class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
@@ -2882,6 +2886,8 @@ const REVIEWED_FILTER_L = {
   unreviewed: {{ _('ledger.filter_reviewed_unreviewed') | tojson }},
   noted: {{ _('ledger.filter_reviewed_noted') | tojson }},
 };
+const OPEN_PAYOUT_BADGE_TITLE_L = {{ _('ledger.open_payout_badge_title') | tojson }};
+const OPEN_IMPORT_BADGE_TITLE_L = {{ _('ledger.open_import_badge_title') | tojson }};
 const NO_REVIEW_NOTES_IN_PERIOD_L = {{ _('ledger.no_review_notes_in_period') | tojson }};
 const REVIEW_NOTES_HEADING_L = {{ _('ledger.review_notes_heading') | tojson }};
 const REVIEW_NOTE_LABEL_L = {{ _('ledger.review_note_label') | tojson }};
@@ -3173,6 +3179,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     showImportFilters: false,
     importLines: [],
     importLinesTotal: 0,
+    openImportCount: 0,
+    openPayoutCount: 0,
     importLinesPage: 1,
     loadingImportLines: true,
     importLinesError: null,
@@ -3407,6 +3415,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     async init() {
       await this.loadConfig();
       await Promise.all([this.loadAccounts(), this.loadCategories(), this.loadAssets()]);
+      this.loadOpenImportCount();
+      this.loadOpenPayoutCount();
       // Query params (filter/page state) apply to whichever tab is already
       // active from the URL — must happen before that tab's own load below,
       // or the very first fetch would use the default filter/page instead
@@ -3704,6 +3714,9 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
           return;
         }
         this.insertEntryLocally(data);
+        // Reversing reopens the booked staging line, if there was one.
+        this.loadOpenImportCount();
+        this.loadOpenPayoutCount();
       } catch (e) {
         if (e !== 'unauthenticated') this.entriesError = e.message || String(e);
       }
@@ -3878,7 +3891,28 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
     },
 
+    // Kassen payouts not yet fully booked (remaining_amount > 0), shown as a
+    // badge on the Kassen tab. Fetched separately from the list so it's
+    // independent of the tab's own open/booked/all filter; the endpoint has
+    // no X-Total-Count header (it isn't paged), so the array length is
+    // used. Refreshed on page load, whenever the payouts list reloads (which
+    // covers booking one) and after reversing an entry, which reopens the
+    // payout slice it had booked. New payouts are taken at the Bankomat
+    // outside this app, so they only show up on the next load. Same
+    // sequence-token guard as loadOpenImportCount().
+    async loadOpenPayoutCount() {
+      const seq = this._openPayoutCountSeq = (this._openPayoutCountSeq || 0) + 1;
+      try {
+        const r = await apiFetch('/api/v1/ledger/target-payouts?booked=false');
+        if (!r.ok || seq !== this._openPayoutCountSeq) return;
+        this.openPayoutCount = (await r.json()).length;
+      } catch (e) {
+        // non-critical — the badge just keeps its last value
+      }
+    },
+
     async loadTargetPayouts() {
+      this.loadOpenPayoutCount();
       this.loadingTargetPayouts = true;
       this.targetPayoutsError = null;
       this.selectedPayoutIds = [];
@@ -4048,6 +4082,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         // Buchungen tab — insert it locally rather than leaving that
         // already-loaded list silently stale.
         this.insertEntryLocally(data);
+        this.loadOpenImportCount();
         await this.loadTargetPayouts();
       } catch (e) {
         if (e !== 'unauthenticated') this.targetPayoutBookError = e.message || String(e);
@@ -4636,8 +4671,30 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       return params;
     },
 
+    // Number of staged lines still waiting to be booked or ignored
+    // (status=new), shown as a badge on the Transaktionen tab. Independent of
+    // the list's own status/search filters — it answers "how much work is
+    // left", not "how many rows match what I'm looking at" — so it's fetched
+    // separately (limit=1, only the X-Total-Count header is used) and
+    // refreshed wherever a line's status can change: imports, booking,
+    // ignoring, restoring, reversing an entry, booking a Kassen payout
+    // against a matched line. The sequence token drops a response that
+    // arrives after a newer request already started, so rapid-fire
+    // refreshes (working through a queue) can't settle on a stale number.
+    async loadOpenImportCount() {
+      const seq = this._openImportCountSeq = (this._openImportCountSeq || 0) + 1;
+      try {
+        const r = await apiFetch('/api/v1/ledger/import/lines?status=new&limit=1');
+        if (!r.ok || seq !== this._openImportCountSeq) return;
+        this.openImportCount = Number(r.headers.get('X-Total-Count')) || 0;
+      } catch (e) {
+        // non-critical — the badge just keeps its last value
+      }
+    },
+
     async loadImportLines() {
       this.syncUrl(false);
+      this.loadOpenImportCount();
       this.loadingImportLines = true;
       this.importLinesError = null;
       try {
@@ -4700,6 +4757,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       if (idx === -1) return null;
       this.importLines.splice(idx, 1);
       this.importLinesTotal = Math.max(0, this.importLinesTotal - 1);
+      this.loadOpenImportCount();
       await this.backfillImportLines();
       return this.importLines[idx] || null;
     },

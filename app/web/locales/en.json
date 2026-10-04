@@ -695,6 +695,8 @@
   "ledger.btn_import_review_notes": "Import notes",
   "ledger.review_notes_heading": "Notes from the booking review:",
   "ledger.no_review_notes_in_period": "No notes found in the selected audit period.",
+  "ledger.open_import_badge_title": "Open transactions (not yet booked or ignored)",
+  "ledger.open_payout_badge_title": "Open Kassen payouts (not yet fully booked)",
   "ledger.review_note_label": "Note",
   "ledger.confirm_overwrite_findings": "The current content of the Findings field will be overwritten by the imported notes. Continue?",
   "ledger.detail_bank_transaction_title": "Bank transaction",

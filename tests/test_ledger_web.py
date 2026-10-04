@@ -66,3 +66,19 @@ def test_ledger_page_includes_audit_report_prefill_and_overwrite_confirm(treasur
     resp = treasurer_client.get("/ledger/kassenpruefung")
     assert "defaultAuditPeriod()" in resp.text
     assert "CONFIRM_OVERWRITE_FINDINGS_L" in resp.text
+
+
+def test_ledger_page_includes_open_import_count_badge(treasurer_client):
+    """Light render guard for the open-transactions badge; its refresh
+    behavior is browser-verified."""
+    resp = treasurer_client.get("/ledger")
+    assert "openImportCount" in resp.text
+    assert "loadOpenImportCount()" in resp.text
+
+
+def test_ledger_page_includes_open_payout_count_badge(treasurer_client):
+    """Light render guard for the Kassen tab's open-payouts badge; its
+    refresh behavior is browser-verified."""
+    resp = treasurer_client.get("/ledger")
+    assert "openPayoutCount" in resp.text
+    assert "loadOpenPayoutCount()" in resp.text
