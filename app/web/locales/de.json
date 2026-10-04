@@ -695,6 +695,8 @@
   "ledger.btn_import_review_notes": "Anmerkungen übernehmen",
   "ledger.review_notes_heading": "Anmerkungen aus der Buchungsprüfung:",
   "ledger.no_review_notes_in_period": "Keine Anmerkungen im gewählten Prüfzeitraum gefunden.",
+  "ledger.review_note_label": "Anmerkung",
+  "ledger.confirm_overwrite_findings": "Der aktuelle Inhalt des Feldes \"Feststellungen\" wird durch die übernommenen Anmerkungen überschrieben. Fortfahren?",
   "ledger.detail_bank_transaction_title": "Bank-Transaktion",
   "ledger.detail_no_bank_transaction": "Keine Bank-Transaktion verknüpft (manuell gebucht).",
   "ledger.detail_purpose": "Verwendungszweck",

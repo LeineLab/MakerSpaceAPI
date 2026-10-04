@@ -2884,6 +2884,8 @@ const REVIEWED_FILTER_L = {
 };
 const NO_REVIEW_NOTES_IN_PERIOD_L = {{ _('ledger.no_review_notes_in_period') | tojson }};
 const REVIEW_NOTES_HEADING_L = {{ _('ledger.review_notes_heading') | tojson }};
+const REVIEW_NOTE_LABEL_L = {{ _('ledger.review_note_label') | tojson }};
+const CONFIRM_OVERWRITE_FINDINGS_L = {{ _('ledger.confirm_overwrite_findings') | tojson }};
 const PAPERLESS_DUPLICATE_TMPL = {{ _('ledger.paperless_duplicate_warning') | tojson }};
 const PAPERLESS_SUGGESTIONS_LABEL_L = {{ _('ledger.paperless_suggestions_label') | tojson }};
 const PAPERLESS_ALREADY_LINKED_HINT_L = {{ _('ledger.paperless_already_linked_hint') | tojson }};
@@ -5902,10 +5904,23 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
     },
 
+    // A new report's Prüfzeitraum is pre-filled so consecutive audits join up
+    // seamlessly: it starts the day after the previous report's period ends
+    // and runs to the date of the latest imported transaction across all
+    // accounts. Either stays empty when there's nothing to derive it from.
+    defaultAuditPeriod() {
+      const lastEnd = this.auditReports.map(a => a.period_end).sort().pop();
+      const lastTx = this.accounts.map(a => a.last_transaction_date).filter(Boolean).sort().pop();
+      return {
+        period_start: lastEnd ? this.fintsAddDaysIso(lastEnd, 1) : '',
+        period_end: lastTx || '',
+      };
+    },
+
     openAuditReportModal() {
       this.editingAuditReportId = null;
       this.auditReportForm = {
-        period_start: '', period_end: '', audit_date: '', auditors: '',
+        ...this.defaultAuditPeriod(), audit_date: '', auditors: '',
         findings: '', recommends_discharge: true, paperless_document_id: '',
       };
       this.auditReportError = null;
@@ -5925,13 +5940,14 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       this.showAuditReportModal = true;
     },
 
-    // Pulls every entry's discrepancy note from within the currently
-    // entered Prüfzeitraum into the Findings textarea — a convenience so
-    // the auditor doesn't have to re-type notes already left on individual
-    // bookings while reviewing them. Appends rather than overwrites, so
-    // existing free-text findings aren't clobbered; purely a one-shot text
-    // assembly, nothing links the report back to the source entries
-    // afterwards (the findings field stays plain free text, same as ever).
+    // Replaces the Findings textarea with every entry's discrepancy note from
+    // within the currently entered Prüfzeitraum, each with its date, account
+    // and purpose text (the bank's own wording if the entry was booked from an
+    // imported line, else the entry's description) so the report is readable
+    // without opening the bookings. Overwrites rather than appends: the user
+    // gets a confirm dialog first whenever that would discard typed text.
+    // Purely a one-shot text assembly — nothing links the report back to the
+    // source entries afterwards.
     async importReviewNotesIntoFindings() {
       this.auditReportImportNotesMessage = '';
       try {
@@ -5943,11 +5959,17 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
           this.auditReportImportNotesMessage = NO_REVIEW_NOTES_IN_PERIOD_L;
           return;
         }
+        if (this.auditReportForm.findings.trim() && !confirm(CONFIRM_OVERWRITE_FINDINGS_L)) return;
         noted.sort((a, b) => (a.entry_date < b.entry_date ? -1 : a.entry_date > b.entry_date ? 1 : 0));
-        const block = noted.map(e => `- ${e.entry_date} "${e.description}": ${e.review_note}`).join('\n');
-        this.auditReportForm.findings = this.auditReportForm.findings
-          ? `${this.auditReportForm.findings}\n\n${REVIEW_NOTES_HEADING_L}\n${block}`
-          : `${REVIEW_NOTES_HEADING_L}\n${block}`;
+        const block = noted.map(e => {
+          const accountNames = [...new Set(e.lines.filter(l => l.bank_account_id).map(l => {
+            const a = this.accounts.find(acc => acc.id === l.bank_account_id);
+            return a ? a.name : null;
+          }).filter(Boolean))];
+          const purpose = this.entryBankPurposeText(e) || e.description;
+          return `- ${e.entry_date} | ${accountNames.join(', ') || '—'} | ${purpose}\n  ${REVIEW_NOTE_LABEL_L}: ${e.review_note}`;
+        }).join('\n');
+        this.auditReportForm.findings = `${REVIEW_NOTES_HEADING_L}\n${block}`;
       } catch (e) {
         // convenience action only — a failure here shouldn't block the report
       }

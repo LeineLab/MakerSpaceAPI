@@ -57,3 +57,12 @@ def test_ledger_page_includes_tab_query_param_spec(treasurer_client):
     assert "const LEDGER_TAB_QUERY" in resp.text
     assert "syncUrl(push)" in resp.text
     assert "applyUrlParams()" in resp.text
+
+
+def test_ledger_page_includes_audit_report_prefill_and_overwrite_confirm(treasurer_client):
+    """Light render guard: the audit modal pre-fills its period and confirms
+    before the note import overwrites the findings field. The behavior itself
+    is browser-verified."""
+    resp = treasurer_client.get("/ledger/kassenpruefung")
+    assert "defaultAuditPeriod()" in resp.text
+    assert "CONFIRM_OVERWRITE_FINDINGS_L" in resp.text
