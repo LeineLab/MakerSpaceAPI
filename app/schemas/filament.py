@@ -26,6 +26,24 @@ class FilamentTypeResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class FilamentColorAliasCreate(BaseModel):
+    """brand_id/type_id omitted = the alias applies to any brand/type."""
+    hex: str = Field(pattern=r"^#[0-9a-fA-F]{6}$", examples=["#000000"])
+    name: str = Field(min_length=1, max_length=50, examples=["Schwarz"])
+    brand_id: Optional[int] = None
+    type_id: Optional[int] = None
+
+
+class FilamentColorAliasResponse(BaseModel):
+    id: int
+    hex: str
+    name: str
+    brand_id: Optional[int]
+    brand_name: Optional[str]
+    type_id: Optional[int]
+    type_name: Optional[str]
+
+
 class FilamentRollCreate(BaseModel):
     """Manual entry via the web UI — brand/type reference already-existing rows."""
     brand_id: int
@@ -52,6 +70,7 @@ class FilamentRollResponse(BaseModel):
     type_name: str
     weight_grams: int
     color: str
+    color_name: Optional[str] = None  # alias for `color`, if one matches (GET/PUT /rolls only)
     vendor_serial: Optional[str]
     added_at: datetime
     added_by: Optional[str]
@@ -70,6 +89,7 @@ class FilamentStockSummary(BaseModel):
     type_name: str
     weight_grams: int
     color: str
+    color_name: Optional[str] = None  # alias for `color`, if one matches
     count_in_stock: int
 
 

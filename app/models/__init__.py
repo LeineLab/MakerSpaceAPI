@@ -1,7 +1,7 @@
 from app.models.base import Base
 from app.models.audit import AuditLog
 from app.models.booking_target import BookingTarget
-from app.models.filament import FilamentBrand, FilamentRoll, FilamentType
+from app.models.filament import FilamentBrand, FilamentColorAlias, FilamentRoll, FilamentType
 from app.models.ledger import (
     BankAccount,
     LedgerCategory,
@@ -27,6 +27,7 @@ __all__ = [
     "BankAccount",
     "BookingTarget",
     "FilamentBrand",
+    "FilamentColorAlias",
     "FilamentRoll",
     "FilamentType",
     "LedgerCategory",

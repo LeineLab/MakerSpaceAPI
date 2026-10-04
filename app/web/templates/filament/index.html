@@ -42,7 +42,7 @@
                 <div class="flex items-center gap-2">
                   <span x-show="isHexColor(s.color)" :style="{ backgroundColor: s.color }"
                         class="inline-block w-3.5 h-3.5 rounded-sm border border-gray-300 dark:border-gray-600 flex-shrink-0"></span>
-                  <span x-text="s.color"></span>
+                  <span x-text="s.color_name || s.color" :title="s.color"></span>
                 </div>
               </td>
               <td class="px-4 py-2 text-right" x-text="s.weight_grams + ' g'"></td>
@@ -109,7 +109,7 @@
                 <div class="flex items-center gap-2">
                   <span x-show="isHexColor(r.color)" :style="{ backgroundColor: r.color }"
                         class="inline-block w-3.5 h-3.5 rounded-sm border border-gray-300 dark:border-gray-600 flex-shrink-0"></span>
-                  <span x-text="r.color"></span>
+                  <span x-text="r.color_name || r.color" :title="r.color"></span>
                 </div>
               </td>
               <td class="px-4 py-2 text-right" x-text="r.weight_grams + ' g'"></td>
@@ -203,6 +203,77 @@
       </div>
     </div>
 
+  </div>
+
+  <!-- Color aliases (display names for hex colors) -->
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow mb-8">
+    <div class="px-5 py-4 border-b dark:border-gray-700 flex flex-wrap items-center justify-between gap-2">
+      <h2 class="font-semibold">{{ _('filament.aliases_title') }}</h2>
+      <span class="text-xs text-gray-400 dark:text-gray-500" x-text="colorAliases.length"></span>
+    </div>
+    <div class="px-5 py-4">
+      <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">{{ _('filament.aliases_hint') }}</p>
+      <div x-show="colorAliases.length > 0" class="overflow-x-auto mb-4">
+        <table class="w-full text-sm">
+          <thead class="text-gray-400 dark:text-gray-500 uppercase text-xs">
+            <tr>
+              <th class="px-2 py-1 text-left cursor-pointer select-none hover:text-gray-600 dark:hover:text-gray-300" @click="aliasListSort.toggle('name')">{{ _('common.name') }} <span x-text="aliasListSort.indicator('name')"></span></th>
+              <th class="px-2 py-1 text-left cursor-pointer select-none hover:text-gray-600 dark:hover:text-gray-300" @click="aliasListSort.toggle('hex')">Hex <span x-text="aliasListSort.indicator('hex')"></span></th>
+              <th class="px-2 py-1 text-left">{{ _('filament.aliases_scope') }}</th>
+              <th x-show="canManage" class="px-2 py-1"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="a in sortedAliases" :key="a.id">
+              <tr class="border-t border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300">
+                <td class="px-2 py-1.5">
+                  <div class="flex items-center gap-2">
+                    <span :style="{ backgroundColor: a.hex }"
+                          class="inline-block w-3.5 h-3.5 rounded-sm border border-gray-300 dark:border-gray-600 flex-shrink-0"></span>
+                    <span x-text="a.name"></span>
+                  </div>
+                </td>
+                <td class="px-2 py-1.5 font-mono text-xs" x-text="a.hex"></td>
+                <td class="px-2 py-1.5 text-xs text-gray-500 dark:text-gray-400" x-text="aliasScope(a)"></td>
+                <td x-show="canManage" class="px-2 py-1.5 text-right">
+                  <button @click="deleteAlias(a)"
+                          class="text-xs text-red-400 hover:text-red-600 hover:underline">{{ _('common.remove') }}</button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <p x-show="colorAliases.length === 0" class="text-sm text-gray-400 dark:text-gray-500 mb-4">{{ _('filament.no_aliases') }}</p>
+      <div x-show="canManage">
+        <div x-show="aliasError" class="mb-2 text-xs text-red-600 dark:text-red-400" x-text="aliasError"></div>
+        <form @submit.prevent="addAlias()" class="flex flex-wrap items-center gap-2">
+          <input type="color" :value="isHexColor(aliasForm.hex) ? aliasForm.hex : '#000000'"
+                 @input="aliasForm.hex = $event.target.value.toUpperCase()"
+                 class="h-8 w-10 border dark:border-gray-700 rounded cursor-pointer bg-transparent">
+          <input type="text" x-model="aliasForm.hex" required maxlength="7" pattern="#[0-9a-fA-F]{6}" placeholder="#000000"
+                 class="w-24 border dark:border-gray-700 rounded px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <input type="text" x-model="aliasForm.name" required maxlength="50" placeholder="{{ _('filament.aliases_placeholder') }}"
+                 class="flex-1 min-w-[8rem] border dark:border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <select x-model="aliasForm.brand_id"
+                  class="border dark:border-gray-700 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-800">
+            <option value="">{{ _('filament.filter_brand_all') }}</option>
+            <template x-for="b in brands" :key="b.id">
+              <option :value="b.id" x-text="b.name"></option>
+            </template>
+          </select>
+          <select x-model="aliasForm.type_id"
+                  class="border dark:border-gray-700 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-800">
+            <option value="">{{ _('filament.filter_type_all') }}</option>
+            <template x-for="t in types" :key="t.id">
+              <option :value="t.id" x-text="t.name"></option>
+            </template>
+          </select>
+          <button type="submit"
+                  class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">{{ _('common.add') }}</button>
+        </form>
+      </div>
+    </div>
   </div>
 
   <p class="text-xs text-gray-400 dark:text-gray-500 mb-8">{{ _('filament.device_hint') }}</p>
@@ -340,12 +411,15 @@
 </div>
 
 <script>
+const ALIAS_SCOPE_ALL_L = {{ _('filament.aliases_scope_all') | tojson }};
+const ALIAS_CONFIRM_REMOVE_L = {{ _('filament.confirm_remove_alias') | tojson }};
 function filamentManage(canManage, loggedIn) {
   return {
     canManage: canManage,
     loggedIn: loggedIn,
     brands: [],
     types: [],
+    colorAliases: [],
     summary: [],
     rolls: [],
     loadingSummary: true,
@@ -362,10 +436,12 @@ function filamentManage(canManage, loggedIn) {
     rollsSort: makeSort(),
     brandListSort: makeSort(),
     typeListSort: makeSort(),
+    aliasListSort: makeSort(),
     get sortedSummary() { return this.summarySort.apply(this.summary, (row, key) => key === 'color' ? this.colorSortKey(row.color) : row[key]); },
     get sortedRolls() { return this.rollsSort.apply(this.rolls, (row, key) => key === 'color' ? this.colorSortKey(row.color) : row[key]); },
     get sortedBrands() { return this.brandListSort.apply(this.brands); },
     get sortedTypes() { return this.typeListSort.apply(this.types); },
+    get sortedAliases() { return this.aliasListSort.apply(this.colorAliases); },
 
     // Sorting by the raw hex STRING would cluster colors by numeric RGB
     // value (dominated by the most-significant Red digits) rather than
@@ -408,6 +484,8 @@ function filamentManage(canManage, loggedIn) {
     brandError: null,
     newTypeName: '',
     typeError: null,
+    aliasForm: { hex: '', name: '', brand_id: '', type_id: '' },
+    aliasError: null,
 
     showAddModal: false,
     addError: null,
@@ -437,12 +515,14 @@ function filamentManage(canManage, loggedIn) {
       try {
         await this.loadSummary();
         if (this.loggedIn) {
-          const [brands, types] = await Promise.all([
+          const [brands, types, aliases] = await Promise.all([
             apiFetch('/api/v1/filament/brands').then(r => r.ok ? r.json() : Promise.reject('brands')),
             apiFetch('/api/v1/filament/types').then(r => r.ok ? r.json() : Promise.reject('types')),
+            apiFetch('/api/v1/filament/color-aliases').then(r => r.ok ? r.json() : Promise.reject('color-aliases')),
           ]);
           this.brands = brands;
           this.types = types;
+          this.colorAliases = aliases;
           await this.loadRolls();
         } else {
           this.loadingRolls = false;
@@ -570,6 +650,62 @@ function filamentManage(canManage, loggedIn) {
       const data = await resp.json();
       if (!resp.ok) { this.error = data.detail || 'Error'; return; }
       await this.reloadAll();
+    },
+
+    // "Alle Marken · Hyper PLA" style scope label; an unscoped alias applies
+    // to every brand and type.
+    aliasScope(a) {
+      const parts = [a.brand_name, a.type_name].filter(Boolean);
+      return parts.length ? parts.join(' · ') : ALIAS_SCOPE_ALL_L;
+    },
+
+    // An alias changes how existing rolls are displayed, so both roll lists
+    // have to be re-fetched along with the alias list itself.
+    async reloadAliasesAndRolls() {
+      const [aliases] = await Promise.all([
+        apiFetch('/api/v1/filament/color-aliases').then(r => r.ok ? r.json() : this.colorAliases),
+        this.reloadAll(),
+      ]);
+      this.colorAliases = aliases;
+    },
+
+    async addAlias() {
+      this.aliasError = null;
+      try {
+        const r = await apiFetch('/api/v1/filament/color-aliases', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            hex: this.aliasForm.hex,
+            name: this.aliasForm.name,
+            brand_id: this.aliasForm.brand_id ? parseInt(this.aliasForm.brand_id) : null,
+            type_id: this.aliasForm.type_id ? parseInt(this.aliasForm.type_id) : null,
+          }),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          this.aliasError = typeof data.detail === 'string' ? data.detail : 'Error';
+          return;
+        }
+        this.aliasForm = { hex: '', name: '', brand_id: '', type_id: '' };
+        await this.reloadAliasesAndRolls();
+      } catch (e) {
+        this.aliasError = e.message;
+      }
+    },
+
+    async deleteAlias(a) {
+      const msg = ALIAS_CONFIRM_REMOVE_L.replace('{name}', a.name);
+      if (!confirm(msg)) return;
+      this.aliasError = null;
+      try {
+        const r = await apiFetch(`/api/v1/filament/color-aliases/${a.id}`, { method: 'DELETE' });
+        const data = await r.json();
+        if (!r.ok) { this.aliasError = data.detail || 'Error'; return; }
+        await this.reloadAliasesAndRolls();
+      } catch (e) {
+        this.aliasError = e.message;
+      }
     },
 
     async addBrand() {

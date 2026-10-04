@@ -28,6 +28,34 @@ class FilamentType(Base):
     rolls: Mapped[list["FilamentRoll"]] = relationship("FilamentRoll", back_populates="type")
 
 
+class FilamentColorAlias(Base):
+    """Display name for a "#RRGGBB" roll color (e.g. "#000000" -> "Schwarz").
+
+    Purely presentational: filament_rolls.color keeps the raw value it was
+    stored with, the alias is resolved at read time. brand_id/type_id are
+    optional scopes (NULL = applies to any brand/type) so the same hex can be
+    named differently per product line; the most specific match wins (see
+    app/api/v1/filament.py::_color_name_resolver). Uniqueness of
+    (hex, brand_id, type_id) is checked in the API layer — a DB unique
+    constraint would not hold with NULL scope columns on MariaDB.
+    """
+
+    __tablename__ = "filament_color_aliases"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    hex: Mapped[str] = mapped_column(String(7), nullable=False, index=True)  # normalized "#RRGGBB", uppercase
+    name: Mapped[str] = mapped_column(String(50), nullable=False)
+    brand_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("filament_brands.id", ondelete="CASCADE"), nullable=True
+    )
+    type_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("filament_types.id", ondelete="CASCADE"), nullable=True
+    )
+
+    brand: Mapped[Optional["FilamentBrand"]] = relationship("FilamentBrand")
+    type: Mapped[Optional["FilamentType"]] = relationship("FilamentType")
+
+
 class FilamentRoll(Base):
     """One physical spool. Never deleted — Ausbuchen sets removed_at, mirroring
     rentals' rented_at/returned_at pattern, so a mistaken removal can be undone

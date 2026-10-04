@@ -796,5 +796,12 @@
   "filament.serial_hint": "Only one roll can be added at a time when a serial number is given.",
   "filament.no_brands_or_types_warn": "Please create at least one brand and one type first.",
   "filament.weight_unit_hint": "in grams, e.g. 1000",
-  "filament.device_hint": "To register an ESP32 filament station, add it under Machines with device type 'filament_station'."
+  "filament.device_hint": "To register an ESP32 filament station, add it under Machines with device type 'filament_station'.",
+  "filament.aliases_title": "Color names",
+  "filament.aliases_hint": "Shows a name instead of a hex code, e.g. #000000 → Black. Without a brand/type the name applies everywhere; one limited to a brand or type takes precedence.",
+  "filament.aliases_scope": "Applies to",
+  "filament.aliases_scope_all": "All brands and types",
+  "filament.aliases_placeholder": "Color name, e.g. Black",
+  "filament.no_aliases": "No color names defined yet.",
+  "filament.confirm_remove_alias": "Really delete color name '{name}'?"
 }

@@ -491,3 +491,124 @@ def test_filament_page_renders_for_admin(admin_client):
     resp = admin_client.get("/filament")
     assert resp.status_code == 200
     assert "filamentManage(true, true)" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Color aliases
+# ---------------------------------------------------------------------------
+
+def _add_roll(client, brand, ftype, color):
+    resp = client.post(
+        "/api/v1/filament/rolls",
+        json={"brand_id": brand.id, "type_id": ftype.id, "weight_grams": 1000, "color": color},
+    )
+    assert resp.status_code == 201
+    return resp.json()[0]
+
+
+def _add_alias(client, **body):
+    return client.post("/api/v1/filament/color-aliases", json=body)
+
+
+def test_color_aliases_readable_by_any_session_user(treasurer_client):
+    assert treasurer_client.get("/api/v1/filament/color-aliases").status_code == 200
+
+
+def test_create_color_alias_requires_product_manager(treasurer_client):
+    resp = _add_alias(treasurer_client, hex="#000000", name="Schwarz")
+    assert resp.status_code == 403
+
+
+def test_create_color_alias_normalizes_hex_and_lists(product_manager_client):
+    resp = _add_alias(product_manager_client, hex="#ff00aa", name=" Pink ")
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["hex"] == "#FF00AA"
+    assert body["name"] == "Pink"
+    assert body["brand_id"] is None and body["type_id"] is None
+    listed = product_manager_client.get("/api/v1/filament/color-aliases").json()
+    assert [a["hex"] for a in listed] == ["#FF00AA"]
+
+
+def test_create_color_alias_rejects_non_hex(product_manager_client):
+    assert _add_alias(product_manager_client, hex="schwarz", name="Schwarz").status_code == 422
+    assert _add_alias(product_manager_client, hex="#12345", name="Kurz").status_code == 422
+
+
+def test_create_color_alias_duplicate_scope_conflicts(product_manager_client, brand):
+    assert _add_alias(product_manager_client, hex="#000000", name="Schwarz").status_code == 201
+    assert _add_alias(product_manager_client, hex="#000000", name="Black").status_code == 409
+    # Same hex but a different scope is a distinct alias.
+    assert _add_alias(product_manager_client, hex="#000000", name="Tiefschwarz", brand_id=brand.id).status_code == 201
+    assert _add_alias(product_manager_client, hex="#000000", name="Noch eins", brand_id=brand.id).status_code == 409
+
+
+def test_create_color_alias_unknown_brand_or_type_404(product_manager_client):
+    assert _add_alias(product_manager_client, hex="#000000", name="X", brand_id=999).status_code == 404
+    assert _add_alias(product_manager_client, hex="#000000", name="X", type_id=999).status_code == 404
+
+
+def test_delete_color_alias(product_manager_client):
+    alias_id = _add_alias(product_manager_client, hex="#000000", name="Schwarz").json()["id"]
+    assert product_manager_client.delete(f"/api/v1/filament/color-aliases/{alias_id}").status_code == 200
+    assert product_manager_client.get("/api/v1/filament/color-aliases").json() == []
+    assert product_manager_client.delete(f"/api/v1/filament/color-aliases/{alias_id}").status_code == 404
+
+
+def test_roll_and_summary_show_alias_but_keep_raw_color(product_manager_client, client, brand, ftype):
+    _add_alias(product_manager_client, hex="#000000", name="Schwarz")
+    roll = _add_roll(product_manager_client, brand, ftype, "#000000")
+    assert roll["color"] == "#000000"
+    assert roll["color_name"] == "Schwarz"
+
+    listed = product_manager_client.get("/api/v1/filament/rolls").json()
+    assert listed[0]["color_name"] == "Schwarz"
+
+    # The public summary resolves it too (anonymous client).
+    summary = client.get("/api/v1/filament/rolls/summary").json()
+    assert summary[0]["color"] == "#000000"
+    assert summary[0]["color_name"] == "Schwarz"
+
+
+def test_alias_match_is_case_insensitive_and_ignores_non_hex(product_manager_client, brand, ftype):
+    _add_alias(product_manager_client, hex="#00FF00", name="Grün")
+    assert _add_roll(product_manager_client, brand, ftype, "#00ff00")["color_name"] == "Grün"
+    assert _add_roll(product_manager_client, brand, ftype, "Grün")["color_name"] is None
+
+
+def test_alias_without_match_has_no_color_name(product_manager_client, brand, ftype):
+    assert _add_roll(product_manager_client, brand, ftype, "#123456")["color_name"] is None
+
+
+def test_most_specific_alias_wins(product_manager_client, db, brand, ftype):
+    other_type = FilamentType(name="PETG")
+    db.add(other_type)
+    db.commit()
+    _add_alias(product_manager_client, hex="#000000", name="Schwarz")
+    _add_alias(product_manager_client, hex="#000000", name="Marken-Schwarz", brand_id=brand.id)
+    _add_alias(product_manager_client, hex="#000000", name="Hyper-Schwarz", type_id=ftype.id)
+
+    # type-scoped beats brand-scoped beats unscoped
+    assert _add_roll(product_manager_client, brand, ftype, "#000000")["color_name"] == "Hyper-Schwarz"
+    # other type of the same brand: brand-scoped alias applies
+    assert _add_roll(product_manager_client, brand, other_type, "#000000")["color_name"] == "Marken-Schwarz"
+
+
+def test_alias_scope_does_not_leak_to_other_brand(product_manager_client, db, brand, ftype):
+    other_brand = FilamentBrand(name="Bambu Lab")
+    db.add(other_brand)
+    db.commit()
+    _add_alias(product_manager_client, hex="#000000", name="Marken-Schwarz", brand_id=brand.id)
+    assert _add_roll(product_manager_client, other_brand, ftype, "#000000")["color_name"] is None
+
+
+def test_deleting_brand_removes_its_scoped_aliases(product_manager_client, brand):
+    _add_alias(product_manager_client, hex="#000000", name="Marken-Schwarz", brand_id=brand.id)
+    assert product_manager_client.delete(f"/api/v1/filament/brands/{brand.id}").status_code == 200
+    assert product_manager_client.get("/api/v1/filament/color-aliases").json() == []
+
+
+def test_deleting_type_removes_its_scoped_aliases(product_manager_client, ftype):
+    _add_alias(product_manager_client, hex="#000000", name="Hyper-Schwarz", type_id=ftype.id)
+    assert product_manager_client.delete(f"/api/v1/filament/types/{ftype.id}").status_code == 200
+    assert product_manager_client.get("/api/v1/filament/color-aliases").json() == []

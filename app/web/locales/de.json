@@ -796,5 +796,12 @@
   "filament.serial_hint": "Bei Angabe kann nur eine Rolle auf einmal angelegt werden.",
   "filament.no_brands_or_types_warn": "Bitte zuerst mindestens eine Marke und einen Typ anlegen.",
   "filament.weight_unit_hint": "in Gramm, z. B. 1000",
-  "filament.device_hint": "Registrierung eines ESP32-Filament-Terminals: unter Maschinen als Gerätetyp 'filament_station' registrieren."
+  "filament.device_hint": "Registrierung eines ESP32-Filament-Terminals: unter Maschinen als Gerätetyp 'filament_station' registrieren.",
+  "filament.aliases_title": "Farbnamen",
+  "filament.aliases_hint": "Zeigt statt eines Hex-Codes einen Namen an, z. B. #000000 → Schwarz. Ohne Marke/Typ gilt der Name überall; ein auf Marke oder Typ eingeschränkter Name hat Vorrang.",
+  "filament.aliases_scope": "Gilt für",
+  "filament.aliases_scope_all": "Alle Marken und Typen",
+  "filament.aliases_placeholder": "Farbname, z. B. Schwarz",
+  "filament.no_aliases": "Noch keine Farbnamen angelegt.",
+  "filament.confirm_remove_alias": "Farbnamen '{name}' wirklich löschen?"
 }

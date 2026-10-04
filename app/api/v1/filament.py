@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from typing import Literal, Optional
+from typing import Callable, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
@@ -7,10 +7,12 @@ from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_device, require_product_manager_user, require_session_user
 from app.database import get_db
-from app.models.filament import FilamentBrand, FilamentRoll, FilamentType
+from app.models.filament import FilamentBrand, FilamentColorAlias, FilamentRoll, FilamentType
 from app.models.machine import Machine
 from app.schemas.common import HTTP_400, HTTP_403, HTTP_404, HTTP_409, MessageResponse
 from app.schemas.filament import (
+    FilamentColorAliasCreate,
+    FilamentColorAliasResponse,
     FilamentBrandCreate,
     FilamentBrandResponse,
     FilamentManualActionRequest,
@@ -33,7 +35,35 @@ def _now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-def _roll_response(roll: FilamentRoll) -> FilamentRollResponse:
+ColorNameResolver = Callable[[int, int, str], Optional[str]]
+
+
+def _color_name_resolver(db: Session) -> ColorNameResolver:
+    """Loads every alias once and returns a (brand_id, type_id, color) -> name
+    lookup. The most specific alias wins: a type-scoped one beats a
+    brand-scoped one, which beats an unscoped one. Only "#RRGGBB" colors can
+    match; the hex comparison is case-insensitive."""
+    aliases = db.query(FilamentColorAlias).all()
+
+    def resolve(brand_id: int, type_id: int, color: str) -> Optional[str]:
+        key = (color or "").upper()
+        best, best_score = None, -1
+        for a in aliases:
+            if a.hex != key:
+                continue
+            if a.brand_id is not None and a.brand_id != brand_id:
+                continue
+            if a.type_id is not None and a.type_id != type_id:
+                continue
+            score = (2 if a.type_id is not None else 0) + (1 if a.brand_id is not None else 0)
+            if score > best_score:
+                best, best_score = a.name, score
+        return best
+
+    return resolve
+
+
+def _roll_response(roll: FilamentRoll, resolver: Optional[ColorNameResolver] = None) -> FilamentRollResponse:
     return FilamentRollResponse(
         id=roll.id,
         brand_id=roll.brand_id,
@@ -42,6 +72,7 @@ def _roll_response(roll: FilamentRoll) -> FilamentRollResponse:
         type_name=roll.type.name,
         weight_grams=roll.weight_grams,
         color=roll.color,
+        color_name=resolver(roll.brand_id, roll.type_id, roll.color) if resolver else None,
         vendor_serial=roll.vendor_serial,
         added_at=roll.added_at,
         added_by=roll.added_by,
@@ -119,6 +150,10 @@ def delete_brand(
         raise HTTPException(status_code=404, detail="Brand not found")
     if db.query(FilamentRoll).filter(FilamentRoll.brand_id == brand_id).first():
         raise HTTPException(status_code=409, detail="Brand is in use by one or more filament rolls")
+    # Scoped aliases go with the brand — explicit rather than relying on the
+    # FK's ON DELETE CASCADE, which SQLite doesn't enforce; an orphaned alias
+    # would otherwise read as an unscoped one.
+    db.query(FilamentColorAlias).filter(FilamentColorAlias.brand_id == brand_id).delete()
     db.delete(brand)
     db.commit()
     return {"detail": f"Brand '{brand.name}' deleted"}
@@ -163,9 +198,77 @@ def delete_type(
         raise HTTPException(status_code=404, detail="Type not found")
     if db.query(FilamentRoll).filter(FilamentRoll.type_id == type_id).first():
         raise HTTPException(status_code=409, detail="Type is in use by one or more filament rolls")
+    db.query(FilamentColorAlias).filter(FilamentColorAlias.type_id == type_id).delete()
     db.delete(type_)
     db.commit()
     return {"detail": f"Type '{type_.name}' deleted"}
+
+
+# ---------------------------------------------------------------------------
+# Color aliases (display names for hex colors)
+# ---------------------------------------------------------------------------
+
+def _alias_response(a: FilamentColorAlias) -> FilamentColorAliasResponse:
+    return FilamentColorAliasResponse(
+        id=a.id,
+        hex=a.hex,
+        name=a.name,
+        brand_id=a.brand_id,
+        brand_name=a.brand.name if a.brand else None,
+        type_id=a.type_id,
+        type_name=a.type.name if a.type else None,
+    )
+
+
+@router.get("/color-aliases", response_model=list[FilamentColorAliasResponse])
+def list_color_aliases(
+    user: dict = Depends(require_session_user),
+    db: Session = Depends(get_db),
+):
+    aliases = db.query(FilamentColorAlias).order_by(FilamentColorAlias.name, FilamentColorAlias.hex).all()
+    return [_alias_response(a) for a in aliases]
+
+
+@router.post(
+    "/color-aliases", response_model=FilamentColorAliasResponse, status_code=201,
+    responses={**HTTP_404, **HTTP_409},
+)
+def create_color_alias(
+    body: FilamentColorAliasCreate,
+    user: dict = Depends(require_product_manager_user),
+    db: Session = Depends(get_db),
+):
+    if body.brand_id is not None and not db.query(FilamentBrand).filter(FilamentBrand.id == body.brand_id).first():
+        raise HTTPException(status_code=404, detail="Brand not found")
+    if body.type_id is not None and not db.query(FilamentType).filter(FilamentType.id == body.type_id).first():
+        raise HTTPException(status_code=404, detail="Type not found")
+    hex_ = body.hex.upper()
+    exists = db.query(FilamentColorAlias).filter(
+        FilamentColorAlias.hex == hex_,
+        FilamentColorAlias.brand_id.is_(None) if body.brand_id is None else FilamentColorAlias.brand_id == body.brand_id,
+        FilamentColorAlias.type_id.is_(None) if body.type_id is None else FilamentColorAlias.type_id == body.type_id,
+    ).first()
+    if exists:
+        raise HTTPException(status_code=409, detail="An alias for this color and scope already exists")
+    alias = FilamentColorAlias(hex=hex_, name=body.name.strip(), brand_id=body.brand_id, type_id=body.type_id)
+    db.add(alias)
+    db.commit()
+    db.refresh(alias)
+    return _alias_response(alias)
+
+
+@router.delete("/color-aliases/{alias_id}", response_model=MessageResponse, responses={**HTTP_404})
+def delete_color_alias(
+    alias_id: int,
+    user: dict = Depends(require_product_manager_user),
+    db: Session = Depends(get_db),
+):
+    alias = db.query(FilamentColorAlias).filter(FilamentColorAlias.id == alias_id).first()
+    if not alias:
+        raise HTTPException(status_code=404, detail="Alias not found")
+    db.delete(alias)
+    db.commit()
+    return {"detail": f"Alias '{alias.name}' deleted"}
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +293,8 @@ def list_rolls(
     if type_id is not None:
         query = query.filter(FilamentRoll.type_id == type_id)
     rolls = query.order_by(FilamentRoll.added_at.desc()).all()
-    return [_roll_response(r) for r in rolls]
+    resolver = _color_name_resolver(db)
+    return [_roll_response(r, resolver) for r in rolls]
 
 
 @router.get("/rolls/summary", response_model=list[FilamentStockSummary])
@@ -214,6 +318,7 @@ def rolls_summary(
     )
     brands = {b.id: b.name for b in db.query(FilamentBrand).all()}
     types = {t.id: t.name for t in db.query(FilamentType).all()}
+    resolver = _color_name_resolver(db)
     result = [
         FilamentStockSummary(
             brand_id=brand_id,
@@ -222,6 +327,7 @@ def rolls_summary(
             type_name=types.get(type_id, "?"),
             weight_grams=weight_grams,
             color=color,
+            color_name=resolver(brand_id, type_id, color),
             count_in_stock=count,
         )
         for brand_id, type_id, weight_grams, color, count in rows
@@ -267,7 +373,8 @@ def create_rolls(
     db.commit()
     for r in created:
         db.refresh(r)
-    return [_roll_response(r) for r in created]
+    resolver = _color_name_resolver(db)
+    return [_roll_response(r, resolver) for r in created]
 
 
 @router.put("/rolls/{roll_id}", response_model=FilamentRollResponse, responses={**HTTP_400, **HTTP_404, **HTTP_409})
@@ -299,7 +406,7 @@ def update_roll(
         roll.vendor_serial = new_serial
     db.commit()
     db.refresh(roll)
-    return _roll_response(roll)
+    return _roll_response(roll, _color_name_resolver(db))
 
 
 @router.post("/rolls/{roll_id}/remove", response_model=FilamentRollResponse, responses={**HTTP_404, **HTTP_409})
@@ -318,7 +425,7 @@ def remove_roll(
     roll.removed_by = user.get("sub")
     db.commit()
     db.refresh(roll)
-    return _roll_response(roll)
+    return _roll_response(roll, _color_name_resolver(db))
 
 
 @router.post("/rolls/{roll_id}/restore", response_model=FilamentRollResponse, responses={**HTTP_400, **HTTP_404})
@@ -342,7 +449,7 @@ def restore_roll(
     roll.removed_by = None
     db.commit()
     db.refresh(roll)
-    return _roll_response(roll)
+    return _roll_response(roll, _color_name_resolver(db))
 
 
 # ---------------------------------------------------------------------------
