@@ -3816,7 +3816,38 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       if (idx !== -1) {
         this.entries.splice(idx, 1);
         this.entriesTotal = Math.max(0, this.entriesTotal - 1);
+        this.backfillEntries();
       }
+    },
+
+    // Refills the current page after rows were removed locally, using the
+    // same filters at the offset right behind the rows still shown, and
+    // steps back one page when the current page ended up empty (e.g. the
+    // last row of page 2 was filtered out). Serialized through one promise
+    // chain so back-to-back removals can't fetch overlapping ranges.
+    backfillEntries() {
+      this._entriesBackfillChain = (this._entriesBackfillChain || Promise.resolve()).then(async () => {
+        const needed = PAGE_SIZE - this.entries.length;
+        if (needed > 0) {
+          const offset = (this.entriesPage - 1) * PAGE_SIZE + this.entries.length;
+          try {
+            const r = await apiFetch(`/api/v1/ledger/entries?${this.entriesQueryParams()}&limit=${needed}&offset=${offset}`);
+            if (r.ok) {
+              const known = new Set(this.entries.map(e => e.id));
+              this.entries.push(...(await r.json()).filter(e => !known.has(e.id)));
+              const total = Number(r.headers.get('X-Total-Count'));
+              if (total) this.entriesTotal = total;
+            }
+          } catch (e) {
+            // non-critical — the page stays short until the next reload
+          }
+        }
+        if (this.entries.length === 0 && this.entriesPage > 1) {
+          this.entriesPage--;
+          await this.loadEntries();
+        }
+      });
+      return this._entriesBackfillChain;
     },
 
     paperlessDocUrl(docId) {
@@ -4771,6 +4802,11 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       this.importLinesTotal = Math.max(0, this.importLinesTotal - 1);
       this.loadOpenImportCount();
       await this.backfillImportLines();
+      if (this.importLines.length === 0 && this.importLinesPage > 1) {
+        this.importLinesPage--;
+        await this.loadImportLines();
+        return null;
+      }
       return this.importLines[idx] || null;
     },
 
@@ -4781,7 +4817,12 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         const offset = (this.importLinesPage - 1) * PAGE_SIZE + this.importLines.length;
         try {
           const r = await apiFetch(`/api/v1/ledger/import/lines?${this.importLinesQueryParams()}&limit=${needed}&offset=${offset}`);
-          if (r.ok) this.importLines.push(...(await r.json()));
+          if (r.ok) {
+            const known = new Set(this.importLines.map(l => l.id));
+            this.importLines.push(...(await r.json()).filter(l => !known.has(l.id)));
+            const total = Number(r.headers.get('X-Total-Count'));
+            if (total) this.importLinesTotal = total;
+          }
         } catch (e) {
           // non-critical — worst case the page stays a bit short until the next reload
         }
