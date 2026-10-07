@@ -1,3 +1,6 @@
+from datetime import date
+from typing import Optional
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -44,6 +47,13 @@ class Settings(BaseSettings):
     # Vereine — disable for commercial installations (e.g. a for-profit FabLab)
     # that don't need Sphärentrennung.
     LEDGER_SPHERES_ENABLED: bool = True
+
+    # First day the ledger is the book of record. Earlier years were kept in
+    # another system, so the year pickers for the yearly reports (EÜR,
+    # Anlagenspiegel, Kontostände, Mittelverwendung) start at this date's year
+    # and the report endpoints reject earlier years. Empty = no limit (the
+    # pickers reach back to the first booking/transaction).
+    LEDGER_START_DATE: Optional[date] = None
 
     # Paperless-ngx document linking for ledger entries. Empty = disabled (search
     # UI hides itself; POST/GET a paperless_document_id still works as a plain

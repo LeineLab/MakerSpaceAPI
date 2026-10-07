@@ -1609,3 +1609,47 @@ def test_account_balances_by_year_excludes_untracked_account(treasurer_client, d
     resp = treasurer_client.get("/api/v1/ledger/report/kontostaende?year=2026")
     assert resp.status_code == 200
     assert untracked.id not in [r["account_id"] for r in resp.json()["rows"]]
+
+
+def test_start_date_limits_yearly_reports(treasurer_client, monkeypatch):
+    from datetime import date
+
+    from app.config import settings
+
+    cfg = treasurer_client.get("/api/v1/ledger/config").json()
+    assert cfg["start_year"] is None
+
+    monkeypatch.setattr(settings, "LEDGER_START_DATE", date(2026, 1, 1))
+    assert treasurer_client.get("/api/v1/ledger/config").json()["start_year"] == 2026
+
+    for path in (
+        "/api/v1/ledger/report/euer",
+        "/api/v1/ledger/report/euer/pdf",
+        "/api/v1/ledger/report/anlagenspiegel",
+        "/api/v1/ledger/report/anlagenspiegel/pdf",
+        "/api/v1/ledger/report/kontostaende",
+        "/api/v1/ledger/report/mittelverwendung",
+    ):
+        assert treasurer_client.get(path, params={"year": 2025}).status_code == 400, path
+        assert treasurer_client.get(path, params={"year": 2026}).status_code == 200, path
+
+
+def test_config_first_data_year_from_earliest_entry(treasurer_client, db, income_category):
+    assert treasurer_client.get("/api/v1/ledger/config").json()["first_data_year"] is None
+
+    account = BankAccount(iban="DE02120300000000202051", name="Giro", opening_balance=Decimal("0.00"))
+    db.add(account)
+    db.commit()
+    for d in ("2024-03-01", "2026-01-05"):
+        treasurer_client.post(
+            "/api/v1/ledger/entries",
+            json={
+                "entry_date": d,
+                "description": "x",
+                "lines": [
+                    {"bank_account_id": account.id, "amount": "10.00"},
+                    {"category_id": income_category.id, "amount": "-10.00"},
+                ],
+            },
+        )
+    assert treasurer_client.get("/api/v1/ledger/config").json()["first_data_year"] == 2024

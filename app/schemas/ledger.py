@@ -123,6 +123,10 @@ class LedgerConfigResponse(BaseModel):
     paperless_enabled: bool
     paperless_url: Optional[str] = None
     fints_enabled: bool
+    # Year of LEDGER_START_DATE (None = unset); limits the yearly reports.
+    start_year: Optional[int] = None
+    # Year of the earliest booking/staged transaction (None = no data yet).
+    first_data_year: Optional[int] = None
 
 
 class LedgerEntryLineCreate(BaseModel):

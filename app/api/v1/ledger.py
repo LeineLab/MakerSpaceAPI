@@ -119,10 +119,36 @@ router = APIRouter()
 _sync_bearer = HTTPBearer(auto_error=False)
 
 
+def _first_data_year(db: Session) -> Optional[int]:
+    """Year of the earliest booking or staged bank transaction, if any."""
+    dates = [
+        db.query(func.min(LedgerEntry.entry_date)).scalar(),
+        db.query(func.min(LedgerImportLine.booking_date)).scalar(),
+    ]
+    years = [d.year for d in dates if d is not None]
+    return min(years) if years else None
+
+
+def _require_report_year(year: int) -> None:
+    """Reject reports for years before LEDGER_START_DATE (bookkeeping for those
+    years lives in another system)."""
+    start = settings.LEDGER_START_DATE
+    if start is not None and year < start.year:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bookkeeping starts in {start.year}; no report available for {year}",
+        )
+
+
 @router.get("/config", response_model=LedgerConfigResponse)
-def get_config(_viewer: dict = Depends(require_ledger_viewer_user)):
+def get_config(
+    _viewer: dict = Depends(require_ledger_viewer_user),
+    db: Session = Depends(get_db),
+):
     """Frontend-facing feature flags (e.g. whether to show the Sphäre field)."""
     return LedgerConfigResponse(
+        start_year=settings.LEDGER_START_DATE.year if settings.LEDGER_START_DATE else None,
+        first_data_year=_first_data_year(db),
         spheres_enabled=settings.LEDGER_SPHERES_ENABLED,
         paperless_enabled=paperless.is_configured(),
         paperless_url=settings.PAPERLESS_URL if paperless.is_configured() else None,
@@ -1574,6 +1600,7 @@ def _compute_anlagenspiegel(db: Session, year: int) -> AnlagenspiegelResponse:
     so it can never drift from the numbers shown elsewhere. Assets with no
     activity relevant to `year` (not yet acquired, or fully disposed of
     before it started) are omitted."""
+    _require_report_year(year)
     assets = (
         db.query(LedgerAsset)
         .options(joinedload(LedgerAsset.category), joinedload(LedgerAsset.components))
@@ -1918,6 +1945,7 @@ def _compute_euer_report(db: Session, year: int, cumulative: bool = False) -> Eu
     than one year's installment) — used by the Mittelverwendungsrechnung to
     get a running Vortrag without a second aggregation implementation that
     could drift out of sync with this one."""
+    _require_report_year(year)
     capitalized_by_line: dict[int, Decimal] = {}
     for entry_line_id, amount in db.query(
         LedgerAssetComponent.entry_line_id, func.sum(LedgerAssetComponent.amount)
@@ -2273,6 +2301,7 @@ def mittelverwendung_report(
     docstring for the underlying assumptions (which Sphären count toward
     "zeitnah zu verwendende Mittel", why reserve movements aren't real
     ledger_entries)."""
+    _require_report_year(year)
     cumulative_euer = _compute_euer_report(db, year, cumulative=True)
     relevant_net = sum(
         (
@@ -2429,6 +2458,7 @@ def account_balances_by_year(
     the same treatment untracked accounts already get everywhere else
     (excluded from the manual-entry/booking line pickers via the frontend's
     `trackedAccounts` getter, rejected by file/CSV/FinTS import)."""
+    _require_report_year(year)
     year_start = date(year, 1, 1)
     year_end = date(year, 12, 31)
     prev_year_end = date(year - 1, 12, 31)

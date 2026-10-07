@@ -518,7 +518,7 @@
         <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.report_year') }}</label>
         <select x-model.number="reportYear" @change="loadReport(); loadAccountBalancesYear()"
                 class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
-          <template x-for="y in yearOptions" :key="y">
+          <template x-for="y in reportYearOptions" :key="y">
             <option :value="y" x-text="y"></option>
           </template>
         </select>
@@ -1298,7 +1298,7 @@
         <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.report_year') }}</label>
         <select x-model.number="anlagenspiegelYear" @change="loadAnlagenspiegel()"
                 class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
-          <template x-for="y in yearOptions" :key="y">
+          <template x-for="y in reportYearOptions" :key="y">
             <option :value="y" x-text="y"></option>
           </template>
         </select>
@@ -1376,7 +1376,7 @@
       <label class="text-sm text-gray-500 dark:text-gray-400">{{ _('ledger.report_year') }}</label>
       <select x-model.number="mittelverwendungYear" @change="loadMittelverwendung()"
               class="border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
-        <template x-for="y in yearOptions" :key="y">
+        <template x-for="y in reportYearOptions" :key="y">
           <option :value="y" x-text="y"></option>
         </template>
       </select>
@@ -3086,7 +3086,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     userIsTreasurer,
     userCanWriteAuditReports,
     activeTab: INITIAL_TAB,
-    config: { spheres_enabled: true },
+    config: { spheres_enabled: true, start_year: null, first_data_year: null },
     // Shared by every modal's backdrop-click-to-close: a text-selection drag
     // that starts inside the modal and ends (mouseup) outside it still fires
     // a native `click` on the backdrop — @click.outside alone can't tell
@@ -3392,10 +3392,22 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       return this.trackedAccounts;
     },
 
+    // Buchungen: back to the first booking/transaction, regardless of
+    // LEDGER_START_DATE (earlier imported data should stay browsable).
     get yearOptions() {
+      return this.yearRange(this.config.first_data_year);
+    },
+
+    // Yearly reports: limited by LEDGER_START_DATE when set.
+    get reportYearOptions() {
+      return this.yearRange(this.config.start_year ?? this.config.first_data_year);
+    },
+
+    yearRange(firstYear) {
       const current = new Date().getFullYear();
+      const first = Math.min(firstYear ?? current, current);
       const years = [];
-      for (let y = current; y >= current - 5; y--) years.push(y);
+      for (let y = current; y >= first; y--) years.push(y);
       return years;
     },
 
