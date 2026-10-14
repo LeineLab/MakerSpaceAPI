@@ -3509,15 +3509,19 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     // tab (no click ever calls switchTab() in that case).
     loadTabData(tab) {
       if (tab === 'entries') this.loadEntries();
-      if (tab === 'report' && !this.report) this.loadReport();
-      if (tab === 'report' && !this.accountBalancesYear) this.loadAccountBalancesYear();
+      // Reload on every switch: bookings, assets or imports made in another
+      // tab change these figures, so a cached copy would be stale.
+      if (tab === 'report') {
+        this.loadReport();
+        this.loadAccountBalancesYear();
+      }
       if (tab === 'import') {
         this.loadImportLines();
         if (this.config.fints_enabled) this.loadFintsPresets();
       }
       if (tab === 'assets') {
         this.loadAssets();
-        if (!this.anlagenspiegel) this.loadAnlagenspiegel();
+        this.loadAnlagenspiegel();
       }
       if (tab === 'targets') {
         this.loadTargets();
@@ -3529,7 +3533,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
       if (tab === 'audit-reports') this.loadAuditReports();
       if (tab === 'belege') this.loadPaperlessDocuments();
-      if (tab === 'accounts') this.loadAccountBalances();
+      if (tab === 'accounts') this.loadAccounts();
+      if (tab === 'categories') this.loadCategories();
     },
 
     get importSummaryText() {
