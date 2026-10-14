@@ -215,11 +215,11 @@
                       <span x-text="lineTargetName(l)"></span>:
                       <span :class="parseFloat(l.amount) < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'"
                             x-text="fmtSigned(l.amount)"></span>
-                      <button x-show="userIsTreasurer && isCapitalizableLine(l) && lineRemainingCapitalizable(l) > 0.005"
+                      <button x-show="userIsTreasurer && !e.read_only && isCapitalizableLine(l) && lineRemainingCapitalizable(l) > 0.005"
                               @click.stop="openCapitalizeModal(l, e)"
                               :title="capitalizedAmountByLineId.has(l.id) ? CAPITALIZE_PARTIAL_L : CAPITALIZE_L"
                               class="ml-1 text-blue-600 dark:text-blue-400 hover:underline">🏷</button>
-                      <span x-show="isCapitalizableLine(l) && lineRemainingCapitalizable(l) <= 0.005 && capitalizedAmountByLineId.has(l.id)"
+                      <span x-show="!e.read_only && isCapitalizableLine(l) && lineRemainingCapitalizable(l) <= 0.005 && capitalizedAmountByLineId.has(l.id)"
                             :title="CAPITALIZE_L" class="ml-1">🏷</span>
                       <a x-show="l.paperless_document_id && config.paperless_url" :href="paperlessDocUrl(l.paperless_document_id)"
                          target="_blank" rel="noopener" @click.stop :title="l.paperless_document_id" class="ml-1 text-blue-600 dark:text-blue-400 hover:underline">📎</a>
@@ -257,11 +257,11 @@
                       {{ _('ledger.btn_unmark_reviewed') }}
                     </button>
                   </span>
-                  <button x-show="!e.reviewed_by && userCanWriteAuditReports" @click.stop="markEntryReviewed(e)"
+                  <button x-show="!e.read_only && !e.reviewed_by && userCanWriteAuditReports" @click.stop="markEntryReviewed(e)"
                           class="text-xs text-blue-600 dark:text-blue-400 hover:underline">
                     {{ _('ledger.btn_mark_reviewed') }}
                   </button>
-                  <span x-show="!e.reviewed_by && !userCanWriteAuditReports" class="text-gray-300 dark:text-gray-600">—</span>
+                  <span x-show="e.read_only || (!e.reviewed_by && !userCanWriteAuditReports)" class="text-gray-300 dark:text-gray-600">—</span>
                   <span x-show="e.review_note" :title="e.review_note" class="ml-1 cursor-help">📝</span>
                 </td>
                 <td class="px-4 py-3" x-show="userIsTreasurer">
@@ -269,7 +269,7 @@
                        — that link only ever lives on the original entry, so
                        chaining a second reversal on top would risk double-
                        booking once re-instated. -->
-                  <button x-show="!reversedByMap[e.id] && !e.reverses_entry_id" @click.stop="reverseEntry(e)"
+                  <button x-show="!e.read_only && !reversedByMap[e.id] && !e.reverses_entry_id" @click.stop="reverseEntry(e)"
                           class="text-xs text-red-600 dark:text-red-400 hover:underline">
                     {{ _('ledger.btn_reverse_entry') }}
                   </button>
@@ -292,7 +292,7 @@
                            auditor-writer, but its current value is shown
                            to every viewer (a treasurer should be able to
                            see what was flagged, just not edit it). -->
-                      <div x-show="userCanWriteAuditReports" class="mt-2">
+                      <div x-show="userCanWriteAuditReports && !e.read_only" class="mt-2">
                         <label class="block text-gray-400 dark:text-gray-500 mb-1">{{ _('ledger.review_note_label') }}</label>
                         <textarea x-model="e._noteDraft" rows="2" @click.stop
                                   placeholder="{{ _('ledger.review_note_placeholder') }}"

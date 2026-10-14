@@ -731,13 +731,10 @@ def test_euer_report_ignores_other_years(treasurer_client, db, donation_target, 
     assert resp.json()["total_income"] == "30.00"
 
 
-def test_euer_report_includes_cashless_topup(treasurer_client, db, donation_target, donation_category, test_user):
-    """A topup_cashless (#85 — e.g. a pre-MakerSpaceAPI QR-code/PayPal-
-    funded topup, never real physical cash) is still genuine income to the
-    Verein and must stay recognized in the EÜR exactly like a real cash
-    topup — only the Kassenbestand clearing account's own cash-in
-    computation excludes it (see test_clearing_account_balance_excludes_
-    cashless_topup below)."""
+def test_euer_report_ignores_cashless_topup(treasurer_client, db, donation_target, donation_category, test_user):
+    """A topup_cashless (a QR-code/PayPal-funded topup) is a voucher redemption:
+    the money arrived on a regular bank account and is booked there, so the
+    Kassen bridge must not recognize it as income a second time."""
     treasurer_client.put(f"/api/v1/ledger/targets/{donation_target.id}", json={"default_category_id": donation_category.id})
     db.add(Transaction(
         user_id=test_user.id, amount=Decimal("10.00"), type=TransactionType.topup_cashless,
@@ -746,7 +743,7 @@ def test_euer_report_includes_cashless_topup(treasurer_client, db, donation_targ
     db.commit()
 
     resp = treasurer_client.get("/api/v1/ledger/report/euer", params={"year": 2026})
-    assert resp.json()["total_income"] == "10.00"
+    assert resp.json()["total_income"] == "0.00"
 
 
 def test_euer_report_ignores_booked_payout_transfer(
@@ -1014,3 +1011,36 @@ def test_target_payouts_book_still_works_against_clearing_account(
     txn = _make_payout(db, donation_target, amount="20.00")
     resp = _book(treasurer_client, [txn.id], bank_account.id, "20.00")
     assert resp.status_code == 201
+
+
+def test_entries_list_includes_read_only_cash_in_events(
+    treasurer_client, db, donation_target, donation_category, clearing_account, test_user,
+):
+    """Bankomat cash-in events appear in the Buchungen list as read-only
+    pseudo entries: Kassenbestand debit against the target's category."""
+    treasurer_client.put(f"/api/v1/ledger/targets/{donation_target.id}", json={"default_category_id": donation_category.id})
+    cash = _make_cash_in(db, donation_target, TransactionType.topup, "25.00", when=datetime(2026, 3, 1, 10, 0))
+    db.add(Transaction(
+        user_id=test_user.id, amount=Decimal("10.00"), type=TransactionType.topup_cashless,
+        target_id=donation_target.id, created_at=datetime(2026, 3, 2),
+    ))
+    db.commit()
+
+    resp = treasurer_client.get("/api/v1/ledger/entries", params={"year": 2026})
+    assert resp.headers["X-Total-Count"] == "1"
+    by_tx = {e["source_transaction_id"]: e for e in resp.json()}
+    entry = by_tx[cash.id]
+    assert entry["read_only"] is True and entry["id"] < 0
+    amounts = {(l["bank_account_id"], l["category_id"]): l["amount"] for l in entry["lines"]}
+    assert amounts == {(clearing_account.id, None): "25.00", (None, donation_category.id): "-25.00"}
+
+    # filters that only stored entries can satisfy drop them; account/category filters apply
+    assert treasurer_client.get("/api/v1/ledger/entries", params={"reviewed": "false"}).json() == []
+    assert len(treasurer_client.get("/api/v1/ledger/entries", params={"bank_account_id": clearing_account.id}).json()) == 1
+    assert len(treasurer_client.get("/api/v1/ledger/entries", params={"year": 2025}).json()) == 0
+    assert treasurer_client.get("/api/v1/ledger/entries", params={"limit": 1, "offset": 1}).json() == []
+
+
+def test_entries_list_skips_cash_in_for_unmapped_target(treasurer_client, db, donation_target, clearing_account):
+    _make_cash_in(db, donation_target, TransactionType.topup, "25.00")
+    assert treasurer_client.get("/api/v1/ledger/entries").json() == []

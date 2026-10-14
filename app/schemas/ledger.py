@@ -200,6 +200,11 @@ class LedgerEntryResponse(BaseModel):
     # Discrepancy note — independent of reviewed_by/reviewed_at, set/
     # cleared via PUT .../review-note; survives an un-review.
     review_note: Optional[str] = None
+    # True for entries synthesized at read time from Bankomat cash-in
+    # transactions (negative id, negative line ids). They are not stored
+    # ledger entries, so they cannot be reversed, reviewed or capitalized.
+    read_only: bool = False
+    source_transaction_id: Optional[int] = None
     lines: list[LedgerEntryLineResponse]
     # The staged import line(s) this entry was booked from, if any (a
     # transfer booking can link both sides' staged lines to the same entry)

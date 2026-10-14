@@ -71,6 +71,7 @@ from app.schemas.ledger import (
     LedgerAuditReportUpdate,
     LedgerCategoryCreate,
     LedgerCategoryResponse,
+    LedgerEntryLineResponse,
     LedgerCategoryUpdate,
     LedgerConfigResponse,
     LedgerEntryCreate,
@@ -227,12 +228,12 @@ _CASH_IN_TRANSACTION_TYPES = (
     TransactionType.booking_target_adjustment,
 )
 
-# The superset used by _compute_euer_report() below to recognize Kassen
-# target events as income — includes topup_cashless on top of
-# _CASH_IN_TRANSACTION_TYPES, since a cashless topup is still genuine income
-# to the Verein (the money just never passed through physical cash) and
-# must stay recognized in the EÜR exactly like a real cash topup.
-_INCOME_RECOGNIZED_TRANSACTION_TYPES = _CASH_IN_TRANSACTION_TYPES + (TransactionType.topup_cashless,)
+# Used by _compute_euer_report() and the Buchungen list to recognize Kassen
+# target events as income. Same set as _CASH_IN_TRANSACTION_TYPES:
+# topup_cashless is excluded everywhere, since that money arrived on a regular
+# bank account and is booked there against its category — counting it here too
+# would recognize the same income twice.
+_INCOME_RECOGNIZED_TRANSACTION_TYPES = _CASH_IN_TRANSACTION_TYPES
 
 
 def _computed_balance(db: Session, account: BankAccount, as_of: date) -> Decimal:
@@ -743,6 +744,87 @@ def update_category(
 
 # --- Journal entries (Buchungssätze) ---
 
+_CASH_IN_TYPE_LABELS = {
+    TransactionType.topup: "Bareinzahlung",
+    TransactionType.booking_target_topup: "Einzahlung",
+    TransactionType.booking_target_adjustment: "Kassendifferenz",
+}
+
+
+def _virtual_cash_in_entries(
+    db: Session,
+    *,
+    year: Optional[int],
+    date_from: Optional[date],
+    date_to: Optional[date],
+    bank_account_id: Optional[int],
+    category_id: Optional[int],
+    q: Optional[str],
+) -> list[LedgerEntryResponse]:
+    """Bankomat cash-in events (topups, target topups, cash adjustments) as
+    read-only pseudo entries, so the Buchungen list shows the same events the
+    EÜR report folds in. They are never stored as ledger entries: the Kassen
+    transactions stay the single source of truth. Only targets with a default
+    category are included (the same ones the EÜR counts). Ids are negative to
+    never collide with real entries. A cash-in debits the Kassenbestand clearing
+    account and credits the target's category. Cashless topups are not included
+    (see _INCOME_RECOGNIZED_TRANSACTION_TYPES)."""
+    query = (
+        db.query(Transaction, BookingTarget)
+        .join(BookingTarget, Transaction.target_id == BookingTarget.id)
+        .filter(
+            Transaction.type.in_(_INCOME_RECOGNIZED_TRANSACTION_TYPES),
+            BookingTarget.default_category_id.isnot(None),
+        )
+    )
+    if year is not None:
+        query = query.filter(Transaction.created_at >= f"{year}-01-01", Transaction.created_at < f"{year + 1}-01-01")
+    if date_from is not None:
+        query = query.filter(Transaction.created_at >= date_from)
+    if date_to is not None:
+        query = query.filter(Transaction.created_at < date_to + timedelta(days=1))
+    rows = query.all()
+    if not rows:
+        return []
+
+    clearing = db.query(BankAccount).filter(BankAccount.is_cash_clearing_account.is_(True)).first()
+    category_ids = {t.default_category_id for _, t in rows}
+    categories = {c.id: c for c in db.query(LedgerCategory).filter(LedgerCategory.id.in_(category_ids)).all()}
+    clearing_resp = BankAccountResponse.model_validate(clearing) if clearing else None
+
+    result = []
+    for tx, target in rows:
+        category = categories.get(target.default_category_id)
+        if category is None:
+            continue
+        has_cash_line = clearing is not None
+        if bank_account_id is not None and not (has_cash_line and clearing.id == bank_account_id):
+            continue
+        if category_id is not None and category.id != category_id:
+            continue
+        description = f"Kasse {target.name}: {_CASH_IN_TYPE_LABELS[tx.type]}"
+        if tx.note:
+            description += f" ({tx.note})"
+        if q and q.lower() not in description.lower():
+            continue
+        lines = []
+        if has_cash_line:
+            lines.append(LedgerEntryLineResponse(
+                id=-(tx.id * 2), bank_account_id=clearing.id, category_id=None, amount=tx.amount,
+                note=None, bank_account=clearing_resp,
+            ))
+        lines.append(LedgerEntryLineResponse(
+            id=-(tx.id * 2 + 1), bank_account_id=None, category_id=category.id, amount=-tx.amount,
+            note=None, category=LedgerCategoryResponse.model_validate(category),
+        ))
+        result.append(LedgerEntryResponse(
+            id=-tx.id, entry_date=tx.created_at.date(), description=description, reverses_entry_id=None,
+            created_by="bankomat", created_at=tx.created_at, read_only=True,
+            source_transaction_id=tx.id, lines=lines,
+        ))
+    return result
+
+
 @router.get("/entries", response_model=list[LedgerEntryResponse])
 def list_entries(
     response: Response,
@@ -888,20 +970,37 @@ def list_entries(
             else LedgerEntry.reverses_entry_id.is_(None)
         )
     query = query.distinct()
-    response.headers["X-Total-Count"] = str(query.count())
-    entries = (
-        query.order_by(LedgerEntry.entry_date.desc(), LedgerEntry.id.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
+
+    # Bankomat cash-in events are merged in, except when a filter can only
+    # ever match stored entries (they have no review state, note, document,
+    # reversal link or fixed id).
+    include_virtual = (
+        ids is None and reviewed is None and paperless_document_id is None
+        and has_note is not True and has_document is not True and is_reversal is not True
     )
+    virtual = (
+        _virtual_cash_in_entries(
+            db, year=year, date_from=date_from, date_to=date_to,
+            bank_account_id=bank_account_id, category_id=category_id, q=q,
+        )
+        if include_virtual else []
+    )
+    real_total = query.count()
+    response.headers["X-Total-Count"] = str(real_total + len(virtual))
+    ordered = query.order_by(LedgerEntry.entry_date.desc(), LedgerEntry.id.desc())
+    if virtual:
+        merged = ordered.limit(offset + limit).all() + virtual
+        merged.sort(key=lambda e: (e.entry_date, e.id), reverse=True)
+        entries = merged[offset:offset + limit]
+    else:
+        entries = ordered.offset(offset).limit(limit).all()
 
     # matched_import_lines: the staged import line(s) (if any) this entry was
     # booked from — the source of both the "show bank text" toggle and the
     # entry-detail view's bank data (booking_date, counterparty, bank
     # reference), so there's only ever one query/field for both, not two
     # that could drift apart.
-    entry_ids = [e.id for e in entries]
+    entry_ids = [e.id for e in entries if e.id > 0]
     if entry_ids:
         lines_by_entry: dict[int, list[LedgerImportLine]] = {}
         for line in (
@@ -911,7 +1010,8 @@ def list_entries(
         ):
             lines_by_entry.setdefault(line.matched_entry_id, []).append(line)
         for e in entries:
-            e.matched_import_lines = lines_by_entry.get(e.id, [])
+            if e.id > 0:
+                e.matched_import_lines = lines_by_entry.get(e.id, [])
 
     return entries
 
