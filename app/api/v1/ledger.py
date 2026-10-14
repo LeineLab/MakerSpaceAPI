@@ -2228,7 +2228,23 @@ def _euer_markdown(report: EuerReportResponse, lang: str) -> str:
     lines = [f"# {_('ledger.pdf_title')} {report.year}", ""]
     lines += _section(_("ledger.pdf_section_income"), LedgerCategoryKind.income, report.total_income)
     lines += _section(_("ledger.pdf_section_expense"), LedgerCategoryKind.expense, report.total_expense)
-    lines += [f"**{_('ledger.report_net_result')}: {money(report.net_result)}**", "", f"_{_('ledger.pdf_disclaimer')}_", ""]
+    lines += [f"**{_('ledger.report_net_result')}: {money(report.net_result)}**", ""]
+    if spheres_enabled and report.categories:
+        sphere_order = [s.value for s in LedgerSphere]
+        groups: dict[Optional[str], list[Decimal]] = {}
+        for c in report.categories:
+            key = c.sphere.value if c.sphere else None
+            g = groups.setdefault(key, [Decimal("0.00"), Decimal("0.00")])
+            g[0 if c.kind == LedgerCategoryKind.income else 1] += c.total
+        lines += [f"## {_('ledger.sphere_summary_title')}", "",
+                  f"| {_('ledger.col_sphere')} | {_('ledger.report_total_income')} | {_('ledger.report_total_expense')} | {_('ledger.report_net_result')} |",
+                  "|---|---:|---:|---:|"]
+        for key in [k for k in sphere_order if k in groups] + ([None] if None in groups else []):
+            inc, exp = groups[key]
+            label = _(f"ledger.sphere_{key}") if key else _("ledger.sphere_none")
+            lines.append(f"| {label} | {money(inc)} | {money(exp)} | {money(inc - exp)} |")
+        lines.append("")
+    lines += [f"_{_('ledger.pdf_disclaimer')}_", ""]
     return "\n".join(lines)
 
 

@@ -466,17 +466,17 @@
         <table class="min-w-full text-sm">
           <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
             <tr>
-              <th class="px-4 py-3 text-left">{{ _('common.name') }}</th>
-              <th class="px-4 py-3 text-left">{{ _('common.slug') }}</th>
-              <th class="px-4 py-3 text-left">{{ _('ledger.col_kind') }}</th>
-              <th class="px-4 py-3 text-left" x-show="config.spheres_enabled">{{ _('ledger.col_sphere') }}</th>
-              <th class="px-4 py-3 text-left">{{ _('ledger.col_match_keywords') }}</th>
-              <th class="px-4 py-3 text-left">{{ _('ledger.col_active') }}</th>
+              <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="categorySort.toggle('name')">{{ _('common.name') }} <span class="text-gray-400 dark:text-gray-500" x-text="categorySort.indicator('name')"></span></th>
+              <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="categorySort.toggle('slug')">{{ _('common.slug') }} <span class="text-gray-400 dark:text-gray-500" x-text="categorySort.indicator('slug')"></span></th>
+              <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="categorySort.toggle('kind')">{{ _('ledger.col_kind') }} <span class="text-gray-400 dark:text-gray-500" x-text="categorySort.indicator('kind')"></span></th>
+              <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" x-show="config.spheres_enabled" @click="categorySort.toggle('sphere')">{{ _('ledger.col_sphere') }} <span class="text-gray-400 dark:text-gray-500" x-text="categorySort.indicator('sphere')"></span></th>
+              <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="categorySort.toggle('match_keywords')">{{ _('ledger.col_match_keywords') }} <span class="text-gray-400 dark:text-gray-500" x-text="categorySort.indicator('match_keywords')"></span></th>
+              <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="categorySort.toggle('active')">{{ _('ledger.col_active') }} <span class="text-gray-400 dark:text-gray-500" x-text="categorySort.indicator('active')"></span></th>
               <th class="px-4 py-3 text-left" x-show="userIsTreasurer">{{ _('ledger.col_actions') }}</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-            <template x-for="c in categories" :key="c.id">
+            <template x-for="c in sortedCategories" :key="c.id">
               <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
                 <td class="px-4 py-3 font-medium" x-text="c.name"></td>
                 <td class="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400" x-text="c.slug"></td>
@@ -549,14 +549,14 @@
         <table class="min-w-full text-sm">
           <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
             <tr>
-              <th class="px-4 py-3 text-left">{{ _('common.name') }}</th>
-              <th class="px-4 py-3 text-left">{{ _('ledger.col_kind') }}</th>
-              <th class="px-4 py-3 text-left" x-show="config.spheres_enabled">{{ _('ledger.col_sphere') }}</th>
-              <th class="px-4 py-3 text-right">{{ _('ledger.col_total') }}</th>
+              <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="reportSort.toggle('name')">{{ _('common.name') }} <span class="text-gray-400 dark:text-gray-500" x-text="reportSort.indicator('name')"></span></th>
+              <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="reportSort.toggle('kind')">{{ _('ledger.col_kind') }} <span class="text-gray-400 dark:text-gray-500" x-text="reportSort.indicator('kind')"></span></th>
+              <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" x-show="config.spheres_enabled" @click="reportSort.toggle('sphere')">{{ _('ledger.col_sphere') }} <span class="text-gray-400 dark:text-gray-500" x-text="reportSort.indicator('sphere')"></span></th>
+              <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="reportSort.toggle('total')">{{ _('ledger.col_total') }} <span class="text-gray-400 dark:text-gray-500" x-text="reportSort.indicator('total')"></span></th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-            <template x-for="c in report.categories" :key="c.category_id">
+            <template x-for="c in sortedReportCategories" :key="c.category_id">
               <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
                 <td class="px-4 py-3 font-medium" x-text="c.name"></td>
                 <td class="px-4 py-3">
@@ -587,6 +587,36 @@
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
           <div class="text-xs text-gray-400 dark:text-gray-500 uppercase">{{ _('ledger.report_net_result') }}</div>
           <div class="text-xl font-bold" :class="report.net_result >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'" x-text="fmt(report.net_result)"></div>
+        </div>
+      </div>
+    </template>
+
+    <template x-if="!loadingReport && report && config.spheres_enabled && reportSphereSummary.length > 0">
+      <div class="mt-6">
+        <h3 class="text-lg font-semibold mb-3">{{ _('ledger.sphere_summary_title') }}</h3>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+          <div class="overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
+              <tr>
+                <th class="px-4 py-3 text-left">{{ _('ledger.col_sphere') }}</th>
+                <th class="px-4 py-3 text-right">{{ _('ledger.report_total_income') }}</th>
+                <th class="px-4 py-3 text-right">{{ _('ledger.report_total_expense') }}</th>
+                <th class="px-4 py-3 text-right">{{ _('ledger.report_net_result') }}</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+              <template x-for="r in reportSphereSummary" :key="r.key">
+                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <td class="px-4 py-3 font-medium" x-text="r.label"></td>
+                  <td class="px-4 py-3 text-right font-mono" x-text="fmt(r.income)"></td>
+                  <td class="px-4 py-3 text-right font-mono" x-text="fmt(r.expense)"></td>
+                  <td class="px-4 py-3 text-right font-mono" :class="r.result >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'" x-text="fmt(r.result)"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          </div>
         </div>
       </div>
     </template>
@@ -1249,19 +1279,19 @@
         <table class="min-w-full text-sm">
           <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
             <tr>
-              <th class="px-4 py-3 text-left">{{ _('common.name') }}</th>
-              <th class="px-4 py-3 text-left">{{ _('ledger.col_acquisition_date') }}</th>
-              <th class="px-4 py-3 text-right">{{ _('ledger.col_acquisition_cost') }}</th>
-              <th class="px-4 py-3 text-right">{{ _('ledger.col_useful_life') }}</th>
-              <th class="px-4 py-3 text-left">{{ _('ledger.label_afa_category') }}</th>
-              <th class="px-4 py-3 text-right">{{ _('ledger.col_accumulated_depreciation') }}</th>
-              <th class="px-4 py-3 text-right">{{ _('ledger.col_book_value') }}</th>
-              <th class="px-4 py-3 text-left">{{ _('ledger.col_disposed') }}</th>
+              <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="assetSort.toggle('name')">{{ _('common.name') }} <span class="text-gray-400 dark:text-gray-500" x-text="assetSort.indicator('name')"></span></th>
+              <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="assetSort.toggle('acquisition_date')">{{ _('ledger.col_acquisition_date') }} <span class="text-gray-400 dark:text-gray-500" x-text="assetSort.indicator('acquisition_date')"></span></th>
+              <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="assetSort.toggle('acquisition_cost')">{{ _('ledger.col_acquisition_cost') }} <span class="text-gray-400 dark:text-gray-500" x-text="assetSort.indicator('acquisition_cost')"></span></th>
+              <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="assetSort.toggle('useful_life_years')">{{ _('ledger.col_useful_life') }} <span class="text-gray-400 dark:text-gray-500" x-text="assetSort.indicator('useful_life_years')"></span></th>
+              <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="assetSort.toggle('category')">{{ _('ledger.label_afa_category') }} <span class="text-gray-400 dark:text-gray-500" x-text="assetSort.indicator('category')"></span></th>
+              <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="assetSort.toggle('accumulated_depreciation')">{{ _('ledger.col_accumulated_depreciation') }} <span class="text-gray-400 dark:text-gray-500" x-text="assetSort.indicator('accumulated_depreciation')"></span></th>
+              <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="assetSort.toggle('book_value')">{{ _('ledger.col_book_value') }} <span class="text-gray-400 dark:text-gray-500" x-text="assetSort.indicator('book_value')"></span></th>
+              <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="assetSort.toggle('disposed_at')">{{ _('ledger.col_disposed') }} <span class="text-gray-400 dark:text-gray-500" x-text="assetSort.indicator('disposed_at')"></span></th>
               <th class="px-4 py-3 text-left" x-show="userIsTreasurer">{{ _('ledger.col_actions') }}</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-            <template x-for="a in filteredAssets" :key="a.id">
+            <template x-for="a in sortedAssets" :key="a.id">
               <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
                 <td class="px-4 py-3 font-medium">
                   <span x-text="a.name"></span>
@@ -3154,6 +3184,9 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     reportYear: new Date().getFullYear(),
     pdfExporting: false,
     markdownCopied: false,
+    categorySort: makeSort('name'),
+    reportSort: makeSort(),
+    assetSort: makeSort(),
     pdfExportError: null,
     accountBalancesYear: null,
     loadingAccountBalancesYear: false,
@@ -3351,6 +3384,46 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       if (this.assetStatusFilter === 'active') return this.assets.filter(a => !a.disposed_at);
       if (this.assetStatusFilter === 'disposed') return this.assets.filter(a => a.disposed_at);
       return this.assets;
+    },
+
+    get sortedAssets() {
+      const num = new Set(['acquisition_cost', 'accumulated_depreciation', 'book_value']);
+      return this.assetSort.apply(this.filteredAssets, (a, k) => {
+        if (num.has(k)) return parseFloat(a[k]);
+        if (k === 'category') return a.category ? a.category.name : '';
+        return a[k];
+      });
+    },
+
+    get sortedCategories() {
+      return this.categorySort.apply(this.categories, (c, k) => {
+        if (k === 'sphere') return this.sphereLabel(c.sphere);
+        if (k === 'match_keywords') return (c.match_keywords || []).join(', ');
+        return c[k];
+      });
+    },
+
+    get sortedReportCategories() {
+      if (!this.report) return [];
+      return this.reportSort.apply(this.report.categories, (c, k) => {
+        if (k === 'total') return parseFloat(c.total);
+        if (k === 'sphere') return this.sphereLabel(c.sphere);
+        return c[k];
+      });
+    },
+
+    // Income/expense/result per Sphäre, derived from the loaded EÜR
+    // categories (same totals as the table above, just grouped).
+    get reportSphereSummary() {
+      if (!this.report) return [];
+      const order = ['ideell', 'vermoegensverwaltung', 'zweckbetrieb', 'wirtschaftlicher_geschaeftsbetrieb', ''];
+      const groups = {};
+      for (const c of this.report.categories) {
+        const key = c.sphere || '';
+        const g = groups[key] || (groups[key] = { key: key || 'none', label: this.sphereLabel(c.sphere), income: 0, expense: 0 });
+        if (c.kind === 'income') g.income += parseFloat(c.total); else g.expense += parseFloat(c.total);
+      }
+      return order.filter(k => groups[k]).map(k => ({ ...groups[k], result: groups[k].income - groups[k].expense }));
     },
 
     // How much of each entry line is already claimed by some asset's

@@ -429,6 +429,7 @@
   "ledger.categories_empty":    "Noch keine Kategorien angelegt.",
   "ledger.btn_new_category":    "Neue Kategorie",
   "ledger.col_kind":            "Art",
+  "ledger.sphere_summary_title": "Ergebnis je Sphäre",
   "ledger.col_sphere":          "Sphäre",
   "ledger.col_active":          "Aktiv",
   "ledger.col_match_keywords":  "Schlüsselwörter",

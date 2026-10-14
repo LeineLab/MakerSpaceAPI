@@ -1671,6 +1671,7 @@ def test_euer_report_markdown_export(treasurer_client, bank_account, income_cate
     assert body.startswith("# Einnahmenüberschussrechnung 2026")
     assert "## Einnahmen" in body and "## Ausgaben" in body
     assert "50.00" in body and "20.00" in body and "30.00" in body
+    assert "## Ergebnis je Sphäre" in body
 
 
 def test_euer_report_markdown_export_empty_year(treasurer_client):

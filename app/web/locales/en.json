@@ -429,6 +429,7 @@
   "ledger.categories_empty":    "No categories yet.",
   "ledger.btn_new_category":    "New Category",
   "ledger.col_kind":            "Kind",
+  "ledger.sphere_summary_title": "Result by sphere",
   "ledger.col_sphere":          "Sphere",
   "ledger.col_active":          "Active",
   "ledger.col_match_keywords":  "Keywords",
