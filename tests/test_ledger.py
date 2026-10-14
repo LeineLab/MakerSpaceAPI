@@ -1653,3 +1653,27 @@ def test_config_first_data_year_from_earliest_entry(treasurer_client, db, income
             },
         )
     assert treasurer_client.get("/api/v1/ledger/config").json()["first_data_year"] == 2024
+
+
+def test_euer_report_markdown_export(treasurer_client, bank_account, income_category, expense_category):
+    for cat, bank_amt, cat_amt in ((income_category, "50.00", "-50.00"), (expense_category, "-20.00", "20.00")):
+        treasurer_client.post(
+            "/api/v1/ledger/entries",
+            json={
+                "entry_date": "2026-03-01", "description": "x",
+                "lines": [{"bank_account_id": bank_account.id, "amount": bank_amt}, {"category_id": cat.id, "amount": cat_amt}],
+            },
+        )
+    resp = treasurer_client.get("/api/v1/ledger/report/euer/markdown?year=2026&lang=de")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/markdown")
+    body = resp.text
+    assert body.startswith("# Einnahmenüberschussrechnung 2026")
+    assert "## Einnahmen" in body and "## Ausgaben" in body
+    assert "50.00" in body and "20.00" in body and "30.00" in body
+
+
+def test_euer_report_markdown_export_empty_year(treasurer_client):
+    resp = treasurer_client.get("/api/v1/ledger/report/euer/markdown?year=2026")
+    assert resp.status_code == 200
+    assert "Keine Buchungen." in resp.text

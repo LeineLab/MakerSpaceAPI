@@ -522,6 +522,9 @@
             <option :value="y" x-text="y"></option>
           </template>
         </select>
+        <button @click="copyEuerMarkdown()" :disabled="pdfExporting"
+                class="bg-gray-600 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-700 disabled:opacity-50"
+                x-text="markdownCopied ? MARKDOWN_COPIED_L : MARKDOWN_BTN_L"></button>
         <button @click="exportEuerPdf()" :disabled="pdfExporting"
                 class="bg-gray-600 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-700 disabled:opacity-50">
           <span x-show="!pdfExporting">{{ _('ledger.btn_export_pdf') }}</span>
@@ -2879,6 +2882,8 @@ const FINTS_DECOUPLED_HINT = {{ _('ledger.fints_decoupled_hint') | tojson }};
 const FINTS_PRESET_DELETE_L = {{ _('ledger.fints_preset_delete') | tojson }};
 const REVERSES_TMPL = {{ _('ledger.reverses_badge') | tojson }};
 const REVERSE_CONFIRM_L = {{ _('ledger.reverse_confirm') | tojson }};
+const MARKDOWN_BTN_L = {{ _('ledger.btn_copy_markdown') | tojson }};
+const MARKDOWN_COPIED_L = {{ _('ledger.markdown_copied') | tojson }};
 const REVIEWED_TMPL = {{ _('ledger.reviewed_by_tmpl') | tojson }};
 const REVIEWED_FILTER_L = {
   all: {{ _('ledger.filter_reviewed_all') | tojson }},
@@ -3148,6 +3153,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     reportError: null,
     reportYear: new Date().getFullYear(),
     pdfExporting: false,
+    markdownCopied: false,
     pdfExportError: null,
     accountBalancesYear: null,
     loadingAccountBalancesYear: false,
@@ -4162,6 +4168,36 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         if (e !== 'unauthenticated') this.accountBalancesYearError = e.message || String(e);
       } finally {
         this.loadingAccountBalancesYear = false;
+      }
+    },
+
+    // Copies the EÜR as Markdown to the clipboard; falls back to a file
+    // download when the clipboard is unavailable (e.g. insecure context).
+    async copyEuerMarkdown() {
+      this.pdfExportError = null;
+      try {
+        const lang = document.documentElement.lang || 'de';
+        const r = await apiFetch(`/api/v1/ledger/report/euer/markdown?year=${this.reportYear}&lang=${lang}`);
+        if (!r.ok) {
+          const data = await r.json().catch(() => ({}));
+          throw new Error(data.detail || 'Error generating Markdown');
+        }
+        const text = await r.text();
+        try {
+          await navigator.clipboard.writeText(text);
+          this.markdownCopied = true;
+          setTimeout(() => { this.markdownCopied = false; }, 2000);
+        } catch (_) {
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(new Blob([text], { type: 'text/markdown' }));
+          a.download = `euer_${this.reportYear}.md`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(a.href);
+        }
+      } catch (e) {
+        if (e !== 'unauthenticated') this.pdfExportError = e.message || String(e);
       }
     },
 

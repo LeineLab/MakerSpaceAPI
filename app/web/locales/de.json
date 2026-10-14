@@ -515,6 +515,8 @@
   "ledger.paperless_remove_document": "Beleg entfernen",
   "ledger.btn_submit_booking":  "Buchung anlegen",
 
+  "ledger.btn_copy_markdown":   "Als Markdown kopieren",
+  "ledger.markdown_copied":     "In die Zwischenablage kopiert",
   "ledger.btn_export_pdf":      "Als PDF exportieren",
   "ledger.pdf_title":           "Einnahmenüberschussrechnung",
   "ledger.pdf_period":          "Kalenderjahr {year}",

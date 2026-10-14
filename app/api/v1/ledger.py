@@ -2197,6 +2197,56 @@ def _compile_euer_pdf(report: EuerReportResponse, lang: str) -> bytes:
     )
 
 
+def _euer_markdown(report: EuerReportResponse, lang: str) -> str:
+    """The EÜR as Markdown tables (Einnahmen/Ausgaben plus totals), for pasting
+    into meeting minutes. Labels come from the same translator as the PDF."""
+    _ = get_translator(lang)
+    spheres_enabled = settings.LEDGER_SPHERES_ENABLED
+    money = lambda v: f"{v:.2f} {settings.CURRENCY}"  # noqa: E731
+
+    def _cell(text: str) -> str:
+        return text.replace("|", "\\|")
+
+    def _section(title: str, kind: LedgerCategoryKind, total: Decimal) -> list[str]:
+        items = [c for c in report.categories if c.kind == kind]
+        out = [f"## {title}", ""]
+        if not items:
+            return out + [f"_{_('ledger.pdf_empty')}_", ""]
+        header = [_("common.name")] + ([_("ledger.col_sphere")] if spheres_enabled else []) + [_("ledger.col_total")]
+        out.append("| " + " | ".join(header) + " |")
+        out.append("|" + "|".join(["---"] * (len(header) - 1) + ["---:"]) + "|")
+        for c in items:
+            row = [_cell(c.name)]
+            if spheres_enabled:
+                row.append(_(f"ledger.sphere_{c.sphere.value}") if c.sphere else _("ledger.sphere_none"))
+            row.append(money(c.total))
+            out.append("| " + " | ".join(row) + " |")
+        pad = [""] if spheres_enabled else []
+        out.append("| " + " | ".join([f"**{_('ledger.report_total_' + kind.value)}**"] + pad + [f"**{money(total)}**"]) + " |")
+        return out + [""]
+
+    lines = [f"# {_('ledger.pdf_title')} {report.year}", ""]
+    lines += _section(_("ledger.pdf_section_income"), LedgerCategoryKind.income, report.total_income)
+    lines += _section(_("ledger.pdf_section_expense"), LedgerCategoryKind.expense, report.total_expense)
+    lines += [f"**{_('ledger.report_net_result')}: {money(report.net_result)}**", "", f"_{_('ledger.pdf_disclaimer')}_", ""]
+    return "\n".join(lines)
+
+
+@router.get("/report/euer/markdown", response_class=Response, responses={**HTTP_400})
+def euer_report_markdown(
+    year: int = Query(...),
+    lang: str = Query(default="de"),
+    _viewer: dict = Depends(require_ledger_viewer_user),
+    db: Session = Depends(get_db),
+):
+    report = _compute_euer_report(db, year)
+    return Response(
+        content=_euer_markdown(report, lang),
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="euer_{year}.md"'},
+    )
+
+
 @router.get("/report/euer/pdf", response_class=Response, responses={**HTTP_400})
 def euer_report_pdf(
     year: int = Query(...),

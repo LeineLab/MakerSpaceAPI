@@ -515,6 +515,8 @@
   "ledger.paperless_remove_document": "Remove document",
   "ledger.btn_submit_booking":  "Create Entry",
 
+  "ledger.btn_copy_markdown":   "Copy as Markdown",
+  "ledger.markdown_copied":     "Copied to clipboard",
   "ledger.btn_export_pdf":      "Export as PDF",
   "ledger.pdf_title":           "Profit & Loss Statement (EÜR)",
   "ledger.pdf_period":          "Calendar year {year}",
