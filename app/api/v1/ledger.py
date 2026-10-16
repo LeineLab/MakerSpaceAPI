@@ -1703,27 +1703,41 @@ def _compute_anlagenspiegel(db: Session, year: int) -> AnlagenspiegelResponse:
     _require_report_year(year)
     assets = (
         db.query(LedgerAsset)
-        .options(joinedload(LedgerAsset.category), joinedload(LedgerAsset.components))
+        .options(
+            joinedload(LedgerAsset.category),
+            joinedload(LedgerAsset.components)
+            .joinedload(LedgerAssetComponent.entry_line)
+            .joinedload(LedgerEntryLine.category),
+        )
         .order_by(LedgerAsset.id).all()
     )
+    sphere_order = [s.value for s in LedgerSphere]
     rows = []
     for asset in assets:
-        summaries = []
+        # One row per Sphäre of the components' source categories, so an
+        # asset financed from lines in different spheres is split.
+        by_sphere: dict[Optional[LedgerSphere], list[dict]] = {}
         for component in asset.components:
             summary = _component_year_summary(component, asset.useful_life_years, year)
-            if summary is not None:
-                summaries.append(summary)
-        if not summaries:
-            continue
-        rows.append(AnlagenspiegelRow(
-            asset_id=asset.id, name=asset.name, category_id=asset.category_id, category=asset.category,
-            acquisition_cost_end_of_year=sum((s["acquisition_cost_end_of_year"] for s in summaries), Decimal("0.00")),
-            opening_book_value=sum((s["opening_book_value"] for s in summaries), Decimal("0.00")),
-            zugang=sum((s["zugang"] for s in summaries), Decimal("0.00")),
-            abgang=sum((s["abgang"] for s in summaries), Decimal("0.00")),
-            afa=sum((s["afa"] for s in summaries), Decimal("0.00")),
-            closing_book_value=sum((s["closing_book_value"] for s in summaries), Decimal("0.00")),
-        ))
+            if summary is None:
+                continue
+            category = component.entry_line.category if component.entry_line else None
+            sphere = category.sphere if category and settings.LEDGER_SPHERES_ENABLED else None
+            by_sphere.setdefault(sphere, []).append(summary)
+        for sphere, summaries in by_sphere.items():
+            rows.append(AnlagenspiegelRow(
+                asset_id=asset.id, name=asset.name, category_id=asset.category_id, category=asset.category,
+                sphere=sphere,
+                acquisition_cost_end_of_year=sum((s["acquisition_cost_end_of_year"] for s in summaries), Decimal("0.00")),
+                opening_book_value=sum((s["opening_book_value"] for s in summaries), Decimal("0.00")),
+                zugang=sum((s["zugang"] for s in summaries), Decimal("0.00")),
+                abgang=sum((s["abgang"] for s in summaries), Decimal("0.00")),
+                afa=sum((s["afa"] for s in summaries), Decimal("0.00")),
+                closing_book_value=sum((s["closing_book_value"] for s in summaries), Decimal("0.00")),
+            ))
+    rows.sort(key=lambda r: (
+        sphere_order.index(r.sphere.value) if r.sphere else len(sphere_order), r.asset_id,
+    ))
     return AnlagenspiegelResponse(year=year, rows=rows)
 
 
@@ -2533,14 +2547,24 @@ def _compile_anlagenspiegel_pdf(report: AnlagenspiegelResponse, lang: str) -> by
             "closing_value": f"{r.closing_book_value:.2f} {settings.CURRENCY}",
         }
 
-    totals = {
-        "acquisition_cost": sum((r.acquisition_cost_end_of_year for r in report.rows), Decimal("0.00")),
-        "opening_value": sum((r.opening_book_value for r in report.rows), Decimal("0.00")),
-        "zugang": sum((r.zugang for r in report.rows), Decimal("0.00")),
-        "abgang": sum((r.abgang for r in report.rows), Decimal("0.00")),
-        "afa": sum((r.afa for r in report.rows), Decimal("0.00")),
-        "closing_value": sum((r.closing_book_value for r in report.rows), Decimal("0.00")),
-    }
+    def _totals(rows: list[AnlagenspiegelRow]) -> dict:
+        t = {
+            "acquisition_cost": sum((r.acquisition_cost_end_of_year for r in rows), Decimal("0.00")),
+            "opening_value": sum((r.opening_book_value for r in rows), Decimal("0.00")),
+            "zugang": sum((r.zugang for r in rows), Decimal("0.00")),
+            "abgang": sum((r.abgang for r in rows), Decimal("0.00")),
+            "afa": sum((r.afa for r in rows), Decimal("0.00")),
+            "closing_value": sum((r.closing_book_value for r in rows), Decimal("0.00")),
+        }
+        return {k: f"{v:.2f} {settings.CURRENCY}" for k, v in t.items()}
+
+    # Rows come sorted by Sphäre; one group (with subtotals) per Sphäre.
+    groups = []
+    for r in report.rows:
+        if not groups or groups[-1]["sphere"] != r.sphere:
+            groups.append({"sphere": r.sphere, "rows": []})
+        groups[-1]["rows"].append(r)
+    show_groups = settings.LEDGER_SPHERES_ENABLED and len(groups) > 0
 
     labels = {
         "col_name": _("common.name"),
@@ -2552,6 +2576,7 @@ def _compile_anlagenspiegel_pdf(report: AnlagenspiegelResponse, lang: str) -> by
         "col_afa": _("ledger.col_afa"),
         "col_closing_value": _("ledger.col_closing_value"),
         "row_total": _("ledger.row_total"),
+        "row_subtotal": _("ledger.row_subtotal"),
         "generated": _("ledger.pdf_generated"),
         "empty": _("ledger.anlagenspiegel_pdf_empty"),
         "disclaimer": _("ledger.anlagenspiegel_pdf_disclaimer"),
@@ -2559,8 +2584,17 @@ def _compile_anlagenspiegel_pdf(report: AnlagenspiegelResponse, lang: str) -> by
     data = {
         "title": _("ledger.anlagenspiegel_pdf_title"),
         "period": _("ledger.pdf_period", year=report.year),
+        "show_groups": show_groups,
+        "groups": [
+            {
+                "label": (_(f"ledger.sphere_{g['sphere'].value}") if g["sphere"] else _("ledger.sphere_none")),
+                "rows": [_row(r) for r in g["rows"]],
+                "totals": _totals(g["rows"]),
+            }
+            for g in groups
+        ],
         "rows": [_row(r) for r in report.rows],
-        "totals": {k: f"{v:.2f} {settings.CURRENCY}" for k, v in totals.items()},
+        "totals": _totals(report.rows),
         "labels": labels,
     }
 

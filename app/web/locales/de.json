@@ -609,6 +609,8 @@
   "ledger.col_afa": "AfA",
   "ledger.col_closing_value": "Endwert",
   "ledger.row_total": "Summe",
+  "ledger.row_subtotal": "Zwischensumme",
+  "ledger.asset_ideell_warning": "Hinweis: Im ideellen Bereich hat eine AfA steuerlich keine Bedeutung, die Anschaffung kann auch sofort in voller Höhe als Ausgabe erfasst werden. Eine planmäßige Abschreibung ist trotzdem möglich, um das Ergebnis wirtschaftlich darzustellen. Im Zweifel mit Kassenprüfer/Steuerberater abstimmen.",
   "ledger.asset_gwg_hint": "Die GWG-Grenze wird hier bewusst nicht automatisch geprüft — sie ändert sich und ist je nach Vorsteuerabzug unterschiedlich zu betrachten. Ob eine Anschaffung als Anlagevermögen zu erfassen ist, liegt in eurem Ermessen.",
   "ledger.asset_useful_life_zero_hint": "0 = Sofortabschreibung (z.B. GWG, oder das Wahlrecht für Computerhardware/-software) — der volle Betrag wird im Anschaffungsmonat als AfA erfasst.",
   "ledger.asset_remove_confirm": "Anlagevermögen wirklich entfernen? Die zugrunde liegende Buchung bleibt bestehen und zählt wieder als normale Ausgabe im Buchungsjahr.",

@@ -28,10 +28,34 @@
 #set text(font: ("Albert Sans", "Liberation Sans", "Helvetica", "Arial"), size: 9pt, weight: "regular")
 
 #let rows = doc.at("rows")
+#let groups = doc.at("groups")
+#let show-groups = doc.at("show_groups")
+#let money(t, k) = text(weight: "bold", t.at(k))
+
+#let row-cells(r) = (
+  r.at("name"), r.at("category_name"), r.at("acquisition_cost"), r.at("opening_value"),
+  r.at("zugang"), r.at("abgang"), r.at("afa"), r.at("closing_value"),
+)
+
+#let total-cells(label, t) = (
+  text(weight: "bold", label), [],
+  money(t, "acquisition_cost"), money(t, "opening_value"), money(t, "zugang"),
+  money(t, "abgang"), money(t, "afa"), money(t, "closing_value"),
+)
 
 #if rows.len() == 0 {
   text(fill: gray, labels.at("empty"))
 } else {
+  let body = ()
+  if show-groups {
+    for g in groups {
+      body.push(table.cell(colspan: 8, text(weight: "bold", g.at("label"))))
+      body += g.at("rows").map(row-cells).flatten()
+      body += total-cells(labels.at("row_subtotal"), g.at("totals"))
+    }
+  } else {
+    body += rows.map(row-cells).flatten()
+  }
   table(
     columns: (2fr, 1.5fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr),
     align: (left, left, right, right, right, right, right, right),
@@ -49,18 +73,9 @@
       text(weight: "bold", labels.at("col_closing_value")),
       table.hline(),
     ),
-    ..rows.map(r => (
-      r.at("name"), r.at("category_name"), r.at("acquisition_cost"), r.at("opening_value"),
-      r.at("zugang"), r.at("abgang"), r.at("afa"), r.at("closing_value"),
-    )).flatten(),
+    ..body,
     table.hline(stroke: 1pt),
-    text(weight: "bold", labels.at("row_total")), [],
-    text(weight: "bold", doc.at("totals").at("acquisition_cost")),
-    text(weight: "bold", doc.at("totals").at("opening_value")),
-    text(weight: "bold", doc.at("totals").at("zugang")),
-    text(weight: "bold", doc.at("totals").at("abgang")),
-    text(weight: "bold", doc.at("totals").at("afa")),
-    text(weight: "bold", doc.at("totals").at("closing_value")),
+    ..total-cells(labels.at("row_total"), doc.at("totals")),
   )
 }
 

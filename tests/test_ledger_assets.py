@@ -918,3 +918,44 @@ def test_anlagenspiegel_disposing_one_component_keeps_asset_with_remaining_one(
     report = treasurer_client.get("/api/v1/ledger/report/anlagenspiegel", params={"year": 2026}).json()
     row = _row_for(report, asset["id"])
     assert row["acquisition_cost_end_of_year"] == "300.00"
+
+
+def test_anlagenspiegel_split_by_sphere_of_source_category(
+    treasurer_client, db, bank_account, purchase_category, afa_category,
+):
+    """Rows are assigned to the Sphäre of the category the capitalized
+    booking line was booked against, not the AfA target category; an asset
+    with components from two spheres yields one row per sphere."""
+    ideell = LedgerCategory(
+        name="Ideelle Anschaffungen", slug="ideell-anschaffungen",
+        kind=LedgerCategoryKind.expense, sphere=LedgerSphere.ideell, active=True,
+    )
+    db.add(ideell)
+    db.commit()
+
+    zweck_entry = _book_purchase(treasurer_client, bank_account, purchase_category, "600.00", entry_date="2024-03-15")
+    asset = _capitalize(treasurer_client, zweck_entry, afa_category, useful_life_years=3)
+    ideell_entry = _book_purchase(treasurer_client, bank_account, ideell, "300.00", entry_date="2024-03-20")
+    treasurer_client.post(f"/api/v1/ledger/assets/{asset['id']}/components", json=_full_component(ideell_entry))
+
+    solo_entry = _book_purchase(treasurer_client, bank_account, ideell, "120.00", entry_date="2024-04-01")
+    solo = _capitalize(treasurer_client, solo_entry, afa_category, useful_life_years=1, name="Solo")
+
+    report = treasurer_client.get("/api/v1/ledger/report/anlagenspiegel", params={"year": 2024}).json()
+    rows = [(r["asset_id"], r["sphere"], r["zugang"]) for r in report["rows"]]
+    # ordered by Sphäre (ideell before zweckbetrieb), then asset
+    assert rows == [
+        (asset["id"], "ideell", "300.00"),
+        (solo["id"], "ideell", "120.00"),
+        (asset["id"], "zweckbetrieb", "600.00"),
+    ]
+
+
+def test_anlagenspiegel_pdf_export_with_sphere_groups(
+    treasurer_client, db, bank_account, purchase_category, afa_category,
+):
+    entry = _book_purchase(treasurer_client, bank_account, purchase_category, "1200.00", entry_date="2024-03-15")
+    _capitalize(treasurer_client, entry, afa_category, useful_life_years=5)
+    resp = treasurer_client.get("/api/v1/ledger/report/anlagenspiegel/pdf?year=2024&lang=de")
+    assert resp.status_code == 200
+    assert resp.content.startswith(b"%PDF")

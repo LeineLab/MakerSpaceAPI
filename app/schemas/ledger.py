@@ -409,6 +409,11 @@ class AnlagenspiegelRow(BaseModel):
     name: str
     category_id: int
     category: Optional[LedgerCategoryResponse] = None
+    # Sphäre of the category the capitalized booking lines were booked
+    # against (not the AfA target category). An asset whose components come
+    # from lines in different spheres yields one row per sphere. None when
+    # spheres are disabled or the source category has none.
+    sphere: Optional[LedgerSphere] = None
     acquisition_cost_end_of_year: Decimal = Field(examples=[Decimal("3500.00")])
     opening_book_value: Decimal = Field(examples=[Decimal("3000.00")])
     zugang: Decimal = Field(examples=[Decimal("0.00")])
