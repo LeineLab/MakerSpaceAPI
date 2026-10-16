@@ -1,4 +1,6 @@
+import html
 from contextlib import asynccontextmanager
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import HTTPException
@@ -56,7 +58,7 @@ _LOGIN_REQUIRED_HTML = """\
   <div class="text-center space-y-4">
     <h1 class="text-2xl font-bold">Login Required</h1>
     <p class="text-gray-500">You need to be logged in to access this page.</p>
-    <a href="/auth/login"
+    <a href="/auth/login{next_query}"
        class="inline-block px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
       Log in
     </a>
@@ -70,7 +72,12 @@ _LOGIN_REQUIRED_HTML = """\
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse | HTMLResponse:
     """Show a login-required page for unauthenticated web requests; return JSON for API routes."""
     if exc.status_code in (401, 403) and not request.url.path.startswith("/api/"):
-        return HTMLResponse(content=_LOGIN_REQUIRED_HTML, status_code=exc.status_code)
+        target = request.url.path + (f"?{request.url.query}" if request.url.query else "")
+        next_query = f"?next={quote(target, safe='')}"
+        return HTMLResponse(
+            content=_LOGIN_REQUIRED_HTML.replace("{next_query}", html.escape(next_query)),
+            status_code=exc.status_code,
+        )
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
 
 

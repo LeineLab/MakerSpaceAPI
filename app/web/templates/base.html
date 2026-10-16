@@ -38,7 +38,7 @@
     function apiFetch(url, opts) {
       return fetch(url, opts).then(function(r) {
         if (r.status === 401) {
-          window.location.href = '/auth/login';
+          window.location.href = '/auth/login?next=' + encodeURIComponent(window.location.pathname + window.location.search);
           return Promise.reject('unauthenticated');
         }
         return r;

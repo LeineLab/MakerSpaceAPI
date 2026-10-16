@@ -17,9 +17,30 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
 
 
+def _safe_next(value: str | None) -> str | None:
+    """Accept only a same-site relative path (`/foo?x=1`) as a post-login
+    target; anything else (absolute URLs, `//host`, backslashes, control
+    characters) is dropped so the login flow can't be used as an open
+    redirect."""
+    if not value or not value.startswith("/") or value.startswith("//"):
+        return None
+    if "\\" in value or any(ord(c) < 32 for c in value):
+        return None
+    if value.startswith("/auth/"):
+        return None
+    return value
+
+
 @router.get("/login")
-async def login(request: Request):
-    """Redirect to OIDC provider."""
+async def login(request: Request, next: str | None = None):
+    """Redirect to OIDC provider. `next` (a relative path) is kept in the
+    server-side session and used after the callback, so the redirect URI
+    registered at the provider stays a single fixed URL."""
+    target = _safe_next(next)
+    if target:
+        request.session["_login_next"] = target
+    else:
+        request.session.pop("_login_next", None)
     return await oauth.oidc.authorize_redirect(request, settings.OIDC_REDIRECT_URI)
 
 
@@ -32,7 +53,8 @@ async def callback(request: Request):
         user_info = await oauth.oidc.userinfo(token=token)
 
     jwt_token = create_admin_jwt(dict(user_info))
-    redirect_url = "/dashboard" if is_admin(dict(user_info)) else "/"
+    redirect_url = request.session.pop("_login_next", None)
+    redirect_url = _safe_next(redirect_url) or ("/dashboard" if is_admin(dict(user_info)) else "/")
     response = RedirectResponse(url=redirect_url)
     response.set_cookie(
         key="auth_token",
