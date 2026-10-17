@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, Numeric, String
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -79,3 +79,63 @@ class MachineAuthorization(Base):
 
     machine: Mapped["Machine"] = relationship("Machine", back_populates="authorizations")
     user: Mapped["User"] = relationship("User", back_populates="machine_authorizations")
+
+
+class MachineTerms(Base):
+    """One immutable version of a machine's terms of use. The highest version is current."""
+
+    __tablename__ = "machine_terms"
+    __table_args__ = (UniqueConstraint("machine_id", "version", name="uq_machine_terms_version"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    machine_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("machines.id", ondelete="CASCADE"), nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
+
+
+class MachineTermsAcceptance(Base):
+    """A user's acceptance of one terms version; rows are kept as a history."""
+
+    __tablename__ = "machine_terms_acceptances"
+
+    machine_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("machines.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", onupdate="CASCADE", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    accepted_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
+
+
+def current_terms(db, machine_id: int) -> Optional[MachineTerms]:
+    """Latest terms version of a machine, or None if it has none."""
+    return (
+        db.query(MachineTerms)
+        .filter(MachineTerms.machine_id == machine_id)
+        .order_by(MachineTerms.version.desc())
+        .first()
+    )
+
+
+def terms_accepted(db, machine_id: int, user_id: int) -> bool:
+    """True if the machine has no terms, or the user accepted the latest version."""
+    terms = current_terms(db, machine_id)
+    if terms is None:
+        return True
+    return (
+        db.query(MachineTermsAcceptance)
+        .filter(
+            MachineTermsAcceptance.machine_id == machine_id,
+            MachineTermsAcceptance.user_id == user_id,
+            MachineTermsAcceptance.version == terms.version,
+        )
+        .first()
+        is not None
+    )

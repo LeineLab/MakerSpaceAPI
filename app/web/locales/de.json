@@ -812,5 +812,18 @@
   "filament.aliases_scope_all": "Alle Marken und Typen",
   "filament.aliases_placeholder": "Farbname, z. B. Schwarz",
   "filament.no_aliases": "Noch keine Farbnamen angelegt.",
-  "filament.confirm_remove_alias": "Farbnamen '{name}' wirklich löschen?"
+  "filament.confirm_remove_alias": "Farbnamen '{name}' wirklich löschen?",
+  "machines.section_terms": "Nutzungsvereinbarung",
+  "machines.terms_hint": "Eine neue Version muss von allen Nutzern erneut akzeptiert werden, bevor sie die Maschine nutzen können. Ohne Vereinbarung gibt es keine Einschränkung.",
+  "machines.terms_none": "Noch keine Nutzungsvereinbarung hinterlegt.",
+  "machines.terms_publish": "Als neue Version speichern",
+  "machines.terms_current": "Aktuelle Version {version}",
+  "machines.terms_history": "Frühere Versionen",
+  "machines.terms_saved": "Neue Version veröffentlicht.",
+  "me.terms_pending": "Nutzungsvereinbarung nicht akzeptiert",
+  "me.terms_read": "Lesen & akzeptieren",
+  "me.terms_modal_title": "Nutzungsvereinbarung: {machine}",
+  "me.terms_accept": "Ich habe die Vereinbarung gelesen und akzeptiere sie",
+  "me.terms_changed": "Die Vereinbarung wurde zwischenzeitlich geändert. Bitte erneut prüfen.",
+  "me.terms_blocked_hint": "Ohne Akzeptanz kann die Maschine nicht genutzt werden."
 }

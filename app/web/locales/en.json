@@ -812,5 +812,18 @@
   "filament.aliases_scope_all": "All brands and types",
   "filament.aliases_placeholder": "Color name, e.g. Black",
   "filament.no_aliases": "No color names defined yet.",
-  "filament.confirm_remove_alias": "Really delete color name '{name}'?"
+  "filament.confirm_remove_alias": "Really delete color name '{name}'?",
+  "machines.section_terms": "Terms of use",
+  "machines.terms_hint": "A new version must be accepted again by all users before they can use the machine. Without terms there is no restriction.",
+  "machines.terms_none": "No terms of use defined yet.",
+  "machines.terms_publish": "Save as new version",
+  "machines.terms_current": "Current version {version}",
+  "machines.terms_history": "Previous versions",
+  "machines.terms_saved": "New version published.",
+  "me.terms_pending": "Terms of use not accepted",
+  "me.terms_read": "Read & accept",
+  "me.terms_modal_title": "Terms of use: {machine}",
+  "me.terms_accept": "I have read and accept the terms",
+  "me.terms_changed": "The terms changed in the meantime. Please review again.",
+  "me.terms_blocked_hint": "The machine cannot be used until accepted."
 }

@@ -96,11 +96,42 @@
                           : _FREE_LABEL"></td>
                   </tr>
                 </template>
+                <template x-for="m in machines.filter(x => !x.terms_accepted)" :key="'t' + m.machine_id">
+                  <tr class="bg-amber-50 dark:bg-amber-900/30">
+                    <td colspan="2" class="px-4 py-2 text-xs text-amber-800 dark:text-amber-200">
+                      <span class="font-medium" x-text="m.machine_name + ': ' + TERMS_PENDING_L"></span>
+                      <span>{{ _('me.terms_blocked_hint') }}</span>
+                      <button type="button" @click="openTerms(m)" class="ml-2 underline">{{ _('me.terms_read') }}</button>
+                    </td>
+                  </tr>
+                </template>
               </tbody>
             </table>
           </div>
         </div>
 
+      </div>
+
+
+      <!-- Terms of use modal -->
+      <div x-show="termsMachine" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+           @mousedown.self="modalMousedownOutside = true">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg p-6" style="max-height: 90vh; overflow-y: auto;"
+             @mousedown="modalMousedownOutside = false"
+             @click.outside="if (modalMousedownOutside) termsMachine = null">
+          <h3 class="text-lg font-semibold mb-3" x-text="termsMachine ? TERMS_TITLE_L.replace('{machine}', termsMachine.machine_name) : ''"></h3>
+          <div x-show="termsError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="termsError"></div>
+          <pre class="whitespace-pre-wrap text-sm mb-4" x-text="termsMachine ? termsMachine.terms_text : ''"></pre>
+          <label class="flex items-start gap-2 text-sm mb-4">
+            <input type="checkbox" x-model="termsChecked" class="mt-1">
+            <span>{{ _('me.terms_accept') }}</span>
+          </label>
+          <div class="flex justify-end gap-2">
+            <button type="button" @click="termsMachine = null" class="px-4 py-2 text-sm border dark:border-gray-600 rounded">{{ _('common.cancel') }}</button>
+            <button type="button" @click="acceptTerms()" :disabled="!termsChecked"
+                    class="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">{{ _('me.terms_read') }}</button>
+          </div>
+        </div>
       </div>
 
       <!-- Machine Session History -->
@@ -216,8 +247,28 @@ const _TX_LABELS = {
   'admin_adjustment':      {{ _('me.type_admin') | tojson }},
 };
 
+const TERMS_PENDING_L = {{ _('me.terms_pending') | tojson }};
+const TERMS_TITLE_L = {{ _('me.terms_modal_title') | tojson }};
+const TERMS_CHANGED_L = {{ _('me.terms_changed') | tojson }};
 function mePage() {
   return {
+    termsMachine: null,
+    termsChecked: false,
+    termsError: '',
+    modalMousedownOutside: false,
+    openTerms(m) { this.termsMachine = m; this.termsChecked = false; this.termsError = ''; },
+    async acceptTerms() {
+      const m = this.termsMachine;
+      const r = await apiFetch(`/api/v1/users/me/machines/${m.machine_slug}/terms/accept`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version: m.terms_version }),
+      });
+      if (r.status === 409) { this.termsError = TERMS_CHANGED_L; await this.loadMachines(); return; }
+      if (!r.ok) { this.termsError = (await r.json()).detail || 'Error'; return; }
+      m.terms_accepted = true;
+      this.termsMachine = null;
+    },
     profile: null,
     rentals: [],
     machines: [],

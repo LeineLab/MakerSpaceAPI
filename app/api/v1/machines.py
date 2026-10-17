@@ -10,7 +10,7 @@ from app.auth.deps import get_current_device, require_admin_user, require_machin
 from app.auth.oidc import is_admin
 from app.auth.tokens import generate_api_token
 from app.database import get_db
-from app.models.machine import Machine, MachineAdmin, MachineAuthorization
+from app.models.machine import Machine, MachineAdmin, MachineAuthorization, MachineTerms, terms_accepted
 from app.models.session import MachineSession
 from app.models.transaction import Transaction
 from app.models.user import User, resolve_nfc_id
@@ -27,6 +27,8 @@ from app.schemas.machine import (
     MachineSessionResponse,
     MachineUpdate,
     MachineUserSummary,
+    TermsCreate,
+    TermsResponse,
 )
 from app.schemas.common import HTTP_403, HTTP_404, HTTP_409, MessageResponse
 
@@ -284,6 +286,51 @@ def list_machine_users(
     return db.query(User).filter(User.name.is_not(None)).order_by(User.name).all()
 
 
+# --- Terms of use ---
+
+@router.get("/{slug}/terms", response_model=TermsResponse, responses={**HTTP_404})
+def get_terms(
+    slug: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    _, machine = require_machine_manager(slug, request, db)
+    versions = (
+        db.query(MachineTerms)
+        .filter(MachineTerms.machine_id == machine.id)
+        .order_by(MachineTerms.version.desc())
+        .all()
+    )
+    return {"current": versions[0] if versions else None, "versions": versions}
+
+
+@router.post("/{slug}/terms", response_model=TermsResponse, status_code=201, responses={**HTTP_404})
+def publish_terms(
+    slug: str,
+    body: TermsCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Publish a new terms version; every user must accept it again before using the machine."""
+    user, machine = require_machine_manager(slug, request, db)
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Terms text must not be empty")
+    latest = (
+        db.query(func.max(MachineTerms.version))
+        .filter(MachineTerms.machine_id == machine.id)
+        .scalar()
+    ) or 0
+    db.add(MachineTerms(
+        machine_id=machine.id,
+        version=latest + 1,
+        text=text,
+        created_by=user.get("sub"),
+    ))
+    db.commit()
+    return get_terms(slug, request, db)
+
+
 # --- Authorizations ---
 
 @router.get("/{slug}/authorizations", response_model=list[AuthorizationResponse], responses={**HTTP_404})
@@ -434,6 +481,18 @@ def check_authorization(
     if auth is None:
         return AuthorizeUserResponse(
             authorized=False,
+            user_id=user.id,
+            user_name=user.name,
+            balance=user.balance,
+            price_per_login=Decimal("0.00"),
+            price_per_minute=Decimal("0.00"),
+            booking_interval=0,
+        )
+
+    if not terms_accepted(db, device.id, user.id):
+        return AuthorizeUserResponse(
+            authorized=False,
+            terms_required=True,
             user_id=user.id,
             user_name=user.name,
             balance=user.balance,

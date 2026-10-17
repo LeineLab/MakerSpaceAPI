@@ -104,3 +104,23 @@ class AuthorizeUserResponse(BaseModel):
     price_per_login: Decimal = Field(ge=0, examples=[Decimal("0.50")])
     price_per_minute: Decimal = Field(ge=0, examples=[Decimal("0.10")])
     booking_interval: int  # minutes
+    terms_required: bool = False  # authorized, but the current terms of use are not accepted yet
+
+
+class TermsCreate(BaseModel):
+    text: str = Field(min_length=1, max_length=20000)
+
+
+class TermsVersionResponse(BaseModel):
+    version: int
+    text: str
+    created_by: Optional[str]
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TermsResponse(BaseModel):
+    """Current terms (None if the machine has none) and all versions, newest first."""
+    current: Optional[TermsVersionResponse] = None
+    versions: list[TermsVersionResponse] = []

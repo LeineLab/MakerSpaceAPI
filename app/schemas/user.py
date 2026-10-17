@@ -79,6 +79,13 @@ class UserMeMachineResponse(BaseModel):
     price_per_login: Decimal = Field(ge=0, examples=[Decimal("0.00")])
     price_per_minute: Decimal = Field(ge=0, examples=[Decimal("0.05")])
     booking_interval: int
+    terms_version: Optional[int] = None
+    terms_text: Optional[str] = None
+    terms_accepted: bool = True
+
+
+class TermsAccept(BaseModel):
+    version: int
 
 
 class UserMeSessionResponse(BaseModel):

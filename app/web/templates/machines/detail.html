@@ -201,6 +201,31 @@
         </div>
       </div>
 
+      <!-- ── Terms of use ──────────────────────────────────────────── -->
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold mb-2">{{ _('machines.section_terms') }}</h2>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-3">{{ _('machines.terms_hint') }}</p>
+        <div x-show="termsError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="termsError"></div>
+        <div x-show="termsSaved" class="mb-3 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 p-2 rounded text-sm">{{ _('machines.terms_saved') }}</div>
+        <p class="text-sm font-medium mb-2" x-show="terms.current" x-text="TERMS_CURRENT_L.replace('{version}', terms.current ? terms.current.version : '')"></p>
+        <p class="text-sm text-gray-400 mb-2" x-show="!terms.current">{{ _('machines.terms_none') }}</p>
+        <form @submit.prevent="publishTerms()">
+          <textarea x-model="termsDraft" rows="8" required maxlength="20000"
+                    class="w-full border dark:border-gray-600 dark:bg-gray-700 rounded px-3 py-2 text-sm"></textarea>
+          <button type="submit" :disabled="termsSaving || !termsDraft.trim() || (terms.current && termsDraft.trim() === terms.current.text)"
+                  class="mt-2 bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50">{{ _('machines.terms_publish') }}</button>
+        </form>
+        <div class="mt-4" x-show="terms.versions.length > 1">
+          <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">{{ _('machines.terms_history') }}</h3>
+          <template x-for="v in terms.versions.slice(1)" :key="v.version">
+            <details class="mb-1 text-sm">
+              <summary class="cursor-pointer" x-text="'v' + v.version + ' – ' + v.created_at.slice(0, 10) + (v.created_by ? ' – ' + v.created_by : '')"></summary>
+              <pre class="whitespace-pre-wrap mt-1 text-gray-600 dark:text-gray-300" x-text="v.text"></pre>
+            </details>
+          </template>
+        </div>
+      </div>
+
       <!-- ── Machine Admins (admin only) ───────────────────────────── -->
       <template x-if="isAdmin">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
@@ -313,8 +338,35 @@
 </div>
 
 <script>
+const TERMS_CURRENT_L = {{ _('machines.terms_current') | tojson }};
 function machineDetail(slug, isAdmin) {
   return {
+    terms: { current: null, versions: [] },
+    termsDraft: '',
+    termsError: '',
+    termsSaved: false,
+    termsSaving: false,
+    async loadTerms() {
+      const r = await apiFetch(`/api/v1/machines/${this.slug}/terms`);
+      if (!r.ok) return;
+      this.terms = await r.json();
+      this.termsDraft = this.terms.current ? this.terms.current.text : '';
+    },
+    async publishTerms() {
+      this.termsError = ''; this.termsSaved = false; this.termsSaving = true;
+      try {
+        const r = await apiFetch(`/api/v1/machines/${this.slug}/terms`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: this.termsDraft }),
+        });
+        const data = await r.json();
+        if (!r.ok) { this.termsError = data.detail || 'Error'; return; }
+        this.terms = data;
+        this.termsDraft = data.current.text;
+        this.termsSaved = true;
+      } finally { this.termsSaving = false; }
+    },
     slug: slug,
     isAdmin: isAdmin,
     machine: null,
@@ -434,6 +486,7 @@ function machineDetail(slug, isAdmin) {
 
         this.authorizations = aRes.ok ? await aRes.json() : [];
         this.authUsers = uRes.ok ? await uRes.json() : [];
+        await this.loadTerms();
 
         if (isAdmin) {
           const [adRes, allURes] = await Promise.all([

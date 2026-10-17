@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_device
 from app.database import get_db
-from app.models.machine import Machine, MachineAuthorization
+from app.models.machine import Machine, MachineAuthorization, terms_accepted
 from app.models.session import MachineSession
 from app.models.transaction import Transaction, TransactionType
 from app.models.user import User, resolve_nfc_id
@@ -84,6 +84,8 @@ def create_session(
     )
     if not auth:
         raise HTTPException(status_code=403, detail="User not authorized for this machine")
+    if not terms_accepted(db, device.id, nfc_id):
+        raise HTTPException(status_code=403, detail="User has not accepted the current terms of use")
 
     cost = auth.price_per_login + auth.price_per_minute * auth.booking_interval
     if user.balance < cost:

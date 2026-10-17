@@ -10,7 +10,7 @@ from app.auth.deps import get_current_device, require_admin_user, require_checko
 from app.auth.jwt import create_link_token
 from app.config import settings
 from app.database import get_db
-from app.models.machine import Machine, MachineAuthorization
+from app.models.machine import Machine, MachineAuthorization, MachineTermsAcceptance, current_terms
 from app.models.rental import Rental
 from app.models.session import MachineSession
 from app.models.transaction import Transaction
@@ -18,7 +18,7 @@ from app.models.user import User, UserCardAlias, resolve_nfc_id
 from app.schemas.common import HTTP_400, HTTP_404, HTTP_409, MessageResponse
 from app.schemas.transaction import MeTransactionResponse
 from app.schemas.user import (
-    LinkTokenResponse, UserAuthResponse, UserCreate, UserLinkOidc,
+    LinkTokenResponse, TermsAccept, UserAuthResponse, UserCreate, UserLinkOidc,
     UserMeMachineResponse, UserMeRentalResponse, UserMeSessionResponse,
     UserResponse, UserTransferRequest, UserUpdate,
 )
@@ -158,17 +158,55 @@ def get_me_machines(
         .order_by(Machine.name)
         .all()
     )
-    return [
-        UserMeMachineResponse(
+    accepted = {
+        (r.machine_id, r.version)
+        for r in db.query(MachineTermsAcceptance).filter(MachineTermsAcceptance.user_id == db_user.id)
+    }
+    result = []
+    for a in auths:
+        terms = current_terms(db, a.machine.id)
+        result.append(UserMeMachineResponse(
             machine_id=a.machine.id,
             machine_name=a.machine.name,
             machine_slug=a.machine.slug,
             price_per_login=a.price_per_login,
             price_per_minute=a.price_per_minute,
             booking_interval=a.booking_interval,
+            terms_version=terms.version if terms else None,
+            terms_text=terms.text if terms else None,
+            terms_accepted=terms is None or (a.machine.id, terms.version) in accepted,
+        ))
+    return result
+
+
+@router.post("/me/machines/{slug}/terms/accept", response_model=MessageResponse, responses={**HTTP_404, **HTTP_409})
+def accept_machine_terms(
+    slug: str,
+    body: TermsAccept,
+    user: dict = Depends(require_session_user),
+    db: Session = Depends(get_db),
+):
+    """Accept the machine's current terms version (409 if a newer version was published meanwhile)."""
+    db_user = _me_user(user, db)
+    machine = db.query(Machine).filter(Machine.slug == slug, Machine.active.is_(True)).first()
+    terms = current_terms(db, machine.id) if machine else None
+    if not machine or not terms:
+        raise HTTPException(status_code=404, detail="No terms of use for this machine")
+    if body.version != terms.version:
+        raise HTTPException(status_code=409, detail="Terms have changed, please review the current version")
+    exists = (
+        db.query(MachineTermsAcceptance)
+        .filter(
+            MachineTermsAcceptance.machine_id == machine.id,
+            MachineTermsAcceptance.user_id == db_user.id,
+            MachineTermsAcceptance.version == terms.version,
         )
-        for a in auths
-    ]
+        .first()
+    )
+    if not exists:
+        db.add(MachineTermsAcceptance(machine_id=machine.id, user_id=db_user.id, version=terms.version))
+        db.commit()
+    return {"detail": "Terms accepted"}
 
 
 @router.get("/me/sessions", response_model=list[UserMeSessionResponse], responses={**HTTP_404})

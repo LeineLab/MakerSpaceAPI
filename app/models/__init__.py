@@ -14,7 +14,7 @@ from app.models.ledger import (
     LedgerImportStatus,
     LedgerSphere,
 )
-from app.models.machine import Machine, MachineAdmin, MachineAuthorization
+from app.models.machine import Machine, MachineAdmin, MachineAuthorization, MachineTerms, MachineTermsAcceptance
 from app.models.product import Product, ProductAlias, ProductAudit, ProductAuditType, ProductCategory
 from app.models.rental import Rental, RentalItem, RentalPermission
 from app.models.session import MachineSession
@@ -23,6 +23,8 @@ from app.models.user import User, UserCardAlias
 
 __all__ = [
     "Base",
+    "MachineTerms",
+    "MachineTermsAcceptance",
     "AuditLog",
     "BankAccount",
     "BookingTarget",
