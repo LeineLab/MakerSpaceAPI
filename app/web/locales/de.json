@@ -825,5 +825,6 @@
   "me.terms_modal_title": "Nutzungsvereinbarung: {machine}",
   "me.terms_accept": "Ich habe die Vereinbarung gelesen und akzeptiere sie",
   "me.terms_changed": "Die Vereinbarung wurde zwischenzeitlich geändert. Bitte erneut prüfen.",
-  "me.terms_blocked_hint": "Ohne Akzeptanz kann die Maschine nicht genutzt werden."
+  "me.terms_blocked_hint": "Ohne Akzeptanz kann die Maschine nicht genutzt werden.",
+  "nav.terms_pending": "Ausstehende Nutzungsvereinbarungen"
 }

@@ -257,6 +257,9 @@ function mePage() {
     termsError: '',
     modalMousedownOutside: false,
     openTerms(m) { this.termsMachine = m; this.termsChecked = false; this.termsError = ''; },
+    announcePendingTerms() {
+      window.dispatchEvent(new CustomEvent('terms-pending', { detail: this.machines.filter(x => !x.terms_accepted).length }));
+    },
     async acceptTerms() {
       const m = this.termsMachine;
       const r = await apiFetch(`/api/v1/users/me/machines/${m.machine_slug}/terms/accept`, {
@@ -268,6 +271,7 @@ function mePage() {
       if (!r.ok) { this.termsError = (await r.json()).detail || 'Error'; return; }
       m.terms_accepted = true;
       this.termsMachine = null;
+      this.announcePendingTerms();
     },
     profile: null,
     rentals: [],
@@ -332,6 +336,7 @@ function mePage() {
       try {
         const r = await apiFetch('/api/v1/users/me/machines');
         this.machines = r.ok ? await r.json() : [];
+        this.announcePendingTerms();
       } finally {
         this.loadingMachines = false;
       }

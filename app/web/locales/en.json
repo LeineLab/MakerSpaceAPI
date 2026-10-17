@@ -825,5 +825,6 @@
   "me.terms_modal_title": "Terms of use: {machine}",
   "me.terms_accept": "I have read and accept the terms",
   "me.terms_changed": "The terms changed in the meantime. Please review again.",
-  "me.terms_blocked_hint": "The machine cannot be used until accepted."
+  "me.terms_blocked_hint": "The machine cannot be used until accepted.",
+  "nav.terms_pending": "Pending terms of use"
 }

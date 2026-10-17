@@ -129,7 +129,10 @@
 </head>
 <body class="bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100 min-h-screen">
 
-  <nav x-data="{ open: false, dark: document.documentElement.classList.contains('dark') }" class="bg-gray-800 text-white">
+  <nav x-data="{ open: false, dark: document.documentElement.classList.contains('dark'), pendingTerms: 0 }"
+       {% if user %}x-init="fetch('/api/v1/users/me/machines').then(r => r.ok ? r.json() : []).then(ms => pendingTerms = ms.filter(m => !m.terms_accepted).length).catch(() => {})"{% endif %}
+       @terms-pending.window="pendingTerms = $event.detail"
+       class="bg-gray-800 text-white">
 
     <!-- Top bar (always visible) -->
     <div class="px-6 py-3 flex items-center gap-6">
@@ -141,7 +144,7 @@
         <a href="/products" class="hover:text-gray-300 text-sm">{{ _('nav.products') }}</a>
         <a href="/filament" class="hover:text-gray-300 text-sm">{{ _('nav.filament') }}</a>
         {% if user %}
-          <a href="/me"       class="hover:text-gray-300 text-sm">{{ _('nav.me') }}</a>
+          <a href="/me"       class="hover:text-gray-300 text-sm">{{ _('nav.me') }}<span x-show="pendingTerms > 0" x-cloak x-text="pendingTerms" class="ml-1 bg-amber-500 text-white text-xs rounded-full px-1.5 py-0.5" title="{{ _('nav.terms_pending') }}"></span></a>
           <a href="/machines" class="hover:text-gray-300 text-sm">{{ _('nav.machines') }}</a>
           {% if is_admin(user) %}
             <a href="/dashboard"   class="hover:text-gray-300 text-sm">{{ _('nav.dashboard') }}</a>
@@ -207,7 +210,7 @@
       <a href="/filament"
          class="hover:text-gray-300 text-sm py-2">{{ _('nav.filament') }}</a>
       {% if user %}
-        <a href="/me"       class="hover:text-gray-300 text-sm py-2">{{ _('nav.me') }}</a>
+        <a href="/me"       class="hover:text-gray-300 text-sm py-2">{{ _('nav.me') }}<span x-show="pendingTerms > 0" x-cloak x-text="pendingTerms" class="ml-1 bg-amber-500 text-white text-xs rounded-full px-1.5 py-0.5" title="{{ _('nav.terms_pending') }}"></span></a>
         <a href="/machines" class="hover:text-gray-300 text-sm py-2">{{ _('nav.machines') }}</a>
         {% if is_admin(user) %}
           <a href="/dashboard"   class="hover:text-gray-300 text-sm py-2">{{ _('nav.dashboard') }}</a>
