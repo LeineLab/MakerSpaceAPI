@@ -84,6 +84,8 @@ def create_session(
     )
     if not auth:
         raise HTTPException(status_code=403, detail="User not authorized for this machine")
+    if device.out_of_order:
+        raise HTTPException(status_code=403, detail="Machine is out of order")
     if not terms_accepted(db, device.id, nfc_id):
         raise HTTPException(status_code=403, detail="User has not accepted the current terms of use")
 

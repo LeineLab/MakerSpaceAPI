@@ -25,6 +25,7 @@ from app.schemas.machine import (
     MachineCreateResponse,
     MachineResponse,
     MachineSessionResponse,
+    MachineStatusUpdate,
     MachineUpdate,
     MachineUserSummary,
     TermsCreate,
@@ -116,6 +117,33 @@ def update_machine(
         machine.machine_type = body.machine_type
     if body.active is not None:
         machine.active = body.active
+    db.commit()
+    db.refresh(machine)
+    return machine
+
+
+@router.put("/{slug}/status", response_model=MachineResponse, responses={**HTTP_404})
+def set_machine_status(
+    slug: str,
+    body: MachineStatusUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Mark a machine (not) out of order. Admin or machine sub-admin.
+
+    New logins are rejected while set; running sessions continue.
+    """
+    _, machine = require_machine_manager(slug, request, db)
+    reason = (body.reason or "").strip() or None
+    if body.out_of_order:
+        if not machine.out_of_order:
+            machine.out_of_order_since = datetime.now(UTC).replace(tzinfo=None)
+        machine.out_of_order = True
+        machine.out_of_order_reason = reason
+    else:
+        machine.out_of_order = False
+        machine.out_of_order_reason = None
+        machine.out_of_order_since = None
     db.commit()
     db.refresh(machine)
     return machine
@@ -481,6 +509,19 @@ def check_authorization(
     if auth is None:
         return AuthorizeUserResponse(
             authorized=False,
+            user_id=user.id,
+            user_name=user.name,
+            balance=user.balance,
+            price_per_login=Decimal("0.00"),
+            price_per_minute=Decimal("0.00"),
+            booking_interval=0,
+        )
+
+    if device.out_of_order:
+        return AuthorizeUserResponse(
+            authorized=False,
+            out_of_order=True,
+            out_of_order_reason=device.out_of_order_reason,
             user_id=user.id,
             user_name=user.name,
             balance=user.balance,

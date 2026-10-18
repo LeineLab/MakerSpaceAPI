@@ -1,4 +1,5 @@
 import html
+from datetime import UTC, datetime
 from contextlib import asynccontextmanager
 from urllib.parse import quote
 
@@ -20,6 +21,8 @@ from app.api.v1.router import api_router
 from app.api.v1.sessions import close_stale_sessions
 from app.config import settings
 from app.database import get_db
+from app.models.machine import Machine
+from app.models.session import MachineSession
 from app.web.router import router as web_router
 import pathlib
 
@@ -97,6 +100,38 @@ def health(db: Session = Depends(get_db)):
         return {"status": "ok", "database": "ok"}
     except Exception:
         return JSONResponse({"status": "error", "database": "unreachable"}, status_code=503)
+
+
+@app.get("/api/health/machines/{slug}", tags=["health"])
+def machine_health(slug: str, db: Session = Depends(get_db)):
+    """Public per-machine status for external monitoring (e.g. gatus).
+
+    - last_active_age_seconds: time since the device last called the API
+      (None if never). Idle machines only call on card scans, so this is not a heartbeat.
+    - open_session_overdue_seconds: how long the machine's open session is past its
+      paid_until (0 if none). A value growing beyond one booking interval means the
+      device stopped extending/ending the session. Stale sessions are closed by
+      /api/health after a 5 minute grace period.
+    No user data is exposed.
+    """
+    machine = db.query(Machine).filter(Machine.slug == slug).first()
+    if not machine:
+        raise HTTPException(status_code=404, detail="Machine not found")
+    now = datetime.now(UTC).replace(tzinfo=None)
+    overdue = 0
+    for sess in db.query(MachineSession).filter(
+        MachineSession.machine_id == machine.id, MachineSession.end_time.is_(None)
+    ):
+        overdue = max(overdue, int((now - sess.paid_until).total_seconds()))
+    return {
+        "status": "ok",
+        "active": machine.active,
+        "out_of_order": machine.out_of_order,
+        "last_active_age_seconds": (
+            int((now - machine.last_active_at).total_seconds()) if machine.last_active_at else None
+        ),
+        "open_session_overdue_seconds": max(overdue, 0),
+    }
 
 
 # Static files (JS/CSS served locally)

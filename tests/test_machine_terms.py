@@ -97,3 +97,33 @@ def test_accept_without_linked_card_404(admin_client, machine_token, db):
 
 def test_empty_terms_rejected(admin_client, machine_token):
     assert admin_client.post("/api/v1/machines/test-machine/terms", json={"text": "   "}).status_code == 400
+
+
+def test_out_of_order_blocks_login_not_running_session(client, admin_client, authorized, test_user):
+    token, _ = authorized
+    sid = _session(client, token, test_user.id).json()["session_id"]
+    r = admin_client.put("/api/v1/machines/test-machine/status", json={"out_of_order": True, "reason": "Laser tube"})
+    assert r.status_code == 200 and r.json()["out_of_order"] is True
+    data = _authorize(client, token, test_user.id)
+    assert data["authorized"] is False and data["out_of_order"] is True
+    assert data["out_of_order_reason"] == "Laser tube"
+    assert client.put(f"/api/v1/sessions/{sid}", headers=_hdr(token)).status_code == 200
+    client.delete(f"/api/v1/sessions/{sid}", headers=_hdr(token))
+    assert _session(client, token, test_user.id).status_code == 403
+    admin_client.put("/api/v1/machines/test-machine/status", json={"out_of_order": False})
+    assert _authorize(client, token, test_user.id)["authorized"] is True
+    assert _session(client, token, test_user.id).status_code == 201
+
+
+def test_out_of_order_requires_machine_manager(machine_token, treasurer_client, client):
+    assert client.put("/api/v1/machines/test-machine/status", json={"out_of_order": True}).status_code == 401
+    assert treasurer_client.put("/api/v1/machines/test-machine/status", json={"out_of_order": True}).status_code == 403
+
+
+def test_machine_health_endpoint(client, authorized, test_user):
+    token, _ = authorized
+    r = client.get("/api/health/machines/test-machine")
+    assert r.status_code == 200 and r.json()["open_session_overdue_seconds"] == 0
+    _session(client, token, test_user.id)
+    assert client.get("/api/health/machines/test-machine").json()["open_session_overdue_seconds"] == 0
+    assert client.get("/api/health/machines/nope").status_code == 404

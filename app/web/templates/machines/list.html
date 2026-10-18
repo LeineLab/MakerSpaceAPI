@@ -67,6 +67,8 @@
           <tr class="border-t dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
             <td class="px-4 py-2 font-medium">
               <a :href="'/machines/' + m.slug" class="text-blue-600 dark:text-blue-400 hover:underline" x-text="m.name"></a>
+              <span x-show="m.out_of_order" x-cloak class="ml-2 text-xs bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 rounded px-1.5 py-0.5"
+                    :title="m.out_of_order_reason || ''">{{ _('machines.ooo_badge') }}</span>
             </td>
             <td class="px-4 py-2 font-mono text-xs text-gray-500 dark:text-gray-400" x-text="m.slug"></td>
             <td class="px-4 py-2 text-gray-500 dark:text-gray-400" x-text="m.machine_type"></td>

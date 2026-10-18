@@ -27,8 +27,16 @@ class MachineResponse(BaseModel):
     created_at: datetime
     created_by: Optional[str]
     last_active_at: Optional[datetime] = None
+    out_of_order: bool = False
+    out_of_order_reason: Optional[str] = None
+    out_of_order_since: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class MachineStatusUpdate(BaseModel):
+    out_of_order: bool
+    reason: Optional[str] = Field(default=None, max_length=255)
 
 
 class MachineCreateResponse(MachineResponse):
@@ -104,6 +112,8 @@ class AuthorizeUserResponse(BaseModel):
     price_per_login: Decimal = Field(ge=0, examples=[Decimal("0.50")])
     price_per_minute: Decimal = Field(ge=0, examples=[Decimal("0.10")])
     booking_interval: int  # minutes
+    out_of_order: bool = False  # machine is temporarily blocked
+    out_of_order_reason: Optional[str] = None
     terms_required: bool = False  # authorized, but the current terms of use are not accepted yet
 
 

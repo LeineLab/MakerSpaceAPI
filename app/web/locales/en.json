@@ -826,5 +826,12 @@
   "me.terms_accept": "I have read and accept the terms",
   "me.terms_changed": "The terms changed in the meantime. Please review again.",
   "me.terms_blocked_hint": "The machine cannot be used until accepted.",
-  "nav.terms_pending": "Pending terms of use"
+  "nav.terms_pending": "Pending terms of use",
+  "machines.ooo_active": "Out of order",
+  "machines.ooo_ok": "In operation",
+  "machines.ooo_set": "Mark out of order",
+  "machines.ooo_clear": "Put back into operation",
+  "machines.ooo_reason": "Reason (optional, shown on the device)",
+  "machines.ooo_hint": "New logins on the device are rejected. Running sessions continue.",
+  "machines.ooo_badge": "Out of order"
 }

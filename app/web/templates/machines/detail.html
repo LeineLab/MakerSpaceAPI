@@ -36,6 +36,23 @@
           <dd x-text="machine.last_active_at ? fmtDateTime(machine.last_active_at) : '—'"></dd>
         </dl>
 
+        <!-- Out-of-order status (admin and machine sub-admins) -->
+        <div class="mb-4 p-3 rounded text-sm"
+             :class="machine.out_of_order ? 'bg-amber-50 dark:bg-amber-900/30' : 'bg-gray-50 dark:bg-gray-700/40'">
+          <div class="font-medium" x-text="machine.out_of_order ? OOO_ACTIVE_L : OOO_OK_L"></div>
+          <div x-show="machine.out_of_order && machine.out_of_order_reason" class="text-gray-600 dark:text-gray-300" x-text="machine.out_of_order_reason"></div>
+          <div x-show="oooError" class="text-red-600 dark:text-red-400 text-xs" x-text="oooError"></div>
+          <form @submit.prevent="setOutOfOrder(!machine.out_of_order)" class="mt-2 flex flex-wrap gap-2 items-center">
+            <input type="text" x-show="!machine.out_of_order" x-model="oooReason" maxlength="255"
+                   placeholder="{{ _('machines.ooo_reason') }}"
+                   class="border dark:border-gray-600 dark:bg-gray-700 rounded px-2 py-1 text-sm flex-1 min-w-48">
+            <button type="submit" class="px-3 py-1 rounded text-sm text-white"
+                    :class="machine.out_of_order ? 'bg-green-600 hover:bg-green-700' : 'bg-amber-600 hover:bg-amber-700'"
+                    x-text="machine.out_of_order ? OOO_CLEAR_L : OOO_SET_L"></button>
+          </form>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('machines.ooo_hint') }}</p>
+        </div>
+
         <!-- Admin-only edit form -->
         <template x-if="isAdmin">
           <div>
@@ -338,9 +355,27 @@
 </div>
 
 <script>
+const OOO_ACTIVE_L = {{ _('machines.ooo_active') | tojson }};
+const OOO_OK_L = {{ _('machines.ooo_ok') | tojson }};
+const OOO_SET_L = {{ _('machines.ooo_set') | tojson }};
+const OOO_CLEAR_L = {{ _('machines.ooo_clear') | tojson }};
 const TERMS_CURRENT_L = {{ _('machines.terms_current') | tojson }};
 function machineDetail(slug, isAdmin) {
   return {
+    oooReason: '',
+    oooError: '',
+    async setOutOfOrder(value) {
+      this.oooError = '';
+      const r = await apiFetch(`/api/v1/machines/${this.slug}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ out_of_order: value, reason: this.oooReason }),
+      });
+      const data = await r.json();
+      if (!r.ok) { this.oooError = data.detail || 'Error'; return; }
+      this.machine = { ...this.machine, ...data };
+      this.oooReason = '';
+    },
     terms: { current: null, versions: [] },
     termsDraft: '',
     termsError: '',

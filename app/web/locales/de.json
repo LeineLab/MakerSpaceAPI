@@ -826,5 +826,12 @@
   "me.terms_accept": "Ich habe die Vereinbarung gelesen und akzeptiere sie",
   "me.terms_changed": "Die Vereinbarung wurde zwischenzeitlich geändert. Bitte erneut prüfen.",
   "me.terms_blocked_hint": "Ohne Akzeptanz kann die Maschine nicht genutzt werden.",
-  "nav.terms_pending": "Ausstehende Nutzungsvereinbarungen"
+  "nav.terms_pending": "Ausstehende Nutzungsvereinbarungen",
+  "machines.ooo_active": "Außer Betrieb",
+  "machines.ooo_ok": "In Betrieb",
+  "machines.ooo_set": "Außer Betrieb setzen",
+  "machines.ooo_clear": "Wieder in Betrieb nehmen",
+  "machines.ooo_reason": "Grund (optional, am Gerät sichtbar)",
+  "machines.ooo_hint": "Neue Logins am Gerät werden abgelehnt. Laufende Sitzungen bleiben bestehen.",
+  "machines.ooo_badge": "Außer Betrieb"
 }

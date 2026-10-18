@@ -27,6 +27,10 @@ class Machine(Base):
     created_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     last_active_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # Temporarily blocks new logins on the device; running sessions are not interrupted.
+    out_of_order: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    out_of_order_reason: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    out_of_order_since: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Relationships
     admin_users: Mapped[list["MachineAdmin"]] = relationship(
