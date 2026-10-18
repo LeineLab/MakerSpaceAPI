@@ -125,6 +125,22 @@ def products_manage(
     return templates.TemplateResponse(request, "products/manage.html", _ctx(request, user))
 
 
+@router.get("/products/changes", response_class=HTMLResponse)
+def products_changes(
+    request: Request,
+    user: dict = Depends(require_product_manager_user),
+):
+    return templates.TemplateResponse(request, "products/changes.html", _ctx(request, user))
+
+
+@router.get("/audit", response_class=HTMLResponse)
+def audit_page(
+    request: Request,
+    user: dict = Depends(require_admin_user),
+):
+    return templates.TemplateResponse(request, "audit.html", _ctx(request, user))
+
+
 # ---------------------------------------------------------------------------
 # Product manager: Filament roll tracking
 # ---------------------------------------------------------------------------

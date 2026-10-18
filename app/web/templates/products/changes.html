@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}{{ _('changes.title') }} – MakerSpaceAPI{% endblock %}
+{% block content %}
+<div x-data="productChanges()" x-init="init()" x-cloak>
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+    <h1 class="text-2xl font-bold">{{ _('changes.title') }}</h1>
+    <a href="/products/manage" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">{{ _('changes.back') }}</a>
+  </div>
+
+  <div class="flex flex-wrap gap-2 mb-4 items-end">
+    <input type="text" x-model="f.q" @input.debounce.400ms="reload()" placeholder="{{ _('changes.filter_product') }}" class="border dark:border-gray-600 dark:bg-gray-700 rounded px-2 py-1 text-sm">
+    <select x-model="f.change_type" @change="reload()" class="border dark:border-gray-600 dark:bg-gray-700 rounded px-2 py-1 text-sm">
+      <option value="">{{ _('changes.all_types') }}</option>
+      <template x-for="t in TYPES" :key="t"><option :value="t" x-text="TYPE_L[t] || t"></option></template>
+    </select>
+    <input type="text" x-model="f.changed_by" @input.debounce.400ms="reload()" placeholder="{{ _('changes.filter_user') }}" class="border dark:border-gray-600 dark:bg-gray-700 rounded px-2 py-1 text-sm">
+    <label class="text-xs text-gray-500">{{ _('changes.from') }} <input type="date" x-model="f.date_from" @change="reload()" class="border dark:border-gray-600 dark:bg-gray-700 rounded px-2 py-1 text-sm"></label>
+    <label class="text-xs text-gray-500">{{ _('changes.to') }} <input type="date" x-model="f.date_to" @change="reload()" class="border dark:border-gray-600 dark:bg-gray-700 rounded px-2 py-1 text-sm"></label>
+  </div>
+
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 uppercase text-xs">
+        <tr>
+          <th class="px-4 py-2 text-left">{{ _('changes.col_time') }}</th>
+          <th class="px-4 py-2 text-left">{{ _('changes.col_product') }}</th>
+          <th class="px-4 py-2 text-left">{{ _('changes.col_type') }}</th>
+          <th class="px-4 py-2 text-left">{{ _('changes.col_change') }}</th>
+          <th class="px-4 py-2 text-left">{{ _('changes.col_user') }}</th>
+          <th class="px-4 py-2 text-left">{{ _('changes.col_note') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-if="!loading && rows.length === 0">
+          <tr><td colspan="6" class="px-4 py-6 text-center text-gray-400">{{ _('changes.empty') }}</td></tr>
+        </template>
+        <template x-for="r in rows" :key="r.id">
+          <tr class="border-t dark:border-gray-700">
+            <td class="px-4 py-2 whitespace-nowrap" x-text="fmtDateTime(r.changed_at)"></td>
+            <td class="px-4 py-2"><span x-text="r.product_name"></span> <span class="text-xs text-gray-400 font-mono" x-text="r.product_ean"></span></td>
+            <td class="px-4 py-2" x-text="TYPE_L[r.change_type] || r.change_type"></td>
+            <td class="px-4 py-2 font-mono text-xs" x-text="(r.old_value ?? '—') + ' → ' + (r.new_value ?? '—')"></td>
+            <td class="px-4 py-2 text-xs text-gray-500" x-text="r.changed_by"></td>
+            <td class="px-4 py-2 text-xs" x-text="r.note || ''"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="flex items-center justify-between mt-3 text-sm">
+    <button @click="prev()" :disabled="page <= 1" class="px-3 py-1 border dark:border-gray-600 rounded disabled:opacity-40">{{ _('changes.prev') }}</button>
+    <span x-text="PAGE_L.replace('{page}', page).replace('{pages}', pages).replace('{total}', total)"></span>
+    <button @click="next()" :disabled="page >= pages" class="px-3 py-1 border dark:border-gray-600 rounded disabled:opacity-40">{{ _('changes.next') }}</button>
+  </div>
+</div>
+
+<script>
+const TYPES = ['created','price_change','stock_add','stock_deduct','category_change','name_change','activated','deactivated','stocktaking'];
+const TYPE_L = {
+  created: {{ _('changes.type_created') | tojson }}, price_change: {{ _('changes.type_price_change') | tojson }},
+  stock_add: {{ _('changes.type_stock_add') | tojson }}, stock_deduct: {{ _('changes.type_stock_deduct') | tojson }},
+  category_change: {{ _('changes.type_category_change') | tojson }}, name_change: {{ _('changes.type_name_change') | tojson }},
+  activated: {{ _('changes.type_activated') | tojson }}, deactivated: {{ _('changes.type_deactivated') | tojson }},
+  stocktaking: {{ _('changes.type_stocktaking') | tojson }},
+};
+const PAGE_L = {{ _('changes.page') | tojson }};
+const PAGE_SIZE = 50;
+function productChanges() {
+  return {
+    rows: [], total: 0, page: 1, loading: true,
+    f: { q: '', change_type: '', changed_by: '', date_from: '', date_to: '' },
+    get pages() { return Math.max(1, Math.ceil(this.total / PAGE_SIZE)); },
+    init() {
+      const u = new URLSearchParams(location.search);
+      this.f.q = u.get('ean') || '';
+      this.load();
+    },
+    params() {
+      const p = new URLSearchParams({ limit: PAGE_SIZE, offset: (this.page - 1) * PAGE_SIZE });
+      for (const k of ['q', 'change_type', 'changed_by', 'date_from', 'date_to']) if (this.f[k]) p.set(k, this.f[k]);
+      return p;
+    },
+    async load() {
+      this.loading = true;
+      const r = await apiFetch('/api/v1/products/audit?' + this.params());
+      if (r.ok) { this.rows = await r.json(); this.total = parseInt(r.headers.get('X-Total-Count') || '0'); }
+      this.loading = false;
+    },
+    reload() { this.page = 1; this.load(); },
+    prev() { if (this.page > 1) { this.page--; this.load(); } },
+    next() { if (this.page < this.pages) { this.page++; this.load(); } },
+  };
+}
+</script>
+{% endblock %}

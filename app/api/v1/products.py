@@ -1,8 +1,10 @@
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.auth.deps import (
@@ -19,10 +21,12 @@ from app.models.product import Product, ProductAlias, ProductAudit, ProductAudit
 from app.models.transaction import Transaction, TransactionType
 from app.models.user import User, resolve_nfc_id
 from app.schemas.common import HTTP_400, HTTP_402, HTTP_404, HTTP_409, MessageResponse
+from app.services.audit import audit
 from app.schemas.product import (
     CategoryCreate,
     ProductAliasCreate,
     ProductAliasResponse,
+    ProductAuditOverviewItem,
     ProductAuditResponse,
     ProductCreate,
     ProductDetailResponse,
@@ -107,6 +111,46 @@ def products_sales_summary(
     ]
 
 
+@router.get("/products/audit", response_model=list[ProductAuditOverviewItem])
+def list_product_audit(
+    response: Response,
+    ean: Optional[str] = None,
+    q: Optional[str] = Query(default=None, description="Substring of product name or EAN"),
+    change_type: Optional[ProductAuditType] = None,
+    changed_by: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    user: dict = Depends(require_product_manager_user),
+    db: Session = Depends(get_db),
+):
+    """Change history across all products, newest first (product manager only).
+
+    `X-Total-Count` carries the number of matching rows for paging.
+    """
+    query = db.query(ProductAudit, Product).join(Product, Product.id == ProductAudit.product_id)
+    if ean:
+        query = query.filter(Product.ean == ean)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(or_(Product.name.ilike(like), Product.ean.ilike(like)))
+    if change_type:
+        query = query.filter(ProductAudit.change_type == change_type)
+    if changed_by:
+        query = query.filter(ProductAudit.changed_by.ilike(f"%{changed_by}%"))
+    if date_from:
+        query = query.filter(ProductAudit.changed_at >= datetime.combine(date_from, datetime.min.time()))
+    if date_to:
+        query = query.filter(ProductAudit.changed_at < datetime.combine(date_to + timedelta(days=1), datetime.min.time()))
+    response.headers["X-Total-Count"] = str(query.count())
+    rows = query.order_by(ProductAudit.changed_at.desc(), ProductAudit.id.desc()).offset(offset).limit(limit).all()
+    return [
+        {**ProductAuditResponse.model_validate(a).model_dump(), "product_ean": p.ean, "product_name": p.name}
+        for a, p in rows
+    ]
+
+
 @router.get("/categories", response_model=list[str])
 def list_categories(db: Session = Depends(get_db)):
     """Return all product categories (ProductCategory table + active product categories), sorted."""
@@ -133,6 +177,7 @@ def create_category(
     if db.query(ProductCategory).filter(ProductCategory.name == name).first():
         raise HTTPException(status_code=409, detail="Category already exists")
     db.add(ProductCategory(name=name))
+    audit(db, user.get("sub"), "product.category_created", "product_category", name)
     db.commit()
     return name
 
@@ -150,6 +195,7 @@ def delete_category(
     if db.query(Product).filter(Product.category == name).first():
         raise HTTPException(status_code=409, detail="Category is in use by one or more products")
     db.delete(cat)
+    audit(db, user.get("sub"), "product.category_deleted", "product_category", name)
     db.commit()
     return {"detail": f"Category '{name}' deleted"}
 
@@ -347,6 +393,7 @@ def add_alias(
         raise HTTPException(status_code=409, detail="Alias EAN already exists")
     alias = ProductAlias(ean=body.ean, product_id=product.id)
     db.add(alias)
+    audit(db, user.get("sub"), "product.alias_added", "product", product.ean, alias_ean=body.ean)
     db.commit()
     db.refresh(alias)
     return alias
@@ -368,6 +415,7 @@ def delete_alias(
     if not alias:
         raise HTTPException(status_code=404, detail="Alias not found")
     db.delete(alias)
+    audit(db, user.get("sub"), "product.alias_removed", "product", product.ean, alias_ean=alias_ean)
     db.commit()
     return {"detail": "Alias removed"}
 

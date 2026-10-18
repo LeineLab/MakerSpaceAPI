@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_device, require_admin_user, require_device_or_admin
+from app.services.audit import audit
 from app.config import settings
 from app.database import get_db
 from app.models.booking_target import BookingTarget
@@ -243,6 +244,7 @@ def create_target(
         raise HTTPException(status_code=409, detail="Slug already exists")
     target = BookingTarget(name=body.name, slug=body.slug, created_at=datetime.now(UTC).replace(tzinfo=None))
     db.add(target)
+    audit(db, admin.get("sub"), "bankomat.target_created", "booking_target", body.slug, name=body.name)
     db.commit()
     db.refresh(target)
     return target
@@ -283,6 +285,8 @@ def adjust_target(
         target_id=target.id,
         note=body.note or f"Cash discrepancy write-off ({admin.get('sub', 'admin')})",
     ))
+    audit(db, admin.get("sub"), "bankomat.target_adjusted", "booking_target", slug,
+          difference=difference, new_balance=body.actual_balance, note=body.note)
     db.commit()
     return {
         "detail": f"Adjusted '{target.name}' by {difference} {settings.CURRENCY}. New balance: {body.actual_balance} {settings.CURRENCY}",
@@ -579,6 +583,7 @@ def set_pin(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     user.pin_hash = _pwd.hash(body.pin)
+    audit(db, admin.get("sub"), "bankomat.pin_set", "user", nfc_id)
     db.commit()
     return {"detail": "PIN updated"}
 
@@ -719,5 +724,6 @@ def clear_pin(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     user.pin_hash = None
+    audit(db, admin.get("sub"), "bankomat.pin_cleared", "user", nfc_id)
     db.commit()
     return {"detail": "PIN cleared"}

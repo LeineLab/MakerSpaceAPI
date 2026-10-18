@@ -17,6 +17,7 @@ from app.models.transaction import Transaction
 from app.models.user import User, UserCardAlias, resolve_nfc_id
 from app.schemas.common import HTTP_400, HTTP_404, HTTP_409, MessageResponse
 from app.schemas.transaction import MeTransactionResponse
+from app.services.audit import audit
 from app.schemas.user import (
     LinkTokenResponse, TermsAccept, UserAuthResponse, UserCreate, UserLinkOidc,
     UserMeMachineResponse, UserMeRentalResponse, UserMeSessionResponse,
@@ -433,7 +434,11 @@ def transfer_card(
             raise HTTPException(
                 status_code=400, detail="Card is currently registered as an alias tag"
             )
-    return _do_transfer(old_nfc_id, body.new_id, db)
+    result = _do_transfer(old_nfc_id, body.new_id, db)
+    # _do_transfer commits itself, so this entry is stored right after the transfer
+    audit(db, admin.get("sub"), "user.card_transferred", "user", old_nfc_id, old_id=old_nfc_id, new_id=body.new_id)
+    db.commit()
+    return result
 
 
 @router.get("", response_model=list[UserResponse])
@@ -468,6 +473,7 @@ def update_user(
     user = db.query(User).filter(User.id == nfc_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    before = {"name": user.name, "oidc_sub": user.oidc_sub}
     if body.name is not None:
         user.name = body.name or None
     if body.oidc_sub is not None:
@@ -477,6 +483,10 @@ def update_user(
             if existing:
                 raise HTTPException(status_code=409, detail="OIDC sub already linked to another user")
         user.oidc_sub = new_sub
+    after = {"name": user.name, "oidc_sub": user.oidc_sub}
+    changes = {k: {"from": before[k], "to": after[k]} for k in before if before[k] != after[k]}
+    if changes:
+        audit(db, admin.get("sub"), "user.updated", "user", nfc_id, **changes)
     db.commit()
     db.refresh(user)
     return user
@@ -497,6 +507,7 @@ def link_oidc(
     existing = db.query(User).filter(User.oidc_sub == oidc_sub, User.id != nfc_id).first()
     if existing:
         raise HTTPException(status_code=409, detail="OIDC sub already linked to another user")
+    audit(db, admin.get("sub"), "user.oidc_linked", "user", nfc_id, previous=user.oidc_sub, new=oidc_sub)
     user.oidc_sub = oidc_sub
     db.commit()
     db.refresh(user)

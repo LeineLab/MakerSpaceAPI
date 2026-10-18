@@ -5,6 +5,7 @@
 <div x-data="productManage()" x-cloak>
   <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
     <h1 class="text-2xl font-bold">{{ _('manage.title') }}</h1>
+    <a href="/products/changes" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">{{ _('changes.title') }}</a>
     <button @click="openAddModal()"
             class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
       {{ _('manage.btn_add') }}
@@ -81,7 +82,7 @@
                       class="text-xs text-gray-500 dark:text-gray-400 hover:underline">{{ _('common.stock') }}</button>
               <button @click="openStocktakingModal(p)"
                       class="text-xs text-gray-500 dark:text-gray-400 hover:underline">{{ _('manage.stocktaking_link') }}</button>
-              <a :href="'/api/v1/products/' + p.ean + '/audit'" target="_blank"
+              <a :href="'/products/changes?ean=' + p.ean"
                  class="text-xs text-gray-400 dark:text-gray-500 hover:underline">{{ _('common.history') }}</a>
             </td>
           </tr>

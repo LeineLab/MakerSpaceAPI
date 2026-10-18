@@ -12,6 +12,7 @@ from app.auth.tokens import generate_api_token
 from app.database import get_db
 from app.models.machine import Machine, MachineAdmin, MachineAuthorization, MachineTerms, terms_accepted
 from app.models.session import MachineSession
+from app.services.audit import audit
 from app.models.transaction import Transaction
 from app.models.user import User, resolve_nfc_id
 from app.schemas.machine import (
@@ -63,6 +64,7 @@ def register_machine(
         created_by=admin.get("sub"),
     )
     db.add(machine)
+    audit(db, admin.get("sub"), "machine.created", "machine", body.slug, name=body.name, machine_type=body.machine_type)
     db.commit()
     db.refresh(machine)
     return {**MachineResponse.model_validate(machine).model_dump(), "api_token": plaintext_token}
@@ -107,6 +109,7 @@ def update_machine(
     machine = db.query(Machine).filter(Machine.slug == slug).first()
     if not machine:
         raise HTTPException(status_code=404, detail="Machine not found")
+    before = {"name": machine.name, "slug": machine.slug, "machine_type": machine.machine_type, "active": machine.active}
     if body.name is not None:
         machine.name = body.name
     if body.slug is not None:
@@ -117,6 +120,10 @@ def update_machine(
         machine.machine_type = body.machine_type
     if body.active is not None:
         machine.active = body.active
+    after = {"name": machine.name, "slug": machine.slug, "machine_type": machine.machine_type, "active": machine.active}
+    changes = {k: {"from": before[k], "to": after[k]} for k in before if before[k] != after[k]}
+    if changes:
+        audit(db, admin.get("sub"), "machine.updated", "machine", slug, **changes)
     db.commit()
     db.refresh(machine)
     return machine
@@ -133,8 +140,10 @@ def set_machine_status(
 
     New logins are rejected while set; running sessions continue.
     """
-    _, machine = require_machine_manager(slug, request, db)
+    user, machine = require_machine_manager(slug, request, db)
     reason = (body.reason or "").strip() or None
+    audit(db, user.get("sub"), "machine.out_of_order" if body.out_of_order else "machine.in_operation",
+          "machine", slug, reason=reason)
     if body.out_of_order:
         if not machine.out_of_order:
             machine.out_of_order_since = datetime.now(UTC).replace(tzinfo=None)
@@ -159,6 +168,7 @@ def deactivate_machine(
     if not machine:
         raise HTTPException(status_code=404, detail="Machine not found")
     machine.active = False
+    audit(db, admin.get("sub"), "machine.deactivated", "machine", slug)
     db.commit()
     return {"detail": "Machine deactivated"}
 
@@ -175,6 +185,7 @@ def regenerate_token(
         raise HTTPException(status_code=404, detail="Machine not found")
     plaintext_token, token_hash = generate_api_token()
     machine.api_token_hash = token_hash
+    audit(db, admin.get("sub"), "machine.token_regenerated", "machine", slug)
     db.commit()
     db.refresh(machine)
     return {**MachineResponse.model_validate(machine).model_dump(), "api_token": plaintext_token}
@@ -220,6 +231,7 @@ def add_machine_admin(
         raise HTTPException(status_code=409, detail="User already an admin for this machine")
     entry = MachineAdmin(machine_id=machine.id, oidc_sub=body.oidc_sub)
     db.add(entry)
+    audit(db, admin.get("sub"), "machine.admin_added", "machine", slug, oidc_sub=body.oidc_sub)
     db.commit()
     db.refresh(entry)
     from app.models.user import User as UserModel
@@ -245,6 +257,7 @@ def remove_machine_admin(
     if not entry:
         raise HTTPException(status_code=404, detail="Admin not found")
     db.delete(entry)
+    audit(db, admin.get("sub"), "machine.admin_removed", "machine", slug, oidc_sub=oidc_sub)
     db.commit()
     return {"detail": "Admin removed"}
 
@@ -355,6 +368,7 @@ def publish_terms(
         text=text,
         created_by=user.get("sub"),
     ))
+    audit(db, user.get("sub"), "machine.terms_published", "machine", slug, version=latest + 1)
     db.commit()
     return get_terms(slug, request, db)
 
@@ -406,6 +420,9 @@ def grant_authorization(
         granted_at=datetime.now(UTC).replace(tzinfo=None),
     )
     db.add(auth)
+    audit(db, user_info.get("sub"), "machine.authorization_granted", "machine", slug, nfc_id=nfc_id,
+          price_per_login=body.price_per_login, price_per_minute=body.price_per_minute,
+          booking_interval=body.booking_interval)
     db.commit()
     db.refresh(auth)
     return auth
@@ -431,12 +448,19 @@ def update_authorization(
     )
     if not auth:
         raise HTTPException(status_code=404, detail="Authorization not found")
+    before = {"price_per_login": auth.price_per_login, "price_per_minute": auth.price_per_minute,
+              "booking_interval": auth.booking_interval}
     if body.price_per_login is not None:
         auth.price_per_login = body.price_per_login
     if body.price_per_minute is not None:
         auth.price_per_minute = body.price_per_minute
     if body.booking_interval is not None:
         auth.booking_interval = body.booking_interval
+    after = {"price_per_login": auth.price_per_login, "price_per_minute": auth.price_per_minute,
+             "booking_interval": auth.booking_interval}
+    changes = {k: {"from": before[k], "to": after[k]} for k in before if before[k] != after[k]}
+    if changes:
+        audit(db, user_info.get("sub"), "machine.authorization_updated", "machine", slug, nfc_id=nfc_id, **changes)
     db.commit()
     db.refresh(auth)
     return auth
@@ -462,6 +486,7 @@ def revoke_authorization(
     if not auth:
         raise HTTPException(status_code=404, detail="Authorization not found")
     db.delete(auth)
+    audit(db, user_info.get("sub"), "machine.authorization_revoked", "machine", slug, nfc_id=nfc_id)
     db.commit()
     return {"detail": "Authorization revoked"}
 

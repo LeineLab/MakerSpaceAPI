@@ -72,6 +72,11 @@ class ProductAuditResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ProductAuditOverviewItem(ProductAuditResponse):
+    product_ean: str
+    product_name: str
+
+
 class CategoryCreate(BaseModel):
     name: str
 

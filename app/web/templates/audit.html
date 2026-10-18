@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}{{ _('audit.title') }} – MakerSpaceAPI{% endblock %}
+{% block content %}
+<div x-data="auditLog()" x-init="load()" x-cloak>
+  <h1 class="text-2xl font-bold mb-4">{{ _('audit.title') }}</h1>
+
+  <div class="flex flex-wrap gap-2 mb-4 items-end">
+    <select x-model="f.action" @change="reload()" class="border dark:border-gray-600 dark:bg-gray-700 rounded px-2 py-1 text-sm">
+      <option value="">{{ _('audit.all_areas') }}</option>
+      <template x-for="a in AREAS" :key="a"><option :value="a + '.'" x-text="a"></option></template>
+    </select>
+    <input type="text" x-model="f.actor" @input.debounce.400ms="reload()" placeholder="{{ _('audit.filter_actor') }}" class="border dark:border-gray-600 dark:bg-gray-700 rounded px-2 py-1 text-sm">
+    <input type="text" x-model="f.target_id" @input.debounce.400ms="reload()" placeholder="{{ _('audit.filter_target') }}" class="border dark:border-gray-600 dark:bg-gray-700 rounded px-2 py-1 text-sm">
+    <input type="text" x-model="f.q" @input.debounce.400ms="reload()" placeholder="{{ _('audit.filter_detail') }}" class="border dark:border-gray-600 dark:bg-gray-700 rounded px-2 py-1 text-sm">
+    <label class="text-xs text-gray-500">{{ _('changes.from') }} <input type="date" x-model="f.date_from" @change="reload()" class="border dark:border-gray-600 dark:bg-gray-700 rounded px-2 py-1 text-sm"></label>
+    <label class="text-xs text-gray-500">{{ _('changes.to') }} <input type="date" x-model="f.date_to" @change="reload()" class="border dark:border-gray-600 dark:bg-gray-700 rounded px-2 py-1 text-sm"></label>
+  </div>
+
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 uppercase text-xs">
+        <tr>
+          <th class="px-4 py-2 text-left">{{ _('changes.col_time') }}</th>
+          <th class="px-4 py-2 text-left">{{ _('audit.col_actor') }}</th>
+          <th class="px-4 py-2 text-left">{{ _('audit.col_action') }}</th>
+          <th class="px-4 py-2 text-left">{{ _('audit.col_target') }}</th>
+          <th class="px-4 py-2 text-left">{{ _('audit.col_detail') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-if="!loading && rows.length === 0">
+          <tr><td colspan="5" class="px-4 py-6 text-center text-gray-400">{{ _('audit.empty') }}</td></tr>
+        </template>
+        <template x-for="r in rows" :key="r.id">
+          <tr class="border-t dark:border-gray-700 align-top">
+            <td class="px-4 py-2 whitespace-nowrap" x-text="fmtDateTime(r.created_at)"></td>
+            <td class="px-4 py-2 text-xs font-mono" x-text="r.actor"></td>
+            <td class="px-4 py-2 font-mono text-xs" x-text="r.action"></td>
+            <td class="px-4 py-2 text-xs"><span x-text="r.target_type || ''"></span> <span class="font-mono" x-text="r.target_id || ''"></span></td>
+            <td class="px-4 py-2 text-xs font-mono break-all" x-text="r.detail || ''"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="flex items-center justify-between mt-3 text-sm">
+    <button @click="prev()" :disabled="page <= 1" class="px-3 py-1 border dark:border-gray-600 rounded disabled:opacity-40">{{ _('changes.prev') }}</button>
+    <span x-text="PAGE_L.replace('{page}', page).replace('{pages}', pages).replace('{total}', total)"></span>
+    <button @click="next()" :disabled="page >= pages" class="px-3 py-1 border dark:border-gray-600 rounded disabled:opacity-40">{{ _('changes.next') }}</button>
+  </div>
+</div>
+
+<script>
+const AREAS = ['machine', 'user', 'bankomat', 'rental', 'product'];
+const PAGE_L = {{ _('changes.page') | tojson }};
+const PAGE_SIZE = 50;
+function auditLog() {
+  return {
+    rows: [], total: 0, page: 1, loading: true,
+    f: { action: '', actor: '', target_id: '', q: '', date_from: '', date_to: '' },
+    get pages() { return Math.max(1, Math.ceil(this.total / PAGE_SIZE)); },
+    async load() {
+      this.loading = true;
+      const p = new URLSearchParams({ limit: PAGE_SIZE, offset: (this.page - 1) * PAGE_SIZE });
+      for (const k in this.f) if (this.f[k]) p.set(k, this.f[k]);
+      const r = await apiFetch('/api/v1/audit?' + p);
+      if (r.ok) { this.rows = await r.json(); this.total = parseInt(r.headers.get('X-Total-Count') || '0'); }
+      this.loading = false;
+    },
+    reload() { this.page = 1; this.load(); },
+    prev() { if (this.page > 1) { this.page--; this.load(); } },
+    next() { if (this.page < this.pages) { this.page++; this.load(); } },
+  };
+}
+</script>
+{% endblock %}

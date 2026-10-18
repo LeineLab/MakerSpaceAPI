@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_device, require_admin_user
+from app.services.audit import audit
 from app.database import get_db
 from app.models.machine import Machine
 from app.models.rental import Rental, RentalItem, RentalPermission
@@ -68,6 +69,8 @@ def create_item(
         created_at=datetime.now(UTC).replace(tzinfo=None),
     )
     db.add(item)
+    db.flush()
+    audit(db, admin.get("sub"), "rental.item_created", "rental_item", item.id, name=body.name, uhf_tid=item.uhf_tid)
     db.commit()
     db.refresh(item)
     return item
@@ -83,12 +86,17 @@ def update_item(
     item = db.query(RentalItem).filter(RentalItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
+    before = {"name": item.name, "description": item.description, "active": item.active}
     if body.name is not None:
         item.name = body.name
     if body.description is not None:
         item.description = body.description
     if body.active is not None:
         item.active = body.active
+    after = {"name": item.name, "description": item.description, "active": item.active}
+    changes = {k: {"from": before[k], "to": after[k]} for k in before if before[k] != after[k]}
+    if changes:
+        audit(db, admin.get("sub"), "rental.item_updated", "rental_item", item_id, **changes)
     db.commit()
     db.refresh(item)
     return item
@@ -270,6 +278,7 @@ def grant_permission(
         granted_at=datetime.now(UTC).replace(tzinfo=None),
     )
     db.add(perm)
+    audit(db, admin.get("sub"), "rental.permission_granted", "user", nfc_id)
     db.commit()
     db.refresh(perm)
     return RentalPermissionResponse(
@@ -291,5 +300,6 @@ def revoke_permission(
     if not perm:
         raise HTTPException(status_code=404, detail="Permission not found")
     db.delete(perm)
+    audit(db, admin.get("sub"), "rental.permission_revoked", "user", nfc_id)
     db.commit()
     return {"detail": "Rental permission revoked"}
