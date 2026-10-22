@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import Response as FastAPIResponse
 from fastapi.responses import Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import func, or_
@@ -14,7 +15,9 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.auth.deps import require_auditor_writer_user, require_ledger_viewer_user, require_treasurer_user
 from app.auth.tokens import generate_api_token, verify_api_token
+from app.api.v1.audit import AuditLogResponse, filtered_audit_query
 from app.config import settings
+from app.models.audit import AuditLog
 from app.database import get_db
 from app.models.booking_target import BookingTarget
 from app.models.ledger import (
@@ -100,6 +103,7 @@ from app.schemas.ledger import (
     PaperlessDocumentResult,
 )
 from app.services import fints_client, paperless
+from app.services.audit import audit, changes as audit_changes
 from app.services.bank_statement import (
     CsvColumnMapping,
     ParsedStatementLine,
@@ -190,7 +194,7 @@ def list_accounts(
 @router.post("/accounts", response_model=BankAccountResponse, status_code=201, responses={**HTTP_400, **HTTP_409})
 def create_account(
     body: BankAccountCreate,
-    _treasurer: dict = Depends(require_treasurer_user),
+    treasurer: dict = Depends(require_treasurer_user),
     db: Session = Depends(get_db),
 ):
     if body.is_offline:
@@ -209,6 +213,7 @@ def create_account(
         tracked=body.tracked,
     )
     db.add(account)
+    audit(db, treasurer.get("sub"), "ledger.account_created", "bank_account", body.name, iban=body.iban, is_offline=body.is_offline)
     db.commit()
     db.refresh(account)
     return account
@@ -350,7 +355,7 @@ def get_account_balance(
 def update_account(
     account_id: int,
     body: BankAccountUpdate,
-    _treasurer: dict = Depends(require_treasurer_user),
+    treasurer: dict = Depends(require_treasurer_user),
     db: Session = Depends(get_db),
 ):
     """Rename an account, toggle `tracked` (e.g. to permanently ignore a private
@@ -363,6 +368,7 @@ def update_account(
     account = db.query(BankAccount).filter(BankAccount.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Bank account not found")
+    before = {"name": account.name, "tracked": account.tracked, "is_cash_clearing_account": account.is_cash_clearing_account}
     if body.name is not None:
         account.name = body.name
     if body.tracked is not None:
@@ -378,6 +384,9 @@ def update_account(
                 {BankAccount.is_cash_clearing_account: False}
             )
         account.is_cash_clearing_account = body.is_cash_clearing_account
+    after = {"name": account.name, "tracked": account.tracked, "is_cash_clearing_account": account.is_cash_clearing_account}
+    if audit_changes(before, after):
+        audit(db, treasurer.get("sub"), "ledger.account_updated", "bank_account", account_id, **audit_changes(before, after))
     db.commit()
     db.refresh(account)
     return account
@@ -420,6 +429,8 @@ def create_sync_token(
         created_by=treasurer.get("sub", "unknown"),
     )
     db.add(token)
+    db.flush()
+    audit(db, treasurer.get("sub"), "ledger.sync_token_created", "sync_token", token.id, name=body.name, bank_account_id=account.id)
     db.commit()
     db.refresh(token)
     return LedgerSyncTokenCreateResponse(**LedgerSyncTokenResponse.model_validate(token).model_dump(), token=plaintext_token)
@@ -441,12 +452,13 @@ def list_sync_tokens(
 def update_sync_token(
     token_id: int,
     body: LedgerSyncTokenUpdate,
-    _treasurer: dict = Depends(require_treasurer_user),
+    treasurer: dict = Depends(require_treasurer_user),
     db: Session = Depends(get_db),
 ):
     token = db.query(LedgerSyncToken).filter(LedgerSyncToken.id == token_id).first()
     if not token:
         raise HTTPException(status_code=404, detail="Sync token not found")
+    before = {"name": token.name, "active": token.active, "paused": token.paused}
     if body.name is not None:
         token.name = body.name
     if body.active is not None:
@@ -454,6 +466,9 @@ def update_sync_token(
     if body.resume:
         token.paused = False
         token.consecutive_failures = 0
+    after = {"name": token.name, "active": token.active, "paused": token.paused}
+    if audit_changes(before, after):
+        audit(db, treasurer.get("sub"), "ledger.sync_token_updated", "sync_token", token_id, **audit_changes(before, after))
     db.commit()
     db.refresh(token)
     return token
@@ -462,13 +477,14 @@ def update_sync_token(
 @router.delete("/sync-tokens/{token_id}", status_code=204, responses={**HTTP_404})
 def delete_sync_token(
     token_id: int,
-    _treasurer: dict = Depends(require_treasurer_user),
+    treasurer: dict = Depends(require_treasurer_user),
     db: Session = Depends(get_db),
 ):
     token = db.query(LedgerSyncToken).filter(LedgerSyncToken.id == token_id).first()
     if not token:
         raise HTTPException(status_code=404, detail="Sync token not found")
     db.delete(token)
+    audit(db, treasurer.get("sub"), "ledger.sync_token_deleted", "sync_token", token_id, name=token.name, bank_account_id=token.bank_account_id)
     db.commit()
 
 
@@ -1184,6 +1200,7 @@ def review_entry(
 
     entry.reviewed_by = auditor.get("sub", "unknown")
     entry.reviewed_at = datetime.now(UTC).replace(tzinfo=None)
+    audit(db, auditor.get("sub"), "ledger.entry_reviewed", "ledger_entry", entry_id)
     db.commit()
     db.refresh(entry)
     return entry
@@ -1194,7 +1211,7 @@ def review_entry(
 )
 def unreview_entry(
     entry_id: int,
-    _auditor: dict = Depends(require_auditor_writer_user),
+    auditor: dict = Depends(require_auditor_writer_user),
     db: Session = Depends(get_db),
 ):
     """Un-tick a previously checked-off entry — e.g. it was checked by
@@ -1206,8 +1223,10 @@ def unreview_entry(
     if entry.reviewed_by is None:
         raise HTTPException(status_code=400, detail="Entry is not marked as reviewed")
 
+    previous = {"reviewed_by": entry.reviewed_by, "reviewed_at": entry.reviewed_at}
     entry.reviewed_by = None
     entry.reviewed_at = None
+    audit(db, auditor.get("sub"), "ledger.entry_unreviewed", "ledger_entry", entry_id, **previous)
     db.commit()
     db.refresh(entry)
     return entry
@@ -1219,7 +1238,7 @@ def unreview_entry(
 def update_entry_review_note(
     entry_id: int,
     body: LedgerEntryReviewNoteUpdate,
-    _auditor: dict = Depends(require_auditor_writer_user),
+    auditor: dict = Depends(require_auditor_writer_user),
     db: Session = Depends(get_db),
 ):
     """Set (`note` given) or clear (`note` omitted/`null`) a discrepancy note
@@ -1232,10 +1251,36 @@ def update_entry_review_note(
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
 
+    previous_note = entry.review_note
     entry.review_note = body.note
+    audit(db, auditor.get("sub"), "ledger.entry_review_note_changed", "ledger_entry", entry_id, **{"from": previous_note, "to": body.note})
     db.commit()
     db.refresh(entry)
     return entry
+
+
+@router.get("/audit-log", response_model=list[AuditLogResponse])
+def list_ledger_audit_log(
+    response: FastAPIResponse,
+    actor: Optional[str] = None,
+    action: Optional[str] = Query(default=None, description="Action prefix, e.g. 'ledger.asset_'"),
+    target_type: Optional[str] = None,
+    target_id: Optional[str] = None,
+    q: Optional[str] = Query(default=None, description="Substring of the detail text"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    _viewer: dict = Depends(require_ledger_viewer_user),
+    db: Session = Depends(get_db),
+):
+    """Log of changes to the ledger's mutable data (assets, reserves, audit
+    reports, review checkoffs/notes, account settings, ...), newest first.
+    Always limited to `ledger.` actions; the general log stays admin-only.
+    `X-Total-Count` carries the match count."""
+    query = filtered_audit_query(db, actor, action, target_type, target_id, q, date_from, date_to, forced_prefix="ledger.")
+    response.headers["X-Total-Count"] = str(query.count())
+    return query.order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).offset(offset).limit(limit).all()
 
 
 # --- Kassen bridge (legacy NFC booking_targets -> ledger) ---
@@ -1256,7 +1301,7 @@ def list_ledger_targets(
 def update_ledger_target(
     target_id: int,
     body: LedgerTargetUpdate,
-    _treasurer: dict = Depends(require_treasurer_user),
+    treasurer: dict = Depends(require_treasurer_user),
     db: Session = Depends(get_db),
 ):
     """Set or clear (`null`) a target's default category, e.g. "Kasse
@@ -1269,7 +1314,9 @@ def update_ledger_target(
         LedgerCategory.id == body.default_category_id
     ).first():
         raise HTTPException(status_code=404, detail=f"Category {body.default_category_id} not found")
+    previous_category = target.default_category_id
     target.default_category_id = body.default_category_id
+    audit(db, treasurer.get("sub"), "ledger.target_category_changed", "booking_target", target_id, **{"from": previous_category, "to": body.default_category_id})
     db.commit()
     db.refresh(target)
     return target
@@ -1812,7 +1859,7 @@ def list_assets(
 @router.post("/assets", response_model=LedgerAssetResponse, status_code=201, responses={**HTTP_400, **HTTP_404})
 def create_asset(
     body: LedgerAssetCreate,
-    _treasurer: dict = Depends(require_treasurer_user),
+    treasurer: dict = Depends(require_treasurer_user),
     db: Session = Depends(get_db),
 ):
     """Capitalize one or more already-booked purchases (or a partial amount
@@ -1846,6 +1893,7 @@ def create_asset(
     for comp in body.components:
         db.add(_new_asset_component(db, asset.id, comp.entry_line_id, comp.amount, comp.acquisition_date))
 
+    audit(db, treasurer.get("sub"), "ledger.asset_created", "asset", asset.id, name=body.name, useful_life_years=body.useful_life_years, category_id=body.category_id, components=[c.model_dump() for c in body.components])
     db.commit()
     db.refresh(asset)
     return _asset_response(asset, datetime.now(UTC).date())
@@ -1858,7 +1906,7 @@ def create_asset(
 def add_asset_component(
     asset_id: int,
     body: LedgerAssetComponentCreate,
-    _treasurer: dict = Depends(require_treasurer_user),
+    treasurer: dict = Depends(require_treasurer_user),
     db: Session = Depends(get_db),
 ):
     """Add another booked line (or a partial amount of it) to an already-
@@ -1872,6 +1920,7 @@ def add_asset_component(
         raise HTTPException(status_code=404, detail="Asset not found")
     component = _new_asset_component(db, asset.id, body.entry_line_id, body.amount, body.acquisition_date)
     db.add(component)
+    audit(db, treasurer.get("sub"), "ledger.asset_component_added", "asset", asset_id, entry_line_id=body.entry_line_id, amount=body.amount, acquisition_date=body.acquisition_date)
     db.commit()
     db.refresh(asset)
     return _asset_response(asset, datetime.now(UTC).date())
@@ -1885,7 +1934,7 @@ def update_asset_component(
     asset_id: int,
     component_id: int,
     body: LedgerAssetComponentUpdate,
-    _treasurer: dict = Depends(require_treasurer_user),
+    treasurer: dict = Depends(require_treasurer_user),
     db: Session = Depends(get_db),
 ):
     """Correct a component's line/amount/acquisition_date (e.g. a typo)
@@ -1903,6 +1952,7 @@ def update_asset_component(
     if not component:
         raise HTTPException(status_code=404, detail="Component not found on this asset")
 
+    before = {"entry_line_id": component.entry_line_id, "amount": component.amount, "acquisition_date": component.acquisition_date, "disposed_at": component.disposed_at}
     if body.entry_line_id is not None or body.amount is not None:
         new_entry_line_id = body.entry_line_id if body.entry_line_id is not None else component.entry_line_id
         new_amount = body.amount if body.amount is not None else component.amount
@@ -1928,6 +1978,9 @@ def update_asset_component(
             )
         component.disposed_at = body.disposed_at
 
+    after = {"entry_line_id": component.entry_line_id, "amount": component.amount, "acquisition_date": component.acquisition_date, "disposed_at": component.disposed_at}
+    if audit_changes(before, after):
+        audit(db, treasurer.get("sub"), "ledger.asset_component_updated", "asset", asset_id, component_id=component_id, **audit_changes(before, after))
     db.commit()
     db.refresh(asset)
     return _asset_response(asset, datetime.now(UTC).date())
@@ -1937,7 +1990,7 @@ def update_asset_component(
 def delete_asset_component(
     asset_id: int,
     component_id: int,
-    _treasurer: dict = Depends(require_treasurer_user),
+    treasurer: dict = Depends(require_treasurer_user),
     db: Session = Depends(get_db),
 ):
     """Remove one component from an asset — 400 if it's the last one (delete
@@ -1956,6 +2009,7 @@ def delete_asset_component(
             detail="Cannot remove an asset's last remaining component — delete the whole asset instead",
         )
     db.delete(component)
+    audit(db, treasurer.get("sub"), "ledger.asset_component_deleted", "asset", asset_id, component_id=component_id, entry_line_id=component.entry_line_id, amount=component.amount, acquisition_date=component.acquisition_date, disposed_at=component.disposed_at)
     db.commit()
     db.refresh(asset)
     return _asset_response(asset, datetime.now(UTC).date())
@@ -1965,7 +2019,7 @@ def delete_asset_component(
 def update_asset(
     asset_id: int,
     body: LedgerAssetUpdate,
-    _treasurer: dict = Depends(require_treasurer_user),
+    treasurer: dict = Depends(require_treasurer_user),
     db: Session = Depends(get_db),
 ):
     """Every field is correctable at any time — since AfA is computed at
@@ -1976,6 +2030,7 @@ def update_asset(
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
 
+    before = {"name": asset.name, "useful_life_years": asset.useful_life_years, "category_id": asset.category_id, "notes": asset.notes}
     if body.category_id is not None:
         category = db.query(LedgerCategory).filter(LedgerCategory.id == body.category_id).first()
         if not category:
@@ -1990,6 +2045,9 @@ def update_asset(
     if body.notes is not None:
         asset.notes = body.notes
 
+    after = {"name": asset.name, "useful_life_years": asset.useful_life_years, "category_id": asset.category_id, "notes": asset.notes}
+    if audit_changes(before, after):
+        audit(db, treasurer.get("sub"), "ledger.asset_updated", "asset", asset_id, **audit_changes(before, after))
     db.commit()
     db.refresh(asset)
     return _asset_response(asset, datetime.now(UTC).date())
@@ -1998,7 +2056,7 @@ def update_asset(
 @router.delete("/assets/{asset_id}", status_code=204, responses={**HTTP_404})
 def delete_asset(
     asset_id: int,
-    _treasurer: dict = Depends(require_treasurer_user),
+    treasurer: dict = Depends(require_treasurer_user),
     db: Session = Depends(get_db),
 ):
     """Removing the capitalization is not itself a financial event (the
@@ -2009,6 +2067,7 @@ def delete_asset(
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
     db.delete(asset)
+    audit(db, treasurer.get("sub"), "ledger.asset_deleted", "asset", asset_id, name=asset.name, useful_life_years=asset.useful_life_years, category_id=asset.category_id, notes=asset.notes, components=[{"entry_line_id": c.entry_line_id, "amount": c.amount, "acquisition_date": c.acquisition_date, "disposed_at": c.disposed_at} for c in asset.components])
     db.commit()
 
 
@@ -2342,7 +2401,7 @@ def list_reserves(
 @router.post("/reserves", response_model=LedgerReserveResponse, status_code=201, responses={**HTTP_400})
 def create_reserve(
     body: LedgerReserveCreate,
-    _treasurer: dict = Depends(require_treasurer_user),
+    treasurer: dict = Depends(require_treasurer_user),
     db: Session = Depends(get_db),
 ):
     _validate_reserve_zweckgebunden(body.kind, body.purpose, body.target_date)
@@ -2352,6 +2411,8 @@ def create_reserve(
         created_at=datetime.now(UTC).replace(tzinfo=None),
     )
     db.add(reserve)
+    db.flush()
+    audit(db, treasurer.get("sub"), "ledger.reserve_created", "reserve", reserve.id, name=body.name, kind=body.kind, sphere=body.sphere, purpose=body.purpose, target_date=body.target_date)
     db.commit()
     db.refresh(reserve)
     return _reserve_response(db, reserve, datetime.now(UTC).date())
@@ -2361,13 +2422,14 @@ def create_reserve(
 def update_reserve(
     reserve_id: int,
     body: LedgerReserveUpdate,
-    _treasurer: dict = Depends(require_treasurer_user),
+    treasurer: dict = Depends(require_treasurer_user),
     db: Session = Depends(get_db),
 ):
     reserve = db.query(LedgerReserve).filter(LedgerReserve.id == reserve_id).first()
     if not reserve:
         raise HTTPException(status_code=404, detail="Reserve not found")
 
+    before = {"name": reserve.name, "kind": reserve.kind, "sphere": reserve.sphere, "purpose": reserve.purpose, "target_date": reserve.target_date}
     new_kind = body.kind if body.kind is not None else reserve.kind
     new_purpose = body.purpose if body.purpose is not None else reserve.purpose
     new_target_date = None if body.clear_target_date else (body.target_date if body.target_date is not None else reserve.target_date)
@@ -2386,6 +2448,9 @@ def update_reserve(
     elif body.target_date is not None:
         reserve.target_date = body.target_date
 
+    after = {"name": reserve.name, "kind": reserve.kind, "sphere": reserve.sphere, "purpose": reserve.purpose, "target_date": reserve.target_date}
+    if audit_changes(before, after):
+        audit(db, treasurer.get("sub"), "ledger.reserve_updated", "reserve", reserve_id, **audit_changes(before, after))
     db.commit()
     db.refresh(reserve)
     return _reserve_response(db, reserve, datetime.now(UTC).date())
@@ -2394,7 +2459,7 @@ def update_reserve(
 @router.delete("/reserves/{reserve_id}", status_code=204, responses={**HTTP_404, **HTTP_409})
 def delete_reserve(
     reserve_id: int,
-    _treasurer: dict = Depends(require_treasurer_user),
+    treasurer: dict = Depends(require_treasurer_user),
     db: Session = Depends(get_db),
 ):
     reserve = db.query(LedgerReserve).filter(LedgerReserve.id == reserve_id).first()
@@ -2403,6 +2468,7 @@ def delete_reserve(
     if db.query(LedgerReserveMovement).filter(LedgerReserveMovement.reserve_id == reserve_id).first():
         raise HTTPException(status_code=409, detail="Reserve has movements — remove them first")
     db.delete(reserve)
+    audit(db, treasurer.get("sub"), "ledger.reserve_deleted", "reserve", reserve_id, name=reserve.name, kind=reserve.kind, sphere=reserve.sphere, purpose=reserve.purpose, target_date=reserve.target_date)
     db.commit()
 
 
@@ -2432,6 +2498,8 @@ def create_reserve_movement(
         created_at=datetime.now(UTC).replace(tzinfo=None),
     )
     db.add(movement)
+    db.flush()
+    audit(db, treasurer.get("sub"), "ledger.reserve_movement_created", "reserve", body.reserve_id, movement_id=movement.id, movement_date=body.movement_date, amount=body.amount, note=body.note)
     db.commit()
     db.refresh(movement)
     return movement
@@ -2441,18 +2509,22 @@ def create_reserve_movement(
 def update_reserve_movement(
     movement_id: int,
     body: LedgerReserveMovementUpdate,
-    _treasurer: dict = Depends(require_treasurer_user),
+    treasurer: dict = Depends(require_treasurer_user),
     db: Session = Depends(get_db),
 ):
     movement = db.query(LedgerReserveMovement).filter(LedgerReserveMovement.id == movement_id).first()
     if not movement:
         raise HTTPException(status_code=404, detail="Movement not found")
+    before = {"movement_date": movement.movement_date, "amount": movement.amount, "note": movement.note}
     if body.movement_date is not None:
         movement.movement_date = body.movement_date
     if body.amount is not None:
         movement.amount = body.amount
     if body.note is not None:
         movement.note = body.note
+    after = {"movement_date": movement.movement_date, "amount": movement.amount, "note": movement.note}
+    if audit_changes(before, after):
+        audit(db, treasurer.get("sub"), "ledger.reserve_movement_updated", "reserve", movement.reserve_id, movement_id=movement_id, **audit_changes(before, after))
     db.commit()
     db.refresh(movement)
     return movement
@@ -2461,13 +2533,14 @@ def update_reserve_movement(
 @router.delete("/reserve-movements/{movement_id}", status_code=204, responses={**HTTP_404})
 def delete_reserve_movement(
     movement_id: int,
-    _treasurer: dict = Depends(require_treasurer_user),
+    treasurer: dict = Depends(require_treasurer_user),
     db: Session = Depends(get_db),
 ):
     movement = db.query(LedgerReserveMovement).filter(LedgerReserveMovement.id == movement_id).first()
     if not movement:
         raise HTTPException(status_code=404, detail="Movement not found")
     db.delete(movement)
+    audit(db, treasurer.get("sub"), "ledger.reserve_movement_deleted", "reserve", movement.reserve_id, movement_id=movement_id, movement_date=movement.movement_date, amount=movement.amount, note=movement.note)
     db.commit()
 
 
@@ -2727,6 +2800,8 @@ def create_audit_report(
         created_at=datetime.now(UTC).replace(tzinfo=None),
     )
     db.add(report)
+    db.flush()
+    audit(db, auditor.get("sub"), "ledger.audit_report_created", "audit_report", report.id, period_start=body.period_start, period_end=body.period_end, auditors=body.auditors)
     db.commit()
     db.refresh(report)
     return report
@@ -2736,13 +2811,14 @@ def create_audit_report(
 def update_audit_report(
     report_id: int,
     body: LedgerAuditReportUpdate,
-    _auditor: dict = Depends(require_auditor_writer_user),
+    auditor: dict = Depends(require_auditor_writer_user),
     db: Session = Depends(get_db),
 ):
     report = db.query(LedgerAuditReport).filter(LedgerAuditReport.id == report_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Audit report not found")
 
+    before = {"period_start": report.period_start, "period_end": report.period_end, "audit_date": report.audit_date, "auditors": report.auditors, "findings": report.findings, "recommends_discharge": report.recommends_discharge, "paperless_document_id": report.paperless_document_id}
     new_start = body.period_start if body.period_start is not None else report.period_start
     new_end = body.period_end if body.period_end is not None else report.period_end
     if new_end < new_start:
@@ -2765,6 +2841,9 @@ def update_audit_report(
     elif body.paperless_document_id is not None:
         report.paperless_document_id = body.paperless_document_id
 
+    after = {"period_start": report.period_start, "period_end": report.period_end, "audit_date": report.audit_date, "auditors": report.auditors, "findings": report.findings, "recommends_discharge": report.recommends_discharge, "paperless_document_id": report.paperless_document_id}
+    if audit_changes(before, after):
+        audit(db, auditor.get("sub"), "ledger.audit_report_updated", "audit_report", report_id, **audit_changes(before, after))
     db.commit()
     db.refresh(report)
     return report
@@ -2773,13 +2852,14 @@ def update_audit_report(
 @router.delete("/audit-reports/{report_id}", status_code=204, responses={**HTTP_404})
 def delete_audit_report(
     report_id: int,
-    _auditor: dict = Depends(require_auditor_writer_user),
+    auditor: dict = Depends(require_auditor_writer_user),
     db: Session = Depends(get_db),
 ):
     report = db.query(LedgerAuditReport).filter(LedgerAuditReport.id == report_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Audit report not found")
     db.delete(report)
+    audit(db, auditor.get("sub"), "ledger.audit_report_deleted", "audit_report", report_id, period_start=report.period_start, period_end=report.period_end, audit_date=report.audit_date, auditors=report.auditors, findings=report.findings, recommends_discharge=report.recommends_discharge, paperless_document_id=report.paperless_document_id)
     db.commit()
 
 
@@ -3243,7 +3323,7 @@ def book_import_line(
 @router.post("/import/lines/{line_id}/ignore", response_model=MessageResponse, responses={**HTTP_400, **HTTP_404})
 def ignore_import_line(
     line_id: int,
-    _treasurer: dict = Depends(require_treasurer_user),
+    treasurer: dict = Depends(require_treasurer_user),
     db: Session = Depends(get_db),
 ):
     staging = db.query(LedgerImportLine).filter(LedgerImportLine.id == line_id).first()
@@ -3251,7 +3331,9 @@ def ignore_import_line(
         raise HTTPException(status_code=404, detail="Import line not found")
     if staging.status == LedgerImportStatus.booked:
         raise HTTPException(status_code=400, detail="Already booked, cannot ignore")
+    previous_status = staging.status.value
     staging.status = LedgerImportStatus.ignored
+    audit(db, treasurer.get("sub"), "ledger.import_line_ignored", "import_line", line_id, bank_account_id=staging.bank_account_id, booking_date=staging.booking_date, amount=staging.amount, purpose_text=staging.purpose_text, previous_status=previous_status)
     db.commit()
     return {"detail": "Import line ignored"}
 
@@ -3259,7 +3341,7 @@ def ignore_import_line(
 @router.post("/import/lines/{line_id}/reset", response_model=MessageResponse, responses={**HTTP_400, **HTTP_404})
 def reset_import_line(
     line_id: int,
-    _treasurer: dict = Depends(require_treasurer_user),
+    treasurer: dict = Depends(require_treasurer_user),
     db: Session = Depends(get_db),
 ):
     """Move a `duplicate` or `ignored` line back to `new` — "Kein Duplikat"
@@ -3272,7 +3354,9 @@ def reset_import_line(
         raise HTTPException(status_code=404, detail="Import line not found")
     if staging.status not in (LedgerImportStatus.duplicate, LedgerImportStatus.ignored):
         raise HTTPException(status_code=400, detail=f"Cannot reset a line with status '{staging.status.value}'")
+    previous_status = staging.status.value
     staging.status = LedgerImportStatus.new
+    audit(db, treasurer.get("sub"), "ledger.import_line_reset", "import_line", line_id, previous_status=previous_status)
     db.commit()
     return {"detail": "Import line reset to new"}
 

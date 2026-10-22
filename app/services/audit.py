@@ -27,3 +27,8 @@ def audit(
         target_id=str(target_id) if target_id is not None else None,
         detail=json.dumps(detail, default=str, ensure_ascii=False) if detail else None,
     ))
+
+
+def changes(before: dict, after: dict) -> dict:
+    """{field: {"from": old, "to": new}} for the fields that differ."""
+    return {k: {"from": before[k], "to": after[k]} for k in before if before[k] != after[k]}

@@ -870,5 +870,9 @@
   "audit.col_action": "Aktion",
   "audit.col_target": "Ziel",
   "audit.col_detail": "Details",
-  "audit.empty": "Keine Einträge gefunden."
+  "audit.empty": "Keine Einträge gefunden.",
+  "ledger.tab_audit_log": "Protokoll",
+  "ledger.audit_log_title": "Änderungsprotokoll",
+  "ledger.audit_log_hint": "Änderungen an veränderbaren Daten des Ledgers (Anlagen, Rücklagen, Kassenprüfung, Prüfungsvermerke, Kontoeinstellungen, ignorierte Bankzeilen). Gelöschte Einträge sind mit ihrem letzten Inhalt festgehalten. Gebuchte Belege selbst sind unveränderlich und stehen in der Buchungsliste.",
+  "ledger.audit_log_all": "Alle Bereiche"
 }

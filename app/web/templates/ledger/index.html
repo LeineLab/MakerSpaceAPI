@@ -56,6 +56,11 @@
             :class="activeTab === 'audit-reports' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
       {{ _('ledger.tab_audit_reports') }}
     </button>
+    <button @click="switchTab('audit-log')"
+            class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
+            :class="activeTab === 'audit-log' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+      {{ _('ledger.tab_audit_log') }}
+    </button>
     <button @click="switchTab('report')"
             class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
             :class="activeTab === 'report' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
@@ -1534,6 +1539,54 @@
     </template>
   </div>
 
+  <!-- ================= Protokoll (ledger audit log) ================= -->
+  <div x-show="activeTab === 'audit-log'">
+    <h2 class="text-xl font-semibold mb-1">{{ _('ledger.audit_log_title') }}</h2>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">{{ _('ledger.audit_log_hint') }}</p>
+    <div class="flex flex-wrap gap-2 mb-4 items-end">
+      <select x-model="auditLogFilter.action" @change="auditLogReload()" class="border dark:border-gray-600 dark:bg-gray-700 rounded px-2 py-1 text-sm">
+        <option value="">{{ _('ledger.audit_log_all') }}</option>
+        <template x-for="a in AUDIT_LOG_AREAS" :key="a"><option :value="a" x-text="a"></option></template>
+      </select>
+      <input type="text" x-model="auditLogFilter.actor" @input.debounce.400ms="auditLogReload()" placeholder="{{ _('audit.filter_actor') }}" class="border dark:border-gray-600 dark:bg-gray-700 rounded px-2 py-1 text-sm">
+      <input type="text" x-model="auditLogFilter.q" @input.debounce.400ms="auditLogReload()" placeholder="{{ _('audit.filter_detail') }}" class="border dark:border-gray-600 dark:bg-gray-700 rounded px-2 py-1 text-sm">
+      <label class="text-xs text-gray-500">{{ _('changes.from') }} <input type="date" x-model="auditLogFilter.date_from" @change="auditLogReload()" class="border dark:border-gray-600 dark:bg-gray-700 rounded px-2 py-1 text-sm"></label>
+      <label class="text-xs text-gray-500">{{ _('changes.to') }} <input type="date" x-model="auditLogFilter.date_to" @change="auditLogReload()" class="border dark:border-gray-600 dark:bg-gray-700 rounded px-2 py-1 text-sm"></label>
+    </div>
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 uppercase text-xs">
+          <tr>
+            <th class="px-4 py-2 text-left">{{ _('changes.col_time') }}</th>
+            <th class="px-4 py-2 text-left">{{ _('audit.col_actor') }}</th>
+            <th class="px-4 py-2 text-left">{{ _('audit.col_action') }}</th>
+            <th class="px-4 py-2 text-left">{{ _('audit.col_target') }}</th>
+            <th class="px-4 py-2 text-left">{{ _('audit.col_detail') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-if="!auditLogLoading && auditLogRows.length === 0">
+            <tr><td colspan="5" class="px-4 py-6 text-center text-gray-400">{{ _('audit.empty') }}</td></tr>
+          </template>
+          <template x-for="r in auditLogRows" :key="r.id">
+            <tr class="border-t dark:border-gray-700 align-top">
+              <td class="px-4 py-2 whitespace-nowrap" x-text="fmtDateTime(r.created_at)"></td>
+              <td class="px-4 py-2 text-xs font-mono" x-text="r.actor"></td>
+              <td class="px-4 py-2 font-mono text-xs" x-text="r.action"></td>
+              <td class="px-4 py-2 text-xs"><span x-text="r.target_type || ''"></span> <span class="font-mono" x-text="r.target_id || ''"></span></td>
+              <td class="px-4 py-2 text-xs font-mono break-all" x-text="r.detail || ''"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+    <div class="flex items-center justify-between mt-3 text-sm">
+      <button @click="auditLogPrev()" :disabled="auditLogPage <= 1" class="px-3 py-1 border dark:border-gray-600 rounded disabled:opacity-40">{{ _('changes.prev') }}</button>
+      <span x-text="PAGE_INDICATOR_TMPL.replace('{page}', auditLogPage).replace('{pages}', auditLogPages).replace('{total}', auditLogTotal)"></span>
+      <button @click="auditLogNext()" :disabled="auditLogPage >= auditLogPages" class="px-3 py-1 border dark:border-gray-600 rounded disabled:opacity-40">{{ _('changes.next') }}</button>
+    </div>
+  </div>
+
   <!-- ================= Kassenprüfung (audit reports) ================= -->
   <div x-show="activeTab === 'audit-reports'">
     <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
@@ -2957,6 +3010,7 @@ const PAPERLESS_SUGGESTION_SLOTS = 3;
 const DUPLICATE_HINT_L = {{ _('ledger.import_duplicate_hint') | tojson }};
 const TRANSFER_AMOUNT_HINT_L = {{ _('ledger.book_transfer_amount_hint') | tojson }};
 const PAGE_SIZE = 50;
+const AUDIT_LOG_AREAS = ['ledger.entry_', 'ledger.asset_', 'ledger.reserve_', 'ledger.audit_report_', 'ledger.account_', 'ledger.import_line_', 'ledger.sync_token_', 'ledger.target_'];
 const PAGE_INDICATOR_TMPL = {{ _('ledger.pagination_indicator') | tojson }};
 const TARGET_PAYOUT_FILTER_L = {
   open: {{ _('ledger.target_payouts_filter_open') | tojson }},
@@ -3036,6 +3090,7 @@ const LEDGER_TAB_SLUGS = {
   assets: 'anlagevermoegen',
   reserves: 'ruecklagen',
   'audit-reports': 'kassenpruefung',
+  'audit-log': 'protokoll',
   report: 'euer-bericht',
 };
 const LEDGER_SLUG_TO_TAB = Object.fromEntries(Object.entries(LEDGER_TAB_SLUGS).map(([tab, slug]) => [slug, tab]));
@@ -3356,6 +3411,12 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     justCreatedSyncToken: null,
 
     auditReports: [],
+    auditLogRows: [],
+    auditLogTotal: 0,
+    auditLogPage: 1,
+    auditLogLoading: false,
+    auditLogFilter: { action: '', actor: '', q: '', date_from: '', date_to: '' },
+    get auditLogPages() { return Math.max(1, Math.ceil(this.auditLogTotal / PAGE_SIZE)); },
     loadingAuditReports: true,
     auditReportsError: null,
     showAuditReportModal: false,
@@ -3624,6 +3685,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         this.loadMittelverwendung();
       }
       if (tab === 'audit-reports') this.loadAuditReports();
+      if (tab === 'audit-log') this.loadAuditLog();
       if (tab === 'belege') this.loadPaperlessDocuments();
       if (tab === 'accounts') this.loadAccounts();
       if (tab === 'categories') this.loadCategories();
@@ -6165,6 +6227,25 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         if (e !== 'unauthenticated') this.syncTokensError = e.message || String(e);
       }
     },
+
+    // --- Protokoll (ledger audit log) ---
+    async loadAuditLog() {
+      this.auditLogLoading = true;
+      try {
+        const p = new URLSearchParams({ limit: PAGE_SIZE, offset: (this.auditLogPage - 1) * PAGE_SIZE });
+        for (const k in this.auditLogFilter) if (this.auditLogFilter[k]) p.set(k, this.auditLogFilter[k]);
+        const r = await apiFetch('/api/v1/ledger/audit-log?' + p);
+        if (r.ok) {
+          this.auditLogRows = await r.json();
+          this.auditLogTotal = parseInt(r.headers.get('X-Total-Count') || '0');
+        }
+      } finally {
+        this.auditLogLoading = false;
+      }
+    },
+    auditLogReload() { this.auditLogPage = 1; this.loadAuditLog(); },
+    auditLogPrev() { if (this.auditLogPage > 1) { this.auditLogPage--; this.loadAuditLog(); } },
+    auditLogNext() { if (this.auditLogPage < this.auditLogPages) { this.auditLogPage++; this.loadAuditLog(); } },
 
     // --- Kassenprüfung (audit reports) ---
     async loadAuditReports() {

@@ -12,7 +12,7 @@ def test_ledger_page_requires_auth(client):
 
 @pytest.mark.parametrize("slug", [
     "buchungen", "belege", "kategorien", "import", "kassen",
-    "bankkonten", "anlagevermoegen", "ruecklagen", "kassenpruefung", "euer-bericht",
+    "bankkonten", "anlagevermoegen", "ruecklagen", "kassenpruefung", "protokoll", "euer-bericht",
 ])
 def test_ledger_tab_page_renders_for_treasurer(treasurer_client, slug):
     resp = treasurer_client.get(f"/ledger/{slug}")

@@ -1,4 +1,5 @@
 import json
+from datetime import date
 
 from app.models.audit import AuditLog
 
@@ -60,3 +61,52 @@ def test_product_audit_overview(product_manager_client, db):
 def test_audit_pages_render(admin_client, product_manager_client):
     assert admin_client.get("/audit").status_code == 200
     assert product_manager_client.get("/products/changes").status_code == 200
+
+
+def test_ledger_changes_logged_and_deletions_keep_content(treasurer_client, auditor_client, admin_client, db):
+    r = treasurer_client.post("/api/v1/ledger/reserves", json={"name": "Frei", "kind": "frei"})
+    rid = r.json()["id"]
+    mv = treasurer_client.post("/api/v1/ledger/reserve-movements", json={"reserve_id": rid, "movement_date": "2026-01-01", "amount": "100.00", "note": "x"}).json()
+    treasurer_client.put(f"/api/v1/ledger/reserve-movements/{mv['id']}", json={"amount": "150.00"})
+    treasurer_client.delete(f"/api/v1/ledger/reserve-movements/{mv['id']}")
+    treasurer_client.delete(f"/api/v1/ledger/reserves/{rid}")
+    rep = admin_client.post("/api/v1/ledger/audit-reports", json={
+        "period_start": "2025-01-01", "period_end": "2025-12-31", "audit_date": "2026-01-10",
+        "auditors": "A, B", "findings": "Alles gut", "recommends_discharge": True}).json()
+    admin_client.delete(f"/api/v1/ledger/audit-reports/{rep['id']}")
+    acts = _actions(db)
+    assert acts == [
+        "ledger.reserve_created", "ledger.reserve_movement_created", "ledger.reserve_movement_updated",
+        "ledger.reserve_movement_deleted", "ledger.reserve_deleted",
+        "ledger.audit_report_created", "ledger.audit_report_deleted",
+    ]
+    deleted = db.query(AuditLog).filter(AuditLog.action == "ledger.audit_report_deleted").one()
+    d = json.loads(deleted.detail)
+    assert d["findings"] == "Alles gut" and d["auditors"] == "A, B"
+    moved = json.loads(db.query(AuditLog).filter(AuditLog.action == "ledger.reserve_movement_deleted").one().detail)
+    assert moved["amount"] == "150.00"
+
+    # auditors (read-only role) and treasurers may read it; the general log stays admin-only
+    r = auditor_client.get("/api/v1/ledger/audit-log")
+    assert r.status_code == 200 and r.headers["X-Total-Count"] == "7"
+    assert treasurer_client.get("/api/v1/ledger/audit-log?action=ledger.reserve_").headers["X-Total-Count"] == "5"
+    assert auditor_client.get("/api/v1/audit").status_code == 403
+
+
+def test_ledger_audit_log_excludes_non_ledger_entries(admin_client, auditor_client, machine_token):
+    admin_client.put("/api/v1/machines/test-machine/status", json={"out_of_order": True})
+    assert auditor_client.get("/api/v1/ledger/audit-log").json() == []
+
+
+def test_review_and_import_line_changes_logged(auditor_client, treasurer_client, db):
+    from app.models.ledger import BankAccount, LedgerEntry
+    acc = BankAccount(name="Offline", is_offline=True, iban=None)
+    db.add(acc)
+    db.commit()
+    entry = LedgerEntry(entry_date=date(2026, 1, 1), description="x", created_by="t")
+    db.add(entry)
+    db.commit()
+    auditor_client.post(f"/api/v1/ledger/entries/{entry.id}/review")
+    auditor_client.put(f"/api/v1/ledger/entries/{entry.id}/review-note", json={"note": "prüfen"})
+    auditor_client.delete(f"/api/v1/ledger/entries/{entry.id}/review")
+    assert _actions(db) == ["ledger.entry_reviewed", "ledger.entry_review_note_changed", "ledger.entry_unreviewed"]

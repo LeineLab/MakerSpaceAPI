@@ -870,5 +870,9 @@
   "audit.col_action": "Action",
   "audit.col_target": "Target",
   "audit.col_detail": "Details",
-  "audit.empty": "No entries found."
+  "audit.empty": "No entries found.",
+  "ledger.tab_audit_log": "Audit log",
+  "ledger.audit_log_title": "Change log",
+  "ledger.audit_log_hint": "Changes to mutable ledger data (assets, reserves, audit reports, review marks, account settings, ignored bank lines). Deleted items are kept with their last content. Booked entries themselves are immutable and visible in the entries list.",
+  "ledger.audit_log_all": "All areas"
 }

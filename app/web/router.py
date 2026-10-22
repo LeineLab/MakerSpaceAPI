@@ -225,6 +225,7 @@ LEDGER_TAB_SLUGS = {
     "anlagevermoegen": "assets",
     "ruecklagen": "reserves",
     "kassenpruefung": "audit-reports",
+    "protokoll": "audit-log",
     "euer-bericht": "report",
 }
 
