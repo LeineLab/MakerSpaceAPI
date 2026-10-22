@@ -1,0 +1,517 @@
+{% extends "base.html" %}
+{% block title %}{{ _('inventory.title') }} – MakerSpaceAPI{% endblock %}
+{% block content %}
+
+<div x-data="inventoryApp(INITIAL_SLUG)" x-cloak>
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+    <h1 class="text-2xl font-bold">{{ _('inventory.title') }}</h1>
+    <button @click="openLocationModal()"
+            class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+      {{ _('inventory.btn_add_location') }}
+    </button>
+  </div>
+
+  <div x-show="error" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="error"></div>
+  <div x-show="success" class="mb-4 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 p-3 rounded text-sm" x-text="success"></div>
+
+  <!-- Tabs -->
+  <div class="flex gap-1 border-b dark:border-gray-700 mb-4">
+    <button @click="tab = 'locations'"
+            :class="tab === 'locations' ? 'border-blue-600 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'"
+            class="px-4 py-2 text-sm font-medium border-b-2 -mb-px">{{ _('inventory.tab_locations') }}</button>
+    <button @click="tab = 'shopping'"
+            :class="tab === 'shopping' ? 'border-blue-600 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'"
+            class="px-4 py-2 text-sm font-medium border-b-2 -mb-px">
+      {{ _('inventory.tab_shopping') }}
+      <span x-show="shoppingRows.length > 0" x-text="shoppingRows.length"
+            class="ml-1 bg-amber-500 text-white text-xs rounded-full px-1.5 py-0.5"></span>
+    </button>
+  </div>
+
+  <!-- Locations -->
+  <div x-show="tab === 'locations'" class="space-y-4">
+    <p x-show="!loading && locations.length === 0" class="text-gray-400 dark:text-gray-500 text-center py-8">{{ _('inventory.locations_empty') }}</p>
+
+    <template x-for="loc in locations" :key="loc.id">
+      <div :id="'loc-' + loc.slug" class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+        <div class="px-5 py-4 flex flex-wrap items-center justify-between gap-3 cursor-pointer" @click="toggleLocation(loc.id)">
+          <div class="min-w-0">
+            <div class="flex items-center gap-2">
+              <span class="text-gray-400" x-text="isOpen(loc.id) ? '▾' : '▸'"></span>
+              <h2 class="font-semibold" x-text="loc.name"></h2>
+              <span x-show="attentionCount(loc.id) > 0" x-text="attentionCount(loc.id)"
+                    class="bg-amber-500 text-white text-xs rounded-full px-1.5 py-0.5"></span>
+            </div>
+            <p x-show="loc.notes" class="text-xs text-gray-500 dark:text-gray-400 mt-1" x-text="loc.notes"></p>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1" x-text="checkedText(loc)"></p>
+          </div>
+          <div class="flex flex-wrap gap-2 text-sm" @click.stop>
+            <button @click="markChecked(loc)" class="px-3 py-1 rounded border dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700">{{ _('inventory.btn_checked') }}</button>
+            <button @click="copyLink(loc)" class="px-3 py-1 rounded border dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700">{{ _('inventory.btn_copy_link') }}</button>
+            <button @click="openLocationModal(loc)" class="px-3 py-1 rounded border dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700">{{ _('common.edit') }}</button>
+            <button @click="deleteLocation(loc)" class="px-3 py-1 rounded border border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30">{{ _('common.remove') }}</button>
+          </div>
+        </div>
+
+        <div x-show="isOpen(loc.id)" class="border-t dark:border-gray-700">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 uppercase text-xs">
+                <tr>
+                  <th class="px-4 py-3 text-left">{{ _('inventory.col_name') }}</th>
+                  <th class="px-4 py-3 text-right">{{ _('inventory.col_target') }}</th>
+                  <th class="px-4 py-3 text-right">{{ _('inventory.col_actual') }}</th>
+                  <th class="px-4 py-3 text-left">{{ _('inventory.col_status') }}</th>
+                  <th class="px-4 py-3"></th>
+                </tr>
+              </thead>
+              <!-- one <tbody> per item, direct child of <table>: an item is two rows -->
+              <template x-for="it in itemsOf(loc.id)" :key="it.id">
+                <tbody class="border-t dark:border-gray-700">
+                  <tr>
+                    <td class="px-4 py-2">
+                      <button x-show="it.track_expiry" @click="toggleItem(it.id)" class="text-gray-400 mr-1" title="{{ _('inventory.expand_batches') }}" x-text="isExpanded(it.id) ? '▾' : '▸'"></button>
+                      <span x-text="it.name"></span>
+                      <span x-show="it.unit" class="text-gray-400 text-xs" x-text="'(' + it.unit + ')'"></span>
+                      <p x-show="it.notes" class="text-xs text-gray-500 dark:text-gray-400" x-text="it.notes"></p>
+                    </td>
+                    <td class="px-4 py-2 text-right" x-text="it.target_qty"></td>
+                    <td class="px-4 py-2 text-right">
+                      <template x-if="!it.track_expiry">
+                        <div class="inline-flex items-center gap-1">
+                          <button @click="adjust(it, -1)" :disabled="it.on_hand <= 0"
+                                  class="w-7 h-7 rounded border dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40">−</button>
+                          <input type="number" min="0" :value="it.on_hand" @change="setQuantity(it, $event)"
+                                 class="w-16 text-center border dark:border-gray-700 dark:bg-gray-800 rounded py-1">
+                          <button @click="adjust(it, 1)"
+                                  class="w-7 h-7 rounded border dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700">+</button>
+                        </div>
+                      </template>
+                      <span x-show="it.track_expiry" class="font-semibold" x-text="it.on_hand"></span>
+                    </td>
+                    <td class="px-4 py-2">
+                      <span class="inline-block text-xs rounded px-2 py-0.5"
+                            :class="statusClass(it)" x-text="statusText(it)"></span>
+                    </td>
+                    <td class="px-4 py-2 text-right whitespace-nowrap">
+                      <button @click="openItemModal(loc.id, it)" class="text-blue-600 dark:text-blue-400 hover:underline mr-3">{{ _('common.edit') }}</button>
+                      <button @click="deleteItem(it)" class="text-red-600 hover:underline">{{ _('common.remove') }}</button>
+                    </td>
+                  </tr>
+                  <tr x-show="it.track_expiry && isExpanded(it.id)" class="bg-gray-50 dark:bg-gray-900/40">
+                    <td colspan="5" class="px-6 py-3">
+                      <p class="text-xs uppercase text-gray-500 dark:text-gray-400 mb-2">{{ _('inventory.batches_title') }}</p>
+                      <div class="space-y-1">
+                        <template x-for="b in it.batches" :key="b.id">
+                          <div class="flex flex-wrap items-center gap-3">
+                            <input type="number" min="0" :value="b.quantity" @change="setBatchQuantity(b, $event)"
+                                   class="w-16 text-center border dark:border-gray-700 dark:bg-gray-800 rounded py-1">
+                            <span class="rounded px-2 py-0.5 text-xs" :class="batchClass(b)"
+                                  x-text="b.expires_on ? fmtDate(b.expires_on) : NO_DATE_L"></span>
+                            <button @click="removeBatch(b)" class="text-red-600 hover:underline text-xs">{{ _('inventory.batch_remove') }}</button>
+                          </div>
+                        </template>
+                      </div>
+                      <form @submit.prevent="addBatch(it)" class="flex flex-wrap items-end gap-3 mt-3">
+                        <div>
+                          <label class="block text-xs text-gray-500 mb-1">{{ _('inventory.label_quantity') }}</label>
+                          <input type="number" min="1" required x-model.number="batchForms[it.id].quantity"
+                                 class="w-20 border dark:border-gray-700 dark:bg-gray-800 rounded px-2 py-1">
+                        </div>
+                        <div>
+                          <label class="block text-xs text-gray-500 mb-1">{{ _('inventory.label_expires_on') }}</label>
+                          <input type="date" x-model="batchForms[it.id].expires_on"
+                                 class="border dark:border-gray-700 dark:bg-gray-800 rounded px-2 py-1">
+                        </div>
+                        <button type="submit" class="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">{{ _('inventory.batch_add') }}</button>
+                      </form>
+                    </td>
+                  </tr>
+                </tbody>
+              </template>
+            </table>
+          </div>
+          <p x-show="itemsOf(loc.id).length === 0" class="px-5 py-6 text-center text-gray-400 dark:text-gray-500 text-sm">{{ _('inventory.items_empty') }}</p>
+          <div class="px-5 py-3 border-t dark:border-gray-700">
+            <button @click="openItemModal(loc.id)" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">+ {{ _('inventory.btn_add_item') }}</button>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- Shopping list -->
+  <div x-show="tab === 'shopping'" class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+    <p class="px-5 py-3 text-xs text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">{{ _('inventory.shopping_hint') }}</p>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 uppercase text-xs">
+          <tr>
+            <th class="px-4 py-3 text-left">{{ _('inventory.col_location') }}</th>
+            <th class="px-4 py-3 text-left">{{ _('inventory.col_name') }}</th>
+            <th class="px-4 py-3 text-right">{{ _('inventory.col_target') }}</th>
+            <th class="px-4 py-3 text-right">{{ _('inventory.col_actual') }}</th>
+            <th class="px-4 py-3 text-right">{{ _('inventory.col_expired') }}</th>
+            <th class="px-4 py-3 text-right">{{ _('inventory.col_expiring') }}</th>
+            <th class="px-4 py-3 text-right">{{ _('inventory.col_order') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr x-show="shoppingRows.length === 0">
+            <td colspan="7" class="px-4 py-8 text-center text-gray-400 dark:text-gray-500">{{ _('inventory.shopping_empty') }}</td>
+          </tr>
+          <template x-for="r in shoppingRows" :key="r.it.id">
+            <tr class="border-t dark:border-gray-700">
+              <td class="px-4 py-2"><a :href="'/inventory/' + r.loc.slug" class="text-blue-600 dark:text-blue-400 hover:underline" x-text="r.loc.name"></a></td>
+              <td class="px-4 py-2" x-text="r.it.name + (r.it.unit ? ' (' + r.it.unit + ')' : '')"></td>
+              <td class="px-4 py-2 text-right" x-text="r.it.target_qty"></td>
+              <td class="px-4 py-2 text-right" x-text="r.it.on_hand"></td>
+              <td class="px-4 py-2 text-right" x-text="r.it.expired_qty || ''"></td>
+              <td class="px-4 py-2 text-right" x-text="r.it.expiring_soon_qty || ''"></td>
+              <td class="px-4 py-2 text-right font-semibold" x-text="r.it.to_order || ''"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Location modal -->
+  <div x-show="showLocationModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6" @click.outside="showLocationModal = false">
+      <h2 class="text-lg font-bold mb-4" x-text="locationForm.id ? LOCATION_EDIT_L : LOCATION_NEW_L"></h2>
+      <div x-show="modalError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="modalError"></div>
+      <form @submit.prevent="saveLocation()" class="space-y-3">
+        <div>
+          <label class="block text-sm font-medium mb-1">{{ _('inventory.label_name') }}</label>
+          <input type="text" x-model="locationForm.name" required maxlength="100"
+                 class="w-full border dark:border-gray-700 dark:bg-gray-800 rounded px-3 py-2 text-sm">
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">{{ _('inventory.label_notes') }}</label>
+          <input type="text" x-model="locationForm.notes" maxlength="255"
+                 class="w-full border dark:border-gray-700 dark:bg-gray-800 rounded px-3 py-2 text-sm">
+        </div>
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" @click="showLocationModal = false" class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400">{{ _('common.cancel') }}</button>
+          <button type="submit" :disabled="submitting" class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">{{ _('common.save') }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Item modal -->
+  <div x-show="showItemModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto" @click.outside="showItemModal = false">
+      <h2 class="text-lg font-bold mb-4" x-text="itemForm.id ? ITEM_EDIT_L : ITEM_NEW_L"></h2>
+      <div x-show="modalError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="modalError"></div>
+      <form @submit.prevent="saveItem()" class="space-y-3">
+        <div>
+          <label class="block text-sm font-medium mb-1">{{ _('inventory.label_location') }}</label>
+          <select x-model.number="itemForm.location_id" required
+                  class="w-full border dark:border-gray-700 dark:bg-gray-800 rounded px-3 py-2 text-sm">
+            <template x-for="l in locations" :key="l.id">
+              <option :value="l.id" x-text="l.name" :selected="l.id === itemForm.location_id"></option>
+            </template>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">{{ _('inventory.label_name') }}</label>
+          <input type="text" x-model="itemForm.name" required maxlength="100"
+                 class="w-full border dark:border-gray-700 dark:bg-gray-800 rounded px-3 py-2 text-sm">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1">{{ _('inventory.label_target') }}</label>
+            <input type="number" min="0" x-model.number="itemForm.target_qty" required
+                   class="w-full border dark:border-gray-700 dark:bg-gray-800 rounded px-3 py-2 text-sm">
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">{{ _('inventory.label_unit') }}</label>
+            <input type="text" x-model="itemForm.unit" maxlength="20" placeholder="Stk."
+                   class="w-full border dark:border-gray-700 dark:bg-gray-800 rounded px-3 py-2 text-sm">
+          </div>
+        </div>
+        <div>
+          <label class="flex items-center gap-2 text-sm font-medium">
+            <input type="checkbox" x-model="itemForm.track_expiry">
+            {{ _('inventory.label_track_expiry') }}
+          </label>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('inventory.track_expiry_hint') }}</p>
+        </div>
+        <!-- initial stock only when creating; later changes go through the list -->
+        <div x-show="!itemForm.id" class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1">{{ _('inventory.label_quantity') }}</label>
+            <input type="number" min="0" x-model.number="itemForm.quantity"
+                   class="w-full border dark:border-gray-700 dark:bg-gray-800 rounded px-3 py-2 text-sm">
+          </div>
+          <div x-show="itemForm.track_expiry">
+            <label class="block text-sm font-medium mb-1">{{ _('inventory.label_expires_on') }}</label>
+            <input type="date" x-model="itemForm.expires_on"
+                   class="w-full border dark:border-gray-700 dark:bg-gray-800 rounded px-3 py-2 text-sm">
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">{{ _('inventory.label_notes') }}</label>
+          <input type="text" x-model="itemForm.notes" maxlength="255"
+                 class="w-full border dark:border-gray-700 dark:bg-gray-800 rounded px-3 py-2 text-sm">
+        </div>
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" @click="showItemModal = false" class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400">{{ _('common.cancel') }}</button>
+          <button type="submit" :disabled="submitting" class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">{{ _('common.save') }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+const INITIAL_SLUG = {{ initial_slug | tojson }};
+const NO_DATE_L = {{ _('inventory.batch_no_date') | tojson }};
+const STATUS_OK_L = {{ _('inventory.status_ok') | tojson }};
+const STATUS_SHORT_L = {{ _('inventory.status_short') | tojson }};
+const STATUS_EXPIRED_L = {{ _('inventory.status_expired') | tojson }};
+const STATUS_EXPIRING_L = {{ _('inventory.status_expiring') | tojson }};
+const LAST_CHECKED_L = {{ _('inventory.last_checked') | tojson }};
+const NEVER_CHECKED_L = {{ _('inventory.never_checked') | tojson }};
+const LINK_COPIED_L = {{ _('inventory.link_copied') | tojson }};
+const LOCATION_NEW_L = {{ _('inventory.modal_location_new') | tojson }};
+const LOCATION_EDIT_L = {{ _('inventory.modal_location_edit') | tojson }};
+const ITEM_NEW_L = {{ _('inventory.modal_item_new') | tojson }};
+const ITEM_EDIT_L = {{ _('inventory.modal_item_edit') | tojson }};
+const CONFIRM_ITEM_L = {{ _('inventory.confirm_delete_item') | tojson }};
+const CONFIRM_LOCATION_L = {{ _('inventory.confirm_delete_location') | tojson }};
+
+function inventoryApp(initialSlug) {
+  return {
+    locations: [],
+    items: [],
+    loading: true,
+    tab: 'locations',
+    openIds: {},
+    expandedItems: {},
+    batchForms: {},
+    error: null,
+    success: null,
+    submitting: false,
+    modalError: null,
+
+    showLocationModal: false,
+    locationForm: { id: null, name: '', notes: '' },
+    showItemModal: false,
+    itemForm: { id: null, location_id: null, name: '', unit: '', target_qty: 0, track_expiry: false, quantity: 0, expires_on: '', notes: '' },
+
+    async init() {
+      try {
+        const [locs, items] = await Promise.all([
+          apiFetch('/api/v1/inventory/locations').then(r => r.ok ? r.json() : Promise.reject()),
+          apiFetch('/api/v1/inventory/items').then(r => r.ok ? r.json() : Promise.reject()),
+        ]);
+        this.locations = locs;
+        items.forEach(i => this.ensureBatchForm(i));
+        this.items = items;
+        this.publishAttention();
+        const target = locs.find(l => l.slug === initialSlug);
+        if (target) {
+          this.openIds[target.id] = true;
+          this.$nextTick(() => document.getElementById('loc-' + target.slug)?.scrollIntoView({ block: 'start' }));
+        } else if (locs.length === 1) {
+          this.openIds[locs[0].id] = true;
+        }
+      } catch (e) {
+        this.error = 'Failed to load data';
+      }
+      this.loading = false;
+    },
+
+    // --- derived ---
+    itemsOf(locationId) { return this.items.filter(i => i.location_id === locationId); },
+    needsAttention(i) { return i.to_order > 0 || i.expired_qty > 0; },
+    attentionCount(locationId) { return this.itemsOf(locationId).filter(i => this.needsAttention(i)).length; },
+    get shoppingRows() {
+      const byId = Object.fromEntries(this.locations.map(l => [l.id, l]));
+      return this.items
+        .filter(i => this.needsAttention(i) && byId[i.location_id])
+        .map(i => ({ it: i, loc: byId[i.location_id] }))
+        .sort((a, b) => a.loc.name.localeCompare(b.loc.name) || a.it.name.localeCompare(b.it.name));
+    },
+    publishAttention() {
+      window.dispatchEvent(new CustomEvent('inventory-attention', { detail: this.items.filter(i => this.needsAttention(i)).length }));
+    },
+
+    // --- display helpers ---
+    isOpen(id) { return !!this.openIds[id]; },
+    toggleLocation(id) { this.openIds[id] = !this.openIds[id]; },
+    isExpanded(id) { return !!this.expandedItems[id]; },
+    toggleItem(id) { this.expandedItems[id] = !this.expandedItems[id]; },
+    fmtDate(iso) { const [y, m, d] = iso.split('-'); return d + '.' + m + '.' + y; },
+    checkedText(loc) {
+      if (!loc.last_checked_at) return NEVER_CHECKED_L;
+      return LAST_CHECKED_L.replace('{date}', new Date(loc.last_checked_at + 'Z').toLocaleDateString())
+                           .replace('{user}', loc.last_checked_by || '?');
+    },
+    statusText(i) {
+      const parts = [];
+      if (i.expired_qty > 0) parts.push(STATUS_EXPIRED_L.replace('{n}', i.expired_qty));
+      if (i.expiring_soon_qty > 0) parts.push(STATUS_EXPIRING_L.replace('{n}', i.expiring_soon_qty));
+      if (i.usable_qty - i.expiring_soon_qty < i.target_qty) parts.push(STATUS_SHORT_L.replace('{n}', i.to_order));
+      return parts.length ? parts.join(', ') : STATUS_OK_L;
+    },
+    statusClass(i) {
+      if (i.expired_qty > 0) return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300';
+      if (this.needsAttention(i) || i.expiring_soon_qty > 0) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300';
+      return 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300';
+    },
+    batchClass(b) {
+      if (b.state === 'expired') return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300';
+      if (b.state === 'expiring') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300';
+      return 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
+    },
+    flash(msg) { this.success = msg; setTimeout(() => { this.success = null; }, 2500); },
+
+    // --- api ---
+    async call(url, method, body) {
+      this.error = null;
+      try {
+        const r = await apiFetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: body === undefined ? undefined : JSON.stringify(body),
+        });
+        const data = await r.json();
+        if (!r.ok) { this.error = (typeof data.detail === 'string' ? data.detail : null) || 'Error'; return null; }
+        return data;
+      } catch (e) {
+        this.error = e.message;
+        return null;
+      }
+    },
+    ensureBatchForm(i) {
+      if (!this.batchForms[i.id]) this.batchForms[i.id] = { quantity: 1, expires_on: '' };
+    },
+    // Every item endpoint returns the full updated item, so the list is
+    // updated in place instead of reloaded.
+    applyItem(updated) {
+      if (!updated) return;
+      this.ensureBatchForm(updated);
+      const idx = this.items.findIndex(i => i.id === updated.id);
+      if (idx >= 0) this.items.splice(idx, 1, updated); else this.items.push(updated);
+      this.items.sort((a, b) => a.name.localeCompare(b.name));
+      this.publishAttention();
+    },
+
+    async adjust(it, delta) {
+      this.applyItem(await this.call('/api/v1/inventory/items/' + it.id + '/quantity', 'POST', { delta }));
+    },
+    async setQuantity(it, ev) {
+      const v = parseInt(ev.target.value, 10);
+      if (isNaN(v) || v < 0) { ev.target.value = it.on_hand; return; }
+      const updated = await this.call('/api/v1/inventory/items/' + it.id + '/quantity', 'POST', { quantity: v });
+      if (updated) this.applyItem(updated); else ev.target.value = it.on_hand;
+    },
+    async addBatch(it) {
+      const f = this.batchForms[it.id];
+      const updated = await this.call('/api/v1/inventory/items/' + it.id + '/batches', 'POST',
+        { quantity: f.quantity, expires_on: f.expires_on || null });
+      if (updated) { this.applyItem(updated); this.batchForms[it.id] = { quantity: 1, expires_on: '' }; }
+    },
+    async setBatchQuantity(b, ev) {
+      const v = parseInt(ev.target.value, 10);
+      if (isNaN(v) || v < 0) { ev.target.value = b.quantity; return; }
+      const updated = await this.call('/api/v1/inventory/batches/' + b.id, 'PUT', { quantity: v });
+      if (updated) this.applyItem(updated); else ev.target.value = b.quantity;
+    },
+    async removeBatch(b) {
+      this.applyItem(await this.call('/api/v1/inventory/batches/' + b.id, 'DELETE'));
+    },
+
+    // --- locations ---
+    openLocationModal(loc) {
+      this.modalError = null;
+      this.locationForm = loc ? { id: loc.id, name: loc.name, notes: loc.notes || '' } : { id: null, name: '', notes: '' };
+      this.showLocationModal = true;
+    },
+    async saveLocation() {
+      this.submitting = true;
+      this.modalError = null;
+      const f = this.locationForm;
+      try {
+        const r = await apiFetch(f.id ? '/api/v1/inventory/locations/' + f.id : '/api/v1/inventory/locations', {
+          method: f.id ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: f.name, notes: f.notes }),
+        });
+        const data = await r.json();
+        if (!r.ok) { this.modalError = (typeof data.detail === 'string' ? data.detail : null) || 'Error'; return; }
+        const idx = this.locations.findIndex(l => l.id === data.id);
+        if (idx >= 0) this.locations.splice(idx, 1, data); else { this.locations.push(data); this.openIds[data.id] = true; }
+        this.locations.sort((a, b) => a.name.localeCompare(b.name));
+        this.showLocationModal = false;
+      } catch (e) {
+        this.modalError = e.message;
+      } finally {
+        this.submitting = false;
+      }
+    },
+    async deleteLocation(loc) {
+      if (!confirm(CONFIRM_LOCATION_L.replace('{name}', loc.name))) return;
+      if (await this.call('/api/v1/inventory/locations/' + loc.id, 'DELETE')) {
+        this.locations = this.locations.filter(l => l.id !== loc.id);
+      }
+    },
+    async markChecked(loc) {
+      const updated = await this.call('/api/v1/inventory/locations/' + loc.id + '/check', 'POST');
+      if (updated) { const idx = this.locations.findIndex(l => l.id === loc.id); this.locations.splice(idx, 1, updated); }
+    },
+    async copyLink(loc) {
+      const url = location.origin + '/inventory/' + loc.slug;
+      try { await navigator.clipboard.writeText(url); this.flash(LINK_COPIED_L); }
+      catch (e) { window.prompt('', url); }
+    },
+
+    // --- items ---
+    openItemModal(locationId, it) {
+      this.modalError = null;
+      this.itemForm = it
+        ? { id: it.id, location_id: it.location_id, name: it.name, unit: it.unit || '', target_qty: it.target_qty,
+            track_expiry: it.track_expiry, quantity: 0, expires_on: '', notes: it.notes || '' }
+        : { id: null, location_id: locationId, name: '', unit: '', target_qty: 0, track_expiry: false, quantity: 0, expires_on: '', notes: '' };
+      this.showItemModal = true;
+    },
+    async saveItem() {
+      this.submitting = true;
+      this.modalError = null;
+      const f = this.itemForm;
+      const common = { name: f.name, unit: f.unit, target_qty: f.target_qty, track_expiry: f.track_expiry, notes: f.notes };
+      try {
+        const r = await apiFetch(f.id ? '/api/v1/inventory/items/' + f.id : '/api/v1/inventory/items', {
+          method: f.id ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(f.id
+            ? { ...common, location_id: f.location_id }
+            : { ...common, location_id: f.location_id, quantity: f.quantity || 0, expires_on: f.track_expiry && f.expires_on ? f.expires_on : null }),
+        });
+        const data = await r.json();
+        if (!r.ok) { this.modalError = (typeof data.detail === 'string' ? data.detail : null) || 'Error'; return; }
+        this.applyItem(data);
+        this.openIds[data.location_id] = true;
+        if (data.track_expiry) this.expandedItems[data.id] = true;
+        this.showItemModal = false;
+      } catch (e) {
+        this.modalError = e.message;
+      } finally {
+        this.submitting = false;
+      }
+    },
+    async deleteItem(it) {
+      if (!confirm(CONFIRM_ITEM_L.replace('{name}', it.name))) return;
+      if (await this.call('/api/v1/inventory/items/' + it.id, 'DELETE')) {
+        this.items = this.items.filter(i => i.id !== it.id);
+        this.publishAttention();
+      }
+    },
+  };
+}
+</script>
+{% endblock %}

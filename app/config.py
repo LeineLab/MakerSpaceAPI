@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # Devices
     CHECKOUT_BOX_SLUGS: str = ""
 
+    # Inventory: batches expiring within this many days count as "expiring soon"
+    INVENTORY_EXPIRY_WARN_DAYS: int = 60
+
     # Allow purchases when stock is 0 (stock goes negative)
     ALLOW_NEGATIVE_STOCK: bool = False
 

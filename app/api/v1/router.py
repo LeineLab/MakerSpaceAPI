@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import audit, bankomat, filament, ledger, machines, products, rentals, sessions, transactions, users
+from app.api.v1 import audit, bankomat, filament, inventory, ledger, machines, products, rentals, sessions, transactions, users
 
 api_router = APIRouter()
 
@@ -13,4 +13,5 @@ api_router.include_router(bankomat.router, prefix="/bankomat", tags=["bankomat"]
 api_router.include_router(rentals.router, prefix="/rentals", tags=["rentals"])
 api_router.include_router(ledger.router, prefix="/ledger", tags=["ledger"])
 api_router.include_router(filament.router, prefix="/filament", tags=["filament"])
+api_router.include_router(inventory.router, prefix="/inventory", tags=["inventory"])
 api_router.include_router(audit.router, prefix="/audit", tags=["audit"])

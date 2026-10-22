@@ -166,6 +166,24 @@ def filament_page(
 
 
 # ---------------------------------------------------------------------------
+# Inventory (any logged-in user)
+# ---------------------------------------------------------------------------
+
+@router.get("/inventory", response_class=HTMLResponse)
+@router.get("/inventory/{location_slug}", response_class=HTMLResponse)
+def inventory_page(
+    request: Request,
+    location_slug: str = "",
+    user: dict = Depends(require_session_user),
+):
+    """The slugged form is the link/QR code for one location: the page opens
+    with that location expanded. An unknown slug just opens the plain page."""
+    return templates.TemplateResponse(
+        request, "inventory/index.html", _ctx(request, user, initial_slug=location_slug),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Admin: Bankomat / Booking Targets
 # ---------------------------------------------------------------------------
 

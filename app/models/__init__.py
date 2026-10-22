@@ -2,6 +2,7 @@ from app.models.base import Base
 from app.models.audit import AuditLog
 from app.models.booking_target import BookingTarget
 from app.models.filament import FilamentBrand, FilamentColorAlias, FilamentRoll, FilamentType
+from app.models.inventory import InventoryBatch, InventoryItem, InventoryLocation
 from app.models.ledger import (
     BankAccount,
     LedgerCategory,
@@ -32,6 +33,9 @@ __all__ = [
     "FilamentColorAlias",
     "FilamentRoll",
     "FilamentType",
+    "InventoryBatch",
+    "InventoryItem",
+    "InventoryLocation",
     "LedgerCategory",
     "LedgerCategoryKind",
     "LedgerEntry",
