@@ -921,5 +921,6 @@
   "inventory.modal_item_edit": "Edit item",
   "inventory.confirm_delete_item": "Really delete item \"{name}\"?",
   "inventory.confirm_delete_location": "Really delete location \"{name}\"?",
-  "inventory.expand_batches": "Show batches"
+  "inventory.expand_batches": "Show batches",
+  "nav.admin_menu": "Administration"
 }

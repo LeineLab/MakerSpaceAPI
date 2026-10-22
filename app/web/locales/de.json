@@ -921,5 +921,6 @@
   "inventory.modal_item_edit": "Position bearbeiten",
   "inventory.confirm_delete_item": "Position \"{name}\" wirklich löschen?",
   "inventory.confirm_delete_location": "Standort \"{name}\" wirklich löschen?",
-  "inventory.expand_batches": "Chargen anzeigen"
+  "inventory.expand_batches": "Chargen anzeigen",
+  "nav.admin_menu": "Verwaltung"
 }

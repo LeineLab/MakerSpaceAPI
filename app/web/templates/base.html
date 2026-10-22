@@ -148,18 +148,31 @@
           <a href="/me"       class="hover:text-gray-300 text-sm">{{ _('nav.me') }}<span x-show="pendingTerms > 0" x-cloak x-text="pendingTerms" class="ml-1 bg-amber-500 text-white text-xs rounded-full px-1.5 py-0.5" title="{{ _('nav.terms_pending') }}"></span></a>
           <a href="/machines" class="hover:text-gray-300 text-sm">{{ _('nav.machines') }}</a>
           <a href="/inventory" class="hover:text-gray-300 text-sm">{{ _('nav.inventory') }}<span x-show="inventoryAttention > 0" x-cloak x-text="inventoryAttention" class="ml-1 bg-amber-500 text-white text-xs rounded-full px-1.5 py-0.5"></span></a>
-          {% if is_admin(user) %}
-            <a href="/dashboard"   class="hover:text-gray-300 text-sm">{{ _('nav.dashboard') }}</a>
-            <a href="/users"       class="hover:text-gray-300 text-sm">{{ _('nav.users') }}</a>
-            <a href="/bankomat"    class="hover:text-gray-300 text-sm">{{ _('nav.bankomat') }}</a>
-            <a href="/rentals"     class="hover:text-gray-300 text-sm">{{ _('nav.rentals') }}</a>
-            <a href="/audit"       class="hover:text-gray-300 text-sm">{{ _('nav.audit') }}</a>
-          {% endif %}
-          {% if is_product_manager(user) %}
-            <a href="/products/manage" class="hover:text-gray-300 text-sm">{{ _('nav.manage_products') }}</a>
-          {% endif %}
-          {% if is_auditor(user) %}
-            <a href="/ledger" class="hover:text-gray-300 text-sm">{{ _('nav.ledger') }}</a>
+          {% if is_product_manager(user) or is_auditor(user) %}
+            <!-- Management links grouped so the bar stays short; the menu only
+                 exists for roles that see at least one entry. -->
+            <div class="relative" x-data="{ menu: false }">
+              <button @click.stop="menu = !menu" class="hover:text-gray-300 text-sm flex items-center gap-1 focus:outline-none">
+                {{ _('nav.admin_menu') }}
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              </button>
+              <div x-show="menu" x-cloak @click.outside="menu = false"
+                   class="absolute left-0 mt-2 w-48 bg-gray-800 border border-gray-700 rounded shadow-lg z-50 py-1">
+                {% if is_admin(user) %}
+                  <a href="/dashboard" class="block px-4 py-2 text-sm hover:bg-gray-700">{{ _('nav.dashboard') }}</a>
+                  <a href="/users"     class="block px-4 py-2 text-sm hover:bg-gray-700">{{ _('nav.users') }}</a>
+                  <a href="/bankomat"  class="block px-4 py-2 text-sm hover:bg-gray-700">{{ _('nav.bankomat') }}</a>
+                  <a href="/rentals"   class="block px-4 py-2 text-sm hover:bg-gray-700">{{ _('nav.rentals') }}</a>
+                  <a href="/audit"     class="block px-4 py-2 text-sm hover:bg-gray-700">{{ _('nav.audit') }}</a>
+                {% endif %}
+                {% if is_product_manager(user) %}
+                  <a href="/products/manage" class="block px-4 py-2 text-sm hover:bg-gray-700">{{ _('nav.manage_products') }}</a>
+                {% endif %}
+                {% if is_auditor(user) %}
+                  <a href="/ledger" class="block px-4 py-2 text-sm hover:bg-gray-700">{{ _('nav.ledger') }}</a>
+                {% endif %}
+              </div>
+            </div>
           {% endif %}
         {% endif %}
       </div>
@@ -216,18 +229,21 @@
         <a href="/me"       class="hover:text-gray-300 text-sm py-2">{{ _('nav.me') }}<span x-show="pendingTerms > 0" x-cloak x-text="pendingTerms" class="ml-1 bg-amber-500 text-white text-xs rounded-full px-1.5 py-0.5" title="{{ _('nav.terms_pending') }}"></span></a>
         <a href="/machines" class="hover:text-gray-300 text-sm py-2">{{ _('nav.machines') }}</a>
         <a href="/inventory" class="hover:text-gray-300 text-sm py-2">{{ _('nav.inventory') }}<span x-show="inventoryAttention > 0" x-cloak x-text="inventoryAttention" class="ml-1 bg-amber-500 text-white text-xs rounded-full px-1.5 py-0.5"></span></a>
+        {% if is_product_manager(user) or is_auditor(user) %}
+          <p class="text-xs uppercase text-gray-500 mt-2 pt-3 border-t border-gray-700">{{ _('nav.admin_menu') }}</p>
+        {% endif %}
         {% if is_admin(user) %}
-          <a href="/dashboard"   class="hover:text-gray-300 text-sm py-2">{{ _('nav.dashboard') }}</a>
-          <a href="/users"       class="hover:text-gray-300 text-sm py-2">{{ _('nav.users') }}</a>
-          <a href="/bankomat"    class="hover:text-gray-300 text-sm py-2">{{ _('nav.bankomat') }}</a>
-          <a href="/rentals"     class="hover:text-gray-300 text-sm py-2">{{ _('nav.rentals') }}</a>
-          <a href="/audit"       class="hover:text-gray-300 text-sm py-2">{{ _('nav.audit') }}</a>
+          <a href="/dashboard"   class="hover:text-gray-300 text-sm py-2 pl-3">{{ _('nav.dashboard') }}</a>
+          <a href="/users"       class="hover:text-gray-300 text-sm py-2 pl-3">{{ _('nav.users') }}</a>
+          <a href="/bankomat"    class="hover:text-gray-300 text-sm py-2 pl-3">{{ _('nav.bankomat') }}</a>
+          <a href="/rentals"     class="hover:text-gray-300 text-sm py-2 pl-3">{{ _('nav.rentals') }}</a>
+          <a href="/audit"       class="hover:text-gray-300 text-sm py-2 pl-3">{{ _('nav.audit') }}</a>
         {% endif %}
         {% if is_product_manager(user) %}
-          <a href="/products/manage" class="hover:text-gray-300 text-sm py-2">{{ _('nav.manage_products') }}</a>
+          <a href="/products/manage" class="hover:text-gray-300 text-sm py-2 pl-3">{{ _('nav.manage_products') }}</a>
         {% endif %}
         {% if is_auditor(user) %}
-          <a href="/ledger" class="hover:text-gray-300 text-sm py-2">{{ _('nav.ledger') }}</a>
+          <a href="/ledger" class="hover:text-gray-300 text-sm py-2 pl-3">{{ _('nav.ledger') }}</a>
         {% endif %}
         <div class="border-t border-gray-700 mt-2 pt-3 flex items-center justify-between">
           <span class="text-xs text-gray-400">{{ user.get('name') or user.get('sub') }}</span>
