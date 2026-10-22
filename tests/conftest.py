@@ -152,7 +152,7 @@ def treasurer_client(db, monkeypatch):
 
 @pytest.fixture
 def auditor_client(db, monkeypatch):
-    """TestClient authenticated as a read-only auditor (Kassenprüfer) who is
+    """TestClient authenticated as a read-only auditor (Kassenprüfende) who is
     NOT a treasurer or admin."""
     from app.config import settings
 

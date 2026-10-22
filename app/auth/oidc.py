@@ -51,9 +51,9 @@ def is_treasurer(user_info: dict) -> bool:
 
 
 def is_auditor(user_info: dict) -> bool:
-    """True if user is treasurer/admin OR belongs to the auditor (Kassenprüfer) group.
+    """True if user is treasurer/admin OR belongs to the auditor (Kassenprüfende) group.
 
-    Kassenprüfer get read-only access to the ledger; treasurers and admins
+    Kassenprüfende get read-only access to the ledger; treasurers and admins
     automatically pass this check since they can already see everything an auditor can.
     """
     if is_treasurer(user_info):
@@ -63,7 +63,7 @@ def is_auditor(user_info: dict) -> bool:
 
 
 def is_auditor_writer(user_info: dict) -> bool:
-    """True if user is admin OR explicitly belongs to the auditor (Kassenprüfer)
+    """True if user is admin OR explicitly belongs to the auditor (Kassenprüfende)
     group — deliberately NOT satisfied by a plain treasurer, unlike every other
     is_*() check in this module. Used only for writing Kassenprüfungsprotokolle
     (audit reports): a treasurer being able to author the record that audits

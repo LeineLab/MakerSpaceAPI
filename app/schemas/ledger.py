@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -27,6 +27,9 @@ class BankAccountUpdate(BaseModel):
     name: Optional[str] = None
     tracked: Optional[bool] = None
     is_cash_clearing_account: Optional[bool] = None
+    # Set the closing date; `clear_closed_on: true` reopens the account.
+    closed_on: Optional[date] = None
+    clear_closed_on: bool = False
 
 
 class BankAccountResponse(BaseModel):
@@ -38,6 +41,7 @@ class BankAccountResponse(BaseModel):
     opening_balance: Decimal = Field(examples=[Decimal("0.00")])
     csv_mapping: Optional[dict] = None
     is_cash_clearing_account: bool = False
+    closed_on: Optional[date] = None
     created_at: datetime
     # Most recent booking_date among this account's imported statement lines
     # (file, CSV, or FinTS — regardless of booked/duplicate/ignored status),
@@ -200,6 +204,15 @@ class LedgerEntryResponse(BaseModel):
     # Discrepancy note — independent of reviewed_by/reviewed_at, set/
     # cleared via PUT .../review-note; survives an un-review.
     review_note: Optional[str] = None
+    # Receipt marker for expense bookings whose receipt is not linked in
+    # Paperless (see LedgerEntry.receipt_status), plus the computed
+    # `receipt_missing`: an expense line without a linked document and
+    # without a marker, on an entry that is neither a Storno nor reversed.
+    # Only filled in by endpoints that compute it (entry list, receipt
+    # endpoint); defaults to False elsewhere.
+    receipt_status: Optional[Literal["external", "not_required"]] = None
+    receipt_note: Optional[str] = None
+    receipt_missing: bool = False
     # True for entries synthesized at read time from Bankomat cash-in
     # transactions (negative id, negative line ids). They are not stored
     # ledger entries, so they cannot be reversed, reviewed or capitalized.
@@ -215,6 +228,14 @@ class LedgerEntryResponse(BaseModel):
     matched_import_lines: list[LedgerImportLineResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class LedgerEntryReceiptUpdate(BaseModel):
+    """Set (`status` given) or clear (`status` null) the receipt marker of an
+    expense booking. `note` is the Fundstelle for 'external' (e.g. "Ordner 3,
+    Blatt 12") or an optional reason for 'not_required'."""
+    status: Optional[Literal["external", "not_required"]] = None
+    note: Optional[str] = Field(default=None, max_length=500)
 
 
 class LedgerEntryReviewNoteUpdate(BaseModel):
@@ -536,7 +557,7 @@ class MittelverwendungReportResponse(BaseModel):
     ledger's history through 31.12 of `year` — that Sphäre's after-tax
     surplus is treated as more freely usable and excluded here; this
     simplification (like the EÜR-Sphäre mapping itself) should be checked
-    against the Verein's own situation by its Kassenprüfer/Steuerberater.
+    against the Verein's own situation by its Kassenprüfende/Steuerberater.
     `available_funds = cumulative_relevant_net_result - cumulative_zufuehrungen
     + cumulative_aufloesungen` — the amount still awaiting timely use."""
     year: int
@@ -547,11 +568,28 @@ class MittelverwendungReportResponse(BaseModel):
     reserves: list[LedgerReserveResponse]
 
 
+class AuditStats(BaseModel):
+    """Figures computed for a Kassenprüfung period. For a draft report they
+    are recomputed on every read; `finalize` stores them with the report."""
+    entries_total: int
+    entries_reviewed: int
+    entries_unreviewed: int
+    entries_with_note: int
+    expense_entries: int
+    receipts_missing: int
+    receipts_external: int
+    receipts_not_required: int
+    accounts_total: int
+    accounts_stale: int
+    accounts_unreconciled: int
+
+
 class LedgerAuditReportCreate(BaseModel):
     """A Kassenprüfungsprotokoll. `auditors` is free text (e.g. "Max
-    Mustermann, Erika Musterfrau") — Kassenprüfer are elected members, not
+    Mustermann, Erika Musterfrau") — Kassenprüfende are elected members, not
     necessarily app users. Writing requires the narrower auditor-only
-    permission, not just any treasurer."""
+    permission, not just any treasurer. `supplements_report_id` makes this
+    report a Nachtrag to an already closed one."""
     period_start: date
     period_end: date
     audit_date: date
@@ -559,6 +597,15 @@ class LedgerAuditReportCreate(BaseModel):
     findings: Optional[str] = None
     recommends_discharge: bool = True
     paperless_document_id: Optional[str] = None
+    supplements_report_id: Optional[int] = None
+    has_objections: bool = False
+    receipts_complete: Optional[bool] = None
+    statements_complete: Optional[bool] = None
+    receipts_clearly_marked: Optional[bool] = None
+    receipts_comment: Optional[str] = Field(default=None, max_length=1000)
+    next_audit_date: Optional[date] = None
+    remarks: Optional[str] = Field(default=None, max_length=2000)
+    place: Optional[str] = Field(default=None, max_length=100)
 
 
 class LedgerAuditReportUpdate(BaseModel):
@@ -570,6 +617,15 @@ class LedgerAuditReportUpdate(BaseModel):
     recommends_discharge: Optional[bool] = None
     paperless_document_id: Optional[str] = None
     clear_paperless_document_id: bool = False
+    has_objections: Optional[bool] = None
+    receipts_complete: Optional[bool] = None
+    statements_complete: Optional[bool] = None
+    receipts_clearly_marked: Optional[bool] = None
+    receipts_comment: Optional[str] = Field(default=None, max_length=1000)
+    next_audit_date: Optional[date] = None
+    clear_next_audit_date: bool = False
+    remarks: Optional[str] = Field(default=None, max_length=2000)
+    place: Optional[str] = Field(default=None, max_length=100)
 
 
 class LedgerAuditReportResponse(BaseModel):
@@ -583,6 +639,23 @@ class LedgerAuditReportResponse(BaseModel):
     paperless_document_id: Optional[str]
     created_by: str
     created_at: datetime
+    status: Literal["draft", "final"] = "draft"
+    finalized_at: Optional[datetime] = None
+    finalized_by: Optional[str] = None
+    supplements_report_id: Optional[int] = None
+    has_objections: bool = False
+    receipts_complete: Optional[bool] = None
+    statements_complete: Optional[bool] = None
+    receipts_clearly_marked: Optional[bool] = None
+    receipts_comment: Optional[str] = None
+    next_audit_date: Optional[date] = None
+    remarks: Optional[str] = None
+    place: Optional[str] = None
+    # Frozen at finalize time for a closed report, live for a draft.
+    stats: Optional[AuditStats] = None
+    # Always live ("today"), so a closed report can be compared with the
+    # current state; equals `stats` for a draft.
+    current_stats: Optional[AuditStats] = None
 
     model_config = ConfigDict(from_attributes=True)
 

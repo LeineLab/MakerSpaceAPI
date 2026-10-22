@@ -92,6 +92,10 @@ class BankAccount(Base):
     # set at a time (enforced in the API layer, not the DB: setting it on one
     # account clears it on every other).
     is_cash_clearing_account: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Day the account was closed. From then on it is no longer offered for
+    # bookings or imports, and a Kassenprüfung period ending after this date no
+    # longer expects fresh statements from it. NULL = still in use.
+    closed_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
 
 
@@ -164,6 +168,14 @@ class LedgerEntry(Base):
     # it doesn't clear a standing note. Same VARCHAR(500) width convention
     # as description/note.
     review_note: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # Receipt marker (migration 0029) for an expense booking whose receipt is
+    # not linked in Paperless: 'external' (a paper receipt exists elsewhere,
+    # `receipt_note` says where) or 'not_required' (e.g. a bank fee shown on
+    # the statement itself, `receipt_note` optionally says why). NULL = no
+    # marker. An annotation like reviewed_by/review_note, never part of the
+    # booking itself.
+    receipt_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    receipt_note: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     lines: Mapped[list["LedgerEntryLine"]] = relationship(
         "LedgerEntryLine", back_populates="entry", cascade="all, delete-orphan"
@@ -377,9 +389,9 @@ class LedgerReserveMovement(Base):
 
 class LedgerAuditReport(Base):
     """A Kassenprüfungsprotokoll — the annual (or ad-hoc) audit report from
-    the Verein's Kassenprüfer, covering a period and recommending (or not)
+    the Verein's Kassenprüfende, covering a period and recommending (or not)
     the Vorstand's Entlastung. `auditors` is free text, not a FK to `users`
-    — Kassenprüfer are elected members and not necessarily app users at all.
+    — Kassenprüfende are elected members and not necessarily app users at all.
     Writing these is gated by `require_auditor_writer_user` (admin or
     explicit auditor-group membership, deliberately NOT a plain treasurer)
     since a treasurer authoring the report that audits their own bookkeeping
@@ -398,6 +410,27 @@ class LedgerAuditReport(Base):
     paperless_document_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
+    # Migration 0029. A report starts as a 'draft' (freely editable, PDF
+    # export allowed) and is closed with POST .../finalize: the computed
+    # figures are then frozen in `frozen_stats` and the report is locked.
+    # Later corrections go into a new report that points back at the closed
+    # one via `supplements_report_id` (a Nachtrag).
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default="draft")
+    finalized_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finalized_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    frozen_stats: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    supplements_report_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("ledger_audit_reports.id", ondelete="RESTRICT"), nullable=True
+    )
+    # Statements following the structure of the standard Kassenprüfung form.
+    has_objections: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    receipts_complete: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    statements_complete: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    receipts_clearly_marked: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    receipts_comment: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    next_audit_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    remarks: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
+    place: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
 
 class LedgerSyncToken(Base):

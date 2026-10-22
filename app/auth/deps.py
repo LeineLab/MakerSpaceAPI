@@ -60,18 +60,26 @@ def require_treasurer_user(user: dict = Depends(require_session_user)) -> dict:
 
 
 def require_ledger_viewer_user(user: dict = Depends(require_session_user)) -> dict:
-    """Allow admins, treasurers, and auditors (Kassenprüfer) read-only access to the ledger."""
+    """Allow admins, treasurers, and auditors (Kassenprüfende) read-only access to the ledger."""
     if not is_auditor(user):
         raise HTTPException(status_code=403, detail="Ledger access required")
     return user
 
 
 def require_auditor_writer_user(user: dict = Depends(require_session_user)) -> dict:
-    """Allow admins and users explicitly in the auditor (Kassenprüfer) OIDC
+    """Allow admins and users explicitly in the auditor (Kassenprüfende) OIDC
     group — deliberately NOT a plain treasurer (see is_auditor_writer's
     docstring). Only used for writing Kassenprüfungsprotokolle."""
     if not is_auditor_writer(user):
         raise HTTPException(status_code=403, detail="Auditor access required")
+    return user
+
+
+def require_receipt_marker_user(user: dict = Depends(require_session_user)) -> dict:
+    """Treasurers (who know where a paper receipt is filed) and Kassenprüfende
+    (who verify it) may mark an expense booking's receipt status."""
+    if not (is_treasurer(user) or is_auditor_writer(user)):
+        raise HTTPException(status_code=403, detail="Treasurer or auditor access required")
     return user
 
 

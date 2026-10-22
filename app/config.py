@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # Directory containing extra fonts (e.g. albertsans.ttf). Leave empty to use system fonts only.
     TYPST_FONT_DIR: str = ""
 
+    # Name of the Verein, printed on the Kassenprüfungsprotokoll PDF. Empty = left blank to fill in.
+    ASSOCIATION_NAME: str = ""
+
     # Currency symbol appended to all monetary amounts (API messages and PDF statements)
     CURRENCY: str = "€"
 

@@ -140,6 +140,14 @@
               </select>
             </div>
             <div>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ _('ledger.filter_receipt') }}</label>
+              <select x-model="filterReceiptMissing" @change="entriesPage = 1; loadEntries()"
+                      class="w-full border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+                <option value="">{{ _('ledger.filter_receipt_all') }}</option>
+                <option value="true">{{ _('ledger.filter_receipt_missing') }}</option>
+              </select>
+            </div>
+            <div>
               <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ _('ledger.filter_is_reversal') }}</label>
               <select x-model="filterIsReversal" @change="entriesPage = 1; loadEntries()"
                       class="w-full border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
@@ -247,6 +255,11 @@
                     </div>
                   </template>
                   <span x-show="entryPaperlessDocs(e).length === 0">—</span>
+                  <div class="font-sans mt-1 space-y-1">
+                    <span x-show="e.receipt_missing" class="inline-block px-1.5 py-0.5 rounded text-xs bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">{{ _('ledger.receipt_missing_badge') }}</span>
+                    <span x-show="e.receipt_status === 'external'" :title="e.receipt_note" class="inline-block px-1.5 py-0.5 rounded text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">{{ _('ledger.receipt_external_badge') }}</span>
+                    <span x-show="e.receipt_status === 'not_required'" :title="e.receipt_note" class="inline-block px-1.5 py-0.5 rounded text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">{{ _('ledger.receipt_not_required_badge') }}</span>
+                  </div>
                 </td>
                 <td class="px-4 py-3 whitespace-nowrap">
                   <!-- Kassenprüfung checkoff: informational for every
@@ -292,6 +305,31 @@
                         <span x-show="e.reviewed_by" class="text-green-600 dark:text-green-400" x-text="reviewedLabel(e)"></span>
                         <span x-show="!e.reviewed_by" class="text-gray-400 dark:text-gray-500">{{ _('ledger.detail_not_reviewed') }}</span>
                       </p>
+                      <!-- Receipt marker for expense bookings whose receipt is
+                           not linked in Paperless: external (with Fundstelle)
+                           or not required. Treasurer and Kassenprüfende. -->
+                      <div x-show="!e.read_only && e.lines.some(l => l.category && l.category.kind === 'expense')" class="mt-2">
+                        <label class="block text-gray-400 dark:text-gray-500 mb-1">{{ _('ledger.receipt_label') }}</label>
+                        <div x-show="userIsTreasurer || userCanWriteAuditReports" class="space-y-1">
+                          <select x-model="e._receiptStatusDraft" @click.stop
+                                  class="w-full border dark:border-gray-700 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800">
+                            <option value="">{{ _('ledger.receipt_opt_none') }}</option>
+                            <option value="external">{{ _('ledger.receipt_opt_external') }}</option>
+                            <option value="not_required">{{ _('ledger.receipt_opt_not_required') }}</option>
+                          </select>
+                          <input type="text" x-show="e._receiptStatusDraft" x-model="e._receiptNoteDraft" @click.stop maxlength="500"
+                                 placeholder="{{ _('ledger.receipt_note_placeholder') }}"
+                                 class="w-full border dark:border-gray-700 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800">
+                          <button @click.stop="saveEntryReceipt(e)" class="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                            {{ _('ledger.btn_save_receipt') }}
+                          </button>
+                        </div>
+                        <p x-show="!(userIsTreasurer || userCanWriteAuditReports)">
+                          <span x-show="e.receipt_status === 'external'">{{ _('ledger.receipt_opt_external') }}: <span x-text="e.receipt_note"></span></span>
+                          <span x-show="e.receipt_status === 'not_required'">{{ _('ledger.receipt_opt_not_required') }} <span x-text="e.receipt_note"></span></span>
+                          <span x-show="!e.receipt_status" class="text-gray-400 dark:text-gray-500">{{ _('ledger.receipt_opt_none') }}</span>
+                        </p>
+                      </div>
                       <!-- Discrepancy note — independent of the reviewed
                            checkbox above: editable only by an
                            auditor-writer, but its current value is shown
@@ -386,6 +424,7 @@
               <th class="px-4 py-3 text-right">{{ _('ledger.col_current_balance') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_last_transaction') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_tracked') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_closed_on') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_cash_clearing') }}</th>
               <th class="px-4 py-3 text-left" x-show="userIsTreasurer"></th>
             </tr>
@@ -417,6 +456,12 @@
                            class="rounded border-gray-300 dark:border-gray-600">
                     <span class="text-xs text-gray-500 dark:text-gray-400" x-text="a.tracked ? YES_NO_L.yes : YES_NO_L.no"></span>
                   </label>
+                </td>
+                <td class="px-4 py-3">
+                  <input type="date" :value="a.closed_on || ''" :disabled="!userIsTreasurer"
+                         :title="CLOSED_ON_HINT_L"
+                         @change="setClosedOn(a, $event.target.value)"
+                         class="border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800">
                 </td>
                 <td class="px-4 py-3">
                   <!-- Radio, not checkbox — only one account can be the shared
@@ -1612,18 +1657,33 @@
         <table class="min-w-full text-sm">
           <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
             <tr>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_status') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_period') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_audit_date') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_auditors') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_discharge') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.label_findings') }}</th>
               <th class="px-4 py-3 text-left">{{ _('ledger.col_paperless') }}</th>
-              <th class="px-4 py-3 text-left" x-show="userCanWriteAuditReports">{{ _('ledger.col_actions') }}</th>
+              <th class="px-4 py-3 text-left">{{ _('ledger.col_actions') }}</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
             <template x-for="a in auditReports" :key="a.id">
               <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 align-top">
+                <td class="px-4 py-3 whitespace-nowrap">
+                  <span class="px-2 py-0.5 rounded text-xs font-medium"
+                        :class="a.status === 'final' ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'"
+                        x-text="a.status === 'final' ? AR_STATUS_L.final : AR_STATUS_L.draft"></span>
+                  <div x-show="a.supplements_report_id" class="text-xs text-gray-500 dark:text-gray-400 mt-1"
+                       x-text="AR_SUPPLEMENT_OF_TMPL.replace('{id}', a.supplements_report_id)"></div>
+                  <div x-show="a.stats && a.stats.entries_unreviewed > 0" class="text-xs mt-1">
+                    <a :href="auditUnreviewedLink(a)" class="text-amber-700 dark:text-amber-300 hover:underline"
+                       x-text="AR_UNREVIEWED_TMPL.replace('{count}', a.stats ? a.stats.entries_unreviewed : 0)"></a>
+                    <span x-show="a.status === 'final' && a.current_stats && a.current_stats.entries_unreviewed !== a.stats.entries_unreviewed"
+                          class="text-gray-500 dark:text-gray-400"
+                          x-text="AR_UNREVIEWED_NOW_TMPL.replace('{count}', a.current_stats ? a.current_stats.entries_unreviewed : 0)"></span>
+                  </div>
+                </td>
                 <td class="px-4 py-3 whitespace-nowrap" x-text="a.period_start + ' – ' + a.period_end"></td>
                 <td class="px-4 py-3 whitespace-nowrap" x-text="a.audit_date"></td>
                 <td class="px-4 py-3" x-text="a.auditors"></td>
@@ -1639,13 +1699,20 @@
                   <span x-show="a.paperless_document_id && !config.paperless_url" x-text="a.paperless_document_id"></span>
                   <span x-show="!a.paperless_document_id">—</span>
                 </td>
-                <td class="px-4 py-3 whitespace-nowrap" x-show="userCanWriteAuditReports">
-                  <button @click="openEditAuditReportModal(a)" class="text-blue-600 dark:text-blue-400 hover:underline text-xs mr-2">
-                    {{ _('common.edit') }}
+                <td class="px-4 py-3 whitespace-nowrap">
+                  <button @click="downloadAuditReportPdf(a)" class="text-blue-600 dark:text-blue-400 hover:underline text-xs mr-2">
+                    {{ _('ledger.ar_btn_pdf') }}
                   </button>
-                  <button @click="deleteAuditReport(a)" class="text-red-600 dark:text-red-400 hover:underline text-xs">
-                    {{ _('common.remove') }}
-                  </button>
+                  <template x-if="userCanWriteAuditReports && a.status === 'draft'">
+                    <span>
+                      <button @click="openEditAuditReportModal(a)" class="text-blue-600 dark:text-blue-400 hover:underline text-xs mr-2">{{ _('common.edit') }}</button>
+                      <button @click="finalizeAuditReport(a)" class="text-green-700 dark:text-green-400 hover:underline text-xs mr-2">{{ _('ledger.ar_btn_finalize') }}</button>
+                      <button @click="deleteAuditReport(a)" class="text-red-600 dark:text-red-400 hover:underline text-xs">{{ _('common.remove') }}</button>
+                    </span>
+                  </template>
+                  <template x-if="userCanWriteAuditReports && a.status === 'final'">
+                    <button @click="openSupplementModal(a)" class="text-blue-600 dark:text-blue-400 hover:underline text-xs">{{ _('ledger.ar_btn_supplement') }}</button>
+                  </template>
                 </td>
               </tr>
             </template>
@@ -2885,20 +2952,22 @@
   <!-- ============ Audit Report (Kassenprüfungsprotokoll) Modal ============ -->
   <div x-show="showAuditReportModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
        @mousedown.self="modalMousedownOutside = true">
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6"
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-xl p-6" style="max-height: 90vh; overflow-y: auto;"
          @mousedown="modalMousedownOutside = false" @click.outside="if (modalMousedownOutside) showAuditReportModal = false">
-      <h2 class="text-lg font-bold mb-4" x-text="editingAuditReportId ? AUDIT_REPORT_MODAL_TITLE_EDIT_L : AUDIT_REPORT_MODAL_TITLE_CREATE_L"></h2>
+      <h2 class="text-lg font-bold mb-4" x-text="editingAuditReportId ? AUDIT_REPORT_MODAL_TITLE_EDIT_L : (auditReportForm.supplements_report_id ? AR_MODAL_TITLE_SUPPLEMENT_L : AUDIT_REPORT_MODAL_TITLE_CREATE_L)"></h2>
       <div x-show="auditReportError" class="mb-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-2 rounded text-sm" x-text="auditReportError"></div>
+      <p x-show="auditReportForm.supplements_report_id" class="mb-3 text-sm text-blue-700 dark:text-blue-300"
+         x-text="AR_SUPPLEMENT_OF_TMPL.replace('{id}', auditReportForm.supplements_report_id)"></p>
       <form @submit.prevent="submitAuditReport()" class="space-y-4">
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_period_start') }}</label>
-            <input type="date" x-model="auditReportForm.period_start" required
+            <input type="date" x-model="auditReportForm.period_start" required @change="loadAuditFormStats()"
                    class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_period_end') }}</label>
-            <input type="date" x-model="auditReportForm.period_end" required
+            <input type="date" x-model="auditReportForm.period_end" required @change="loadAuditFormStats()"
                    class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
           </div>
         </div>
@@ -2927,9 +2996,82 @@
         </div>
         <div>
           <label class="inline-flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" x-model="auditReportForm.has_objections" class="rounded border-gray-300 dark:border-gray-600">
+            <span class="text-sm text-gray-700 dark:text-gray-300">{{ _('ledger.ar_label_has_objections') }}</span>
+          </label>
+        </div>
+
+        <!-- Figures computed from the books for the entered period (live
+             while the report is a draft, frozen when it is closed). -->
+        <div x-show="auditFormStats" class="rounded border dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-3 text-xs space-y-1">
+          <div class="font-medium text-gray-700 dark:text-gray-300">{{ _('ledger.ar_stats_title') }}</div>
+          <template x-for="line in auditStatsLines(auditFormStats)" :key="line">
+            <div class="text-gray-600 dark:text-gray-400" x-text="line"></div>
+          </template>
+          <div x-show="auditFormStats && auditFormStats.entries_unreviewed > 0"
+               class="text-amber-700 dark:text-amber-300 font-medium">
+            <span x-text="AR_UNREVIEWED_TMPL.replace('{count}', auditFormStats ? auditFormStats.entries_unreviewed : 0)"></span>
+            <a :href="auditUnreviewedLink(auditReportForm)" target="_blank" class="underline ml-1">{{ _('ledger.ar_show_unreviewed') }}</a>
+          </div>
+          <div x-show="auditFormStats && auditFormStats.receipts_missing > 0" class="text-amber-700 dark:text-amber-300">
+            <a :href="auditMissingReceiptsLink(auditReportForm)" target="_blank" class="underline">{{ _('ledger.ar_show_missing_receipts') }}</a>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.ar_label_receipts') }}</label>
+            <select x-model="auditReportForm.receipts_complete"
+                    class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800">
+              <option value="">{{ _('ledger.ar_opt_unset') }}</option>
+              <option value="true">{{ _('ledger.ar_opt_complete') }}</option>
+              <option value="false">{{ _('ledger.ar_opt_incomplete') }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.ar_label_statements') }}</label>
+            <select x-model="auditReportForm.statements_complete"
+                    class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800">
+              <option value="">{{ _('ledger.ar_opt_unset') }}</option>
+              <option value="true">{{ _('ledger.ar_opt_complete') }}</option>
+              <option value="false">{{ _('ledger.ar_opt_incomplete') }}</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="inline-flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" x-model="auditReportForm.receipts_clearly_marked" class="rounded border-gray-300 dark:border-gray-600">
+            <span class="text-sm text-gray-700 dark:text-gray-300">{{ _('ledger.ar_label_clearly_marked') }}</span>
+          </label>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.ar_label_receipts_comment') }}</label>
+          <input type="text" x-model="auditReportForm.receipts_comment" maxlength="1000"
+                 class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800">
+        </div>
+
+        <div>
+          <label class="inline-flex items-center gap-2 cursor-pointer">
             <input type="checkbox" x-model="auditReportForm.recommends_discharge" class="rounded border-gray-300 dark:border-gray-600">
             <span class="text-sm text-gray-700 dark:text-gray-300">{{ _('ledger.label_recommends_discharge') }}</span>
           </label>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.ar_label_next_audit') }}</label>
+            <input type="date" x-model="auditReportForm.next_audit_date"
+                   class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.ar_label_place') }}</label>
+            <input type="text" x-model="auditReportForm.place" maxlength="100"
+                   class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800">
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.ar_label_remarks') }}</label>
+          <textarea x-model="auditReportForm.remarks" rows="2" maxlength="2000"
+                    class="w-full border dark:border-gray-700 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800"></textarea>
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('ledger.label_paperless_id') }}</label>
@@ -2964,6 +3106,7 @@ const SPHERE_NONE = {{ _('ledger.sphere_none') | tojson }};
 // every translated string used inside an x-text expression is predefined here.
 const YES_NO_L = { yes: {{ _('common.yes') | tojson }}, no: {{ _('common.no') | tojson }} };
 const CASH_CLEARING_HINT_L = {{ _('ledger.cash_clearing_hint') | tojson }};
+const CLOSED_ON_HINT_L = {{ _('ledger.closed_on_hint') | tojson }};
 const OFFLINE_ACCOUNT_L = {{ _('ledger.offline_badge') | tojson }};
 const ACTIVE_L = { active: {{ _('common.active') | tojson }}, inactive: {{ _('common.inactive') | tojson }} };
 const KIND_L = { income: {{ _('ledger.kind_income') | tojson }}, expense: {{ _('ledger.kind_expense') | tojson }} };
@@ -3060,6 +3203,15 @@ const RESERVE_KIND_L = {
 };
 const AUDIT_REPORT_MODAL_TITLE_CREATE_L = {{ _('ledger.audit_report_modal_title_create') | tojson }};
 const AUDIT_REPORT_MODAL_TITLE_EDIT_L = {{ _('ledger.audit_report_modal_title_edit') | tojson }};
+const AR_STATUS_L = { draft: {{ _('ledger.ar_status_draft') | tojson }}, final: {{ _('ledger.ar_status_final') | tojson }} };
+const AR_SUPPLEMENT_OF_TMPL = {{ _('ledger.ar_supplement_of') | tojson }};
+const AR_UNREVIEWED_TMPL = {{ _('ledger.ar_unreviewed') | tojson }};
+const AR_UNREVIEWED_NOW_TMPL = {{ _('ledger.ar_unreviewed_now') | tojson }};
+const AR_FINALIZE_CONFIRM_L = {{ _('ledger.ar_finalize_confirm') | tojson }};
+const AR_MODAL_TITLE_SUPPLEMENT_L = {{ _('ledger.ar_modal_title_supplement') | tojson }};
+const AR_STAT_ENTRIES_TMPL = {{ _('ledger.apdf_stat_entries') | tojson }};
+const AR_STAT_RECEIPTS_TMPL = {{ _('ledger.apdf_stat_receipts') | tojson }};
+const AR_STAT_ACCOUNTS_TMPL = {{ _('ledger.apdf_stat_accounts') | tojson }};
 const AUDIT_REPORT_REMOVE_CONFIRM_L = {{ _('ledger.audit_report_remove_confirm') | tojson }};
 const PAPERLESS_LINKED_TMPL = {{ _('ledger.paperless_linked_badge') | tojson }};
 const CSV_FIELDS = [
@@ -3123,6 +3275,7 @@ const LEDGER_TAB_QUERY = {
       if (app.filterQuery) p.suche = app.filterQuery;
       if (app.filterReviewed) p.geprueft = app.filterReviewed;
       if (app.filterHasDocument) p.beleg = app.filterHasDocument;
+      if (app.filterReceiptMissing) p.belegfehlt = app.filterReceiptMissing;
       if (app.filterIsReversal) p.storno = app.filterIsReversal;
       if (app.entriesPage > 1) p.seite = app.entriesPage;
       return p;
@@ -3136,6 +3289,7 @@ const LEDGER_TAB_QUERY = {
       if (params.has('suche')) app.filterQuery = params.get('suche');
       if (params.has('geprueft')) app.filterReviewed = params.get('geprueft');
       if (params.has('beleg')) app.filterHasDocument = params.get('beleg');
+      if (params.has('belegfehlt')) app.filterReceiptMissing = params.get('belegfehlt');
       if (params.has('storno')) app.filterIsReversal = params.get('storno');
       if (params.has('seite')) app.entriesPage = parseInt(params.get('seite'), 10) || 1;
     },
@@ -3214,6 +3368,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     filterQuery: '',
     filterReviewed: '',
     filterHasDocument: '',
+    filterReceiptMissing: '',
     filterIsReversal: '',
     filterDateFrom: '',
     filterDateTo: '',
@@ -3421,7 +3576,13 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     auditReportsError: null,
     showAuditReportModal: false,
     editingAuditReportId: null,
-    auditReportForm: { period_start: '', period_end: '', audit_date: '', auditors: '', findings: '', recommends_discharge: true, paperless_document_id: '' },
+    auditReportForm: {
+      period_start: '', period_end: '', audit_date: '', auditors: '', findings: '', recommends_discharge: true,
+      paperless_document_id: '', supplements_report_id: null, has_objections: false, receipts_complete: '',
+      statements_complete: '', receipts_clearly_marked: false, receipts_comment: '', next_audit_date: '',
+      remarks: '', place: '',
+    },
+    auditFormStats: null,
     auditReportError: null,
     auditReportSubmitting: false,
     auditReportImportNotesMessage: '',
@@ -3531,13 +3692,13 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       // computed balance accounts for cash-in events implicitly, so a
       // manual line against it would corrupt that balance — the backend
       // rejects it outright, this just keeps it from being offered at all.
-      return this.accounts.filter(a => a.tracked && !a.is_cash_clearing_account);
+      return this.accounts.filter(a => a.tracked && !a.is_cash_clearing_account && !a.closed_on);
     },
 
     get importableAccounts() {
       // Used for the file-upload account picker — offline accounts have no
       // bank statement to import, so they're excluded here (unlike trackedAccounts).
-      return this.accounts.filter(a => a.tracked && !a.is_offline);
+      return this.accounts.filter(a => a.tracked && !a.is_offline && !a.closed_on);
     },
 
     get cashClearingAccountConfigured() {
@@ -3736,6 +3897,9 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       if (this.filterHasDocument === 'true' || this.filterHasDocument === 'false') {
         params += `&has_document=${this.filterHasDocument}`;
       }
+      if (this.filterReceiptMissing === 'true') {
+        params += '&receipt_missing=true';
+      }
       if (this.filterIsReversal === 'true' || this.filterIsReversal === 'false') {
         params += `&is_reversal=${this.filterIsReversal}`;
       }
@@ -3754,6 +3918,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       if (this.filterQuery) n++;
       if (this.filterReviewed) n++;
       if (this.filterHasDocument) n++;
+      if (this.filterReceiptMissing) n++;
       if (this.filterIsReversal) n++;
       if (this.filterDateFrom || this.filterDateTo) n++;
       return n;
@@ -3855,6 +4020,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       // inserts the *reversal*, whose own reverses_entry_id is always set —
       // handled correctly by this same check, not a separate case).
       const hasDoc = entry.lines.some(l => l.paperless_document_id);
+      if (this.filterReceiptMissing === 'true' && !entry.receipt_missing) return false;
       if (this.filterHasDocument === 'true' && !hasDoc) return false;
       if (this.filterHasDocument === 'false' && hasDoc) return false;
       if (this.filterIsReversal === 'true' && !entry.reverses_entry_id) return false;
@@ -4591,6 +4757,20 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
     },
 
+    async setClosedOn(account, value) {
+      try {
+        const r = await apiFetch(`/api/v1/ledger/accounts/${account.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(value ? { closed_on: value } : { clear_closed_on: true }),
+        });
+        if (r.ok) account.closed_on = value || null;
+        else this.loadAccounts();
+      } catch (e) {
+        this.loadAccounts();
+      }
+    },
+
     async setCashClearingAccount(account) {
       try {
         const r = await apiFetch(`/api/v1/ledger/accounts/${account.id}`, {
@@ -4723,6 +4903,38 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       // doesn't lose an in-progress edit.
       const entry = this.entries.find(e => e.id === this.expandedEntryId);
       if (entry && entry._noteDraft === undefined) entry._noteDraft = entry.review_note || '';
+      if (entry && entry._receiptStatusDraft === undefined) {
+        entry._receiptStatusDraft = entry.receipt_status || '';
+        entry._receiptNoteDraft = entry.receipt_note || '';
+      }
+    },
+
+    // Saves the receipt marker (external / not required / none) of an expense
+    // booking; updates the already-loaded entry in place like the checkoff
+    // and note actions, and drops the row if the "Beleg fehlt" filter no
+    // longer matches it.
+    async saveEntryReceipt(entry) {
+      this.entriesError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/entries/${entry.id}/receipt`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: entry._receiptStatusDraft || null, note: entry._receiptNoteDraft || null }),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          this.entriesError = data.detail || 'Error saving receipt marker';
+          return;
+        }
+        entry.receipt_status = data.receipt_status;
+        entry.receipt_note = data.receipt_note;
+        entry.receipt_missing = data.receipt_missing;
+        entry._receiptStatusDraft = data.receipt_status || '';
+        entry._receiptNoteDraft = data.receipt_note || '';
+        this.removeEntryLocallyIfFilteredOut(entry);
+      } catch (e) {
+        if (e !== 'unauthenticated') this.entriesError = e.message || String(e);
+      }
     },
 
     // Kassen payout detail expansion — same toggle pattern as
@@ -6275,27 +6487,127 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       };
     },
 
+    emptyAuditReportForm() {
+      return {
+        period_start: '', period_end: '', audit_date: '', auditors: '', findings: '',
+        recommends_discharge: true, paperless_document_id: '', supplements_report_id: null,
+        has_objections: false, receipts_complete: '', statements_complete: '', receipts_clearly_marked: false,
+        receipts_comment: '', next_audit_date: '', remarks: '', place: '',
+      };
+    },
+
     openAuditReportModal() {
       this.editingAuditReportId = null;
-      this.auditReportForm = {
-        ...this.defaultAuditPeriod(), audit_date: '', auditors: '',
-        findings: '', recommends_discharge: true, paperless_document_id: '',
-      };
+      this.auditReportForm = { ...this.emptyAuditReportForm(), ...this.defaultAuditPeriod() };
       this.auditReportError = null;
       this.auditReportImportNotesMessage = '';
       this.showAuditReportModal = true;
+      this.loadAuditFormStats();
     },
 
     openEditAuditReportModal(report) {
       this.editingAuditReportId = report.id;
+      const tri = (v) => (v === null || v === undefined ? '' : String(v));
       this.auditReportForm = {
         period_start: report.period_start, period_end: report.period_end, audit_date: report.audit_date,
         auditors: report.auditors, findings: report.findings || '',
         recommends_discharge: report.recommends_discharge, paperless_document_id: report.paperless_document_id || '',
+        supplements_report_id: report.supplements_report_id,
+        has_objections: report.has_objections, receipts_complete: tri(report.receipts_complete),
+        statements_complete: tri(report.statements_complete), receipts_clearly_marked: !!report.receipts_clearly_marked,
+        receipts_comment: report.receipts_comment || '', next_audit_date: report.next_audit_date || '',
+        remarks: report.remarks || '', place: report.place || '',
       };
       this.auditReportError = null;
       this.auditReportImportNotesMessage = '';
       this.showAuditReportModal = true;
+      this.loadAuditFormStats();
+    },
+
+    // A closed report can't be changed; a supplement (Nachtrag) is a new draft
+    // that points back at it, starting from its period and auditors.
+    openSupplementModal(report) {
+      this.editingAuditReportId = null;
+      this.auditReportForm = {
+        ...this.emptyAuditReportForm(),
+        period_start: report.period_start, period_end: report.period_end, auditors: report.auditors,
+        place: report.place || '', supplements_report_id: report.id,
+      };
+      this.auditReportError = null;
+      this.auditReportImportNotesMessage = '';
+      this.showAuditReportModal = true;
+      this.loadAuditFormStats();
+    },
+
+    async loadAuditFormStats() {
+      const { period_start, period_end } = this.auditReportForm;
+      this.auditFormStats = null;
+      if (!period_start || !period_end || period_end < period_start) return;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/audit-period-stats?period_start=${period_start}&period_end=${period_end}`);
+        if (r.ok) this.auditFormStats = await r.json();
+      } catch (e) {
+        // informational only
+      }
+    },
+
+    auditStatsLines(st) {
+      if (!st) return [];
+      return [
+        AR_STAT_ENTRIES_TMPL.replace('{reviewed}', st.entries_reviewed).replace('{total}', st.entries_total),
+        AR_STAT_RECEIPTS_TMPL.replace('{expense}', st.expense_entries).replace('{missing}', st.receipts_missing)
+          .replace('{external}', st.receipts_external).replace('{not_required}', st.receipts_not_required),
+        AR_STAT_ACCOUNTS_TMPL.replace('{stale}', st.accounts_stale).replace('{total}', st.accounts_total)
+          .replace('{unreconciled}', st.accounts_unreconciled),
+      ];
+    },
+
+    // Deep links into the Buchungen tab for exactly the report's period.
+    auditUnreviewedLink(r) {
+      return `/ledger?von=${r.period_start}&bis=${r.period_end}&geprueft=false`;
+    },
+    auditMissingReceiptsLink(r) {
+      return `/ledger?von=${r.period_start}&bis=${r.period_end}&belegfehlt=true`;
+    },
+
+    async finalizeAuditReport(report) {
+      if (!confirm(AR_FINALIZE_CONFIRM_L)) return;
+      this.auditReportsError = null;
+      try {
+        const r = await apiFetch(`/api/v1/ledger/audit-reports/${report.id}/finalize`, { method: 'POST' });
+        const data = await r.json();
+        if (!r.ok) {
+          this.auditReportsError = data.detail || 'Error closing audit report';
+          return;
+        }
+        await this.loadAuditReports();
+      } catch (e) {
+        if (e !== 'unauthenticated') this.auditReportsError = e.message || String(e);
+      }
+    },
+
+    async downloadAuditReportPdf(report) {
+      this.auditReportsError = null;
+      try {
+        const lang = document.documentElement.lang || 'de';
+        const r = await apiFetch(`/api/v1/ledger/audit-reports/${report.id}/pdf?lang=${lang}`);
+        if (!r.ok) {
+          const data = await r.json().catch(() => ({}));
+          throw new Error(data.detail || 'Error generating PDF');
+        }
+        const blob = await r.blob();
+        const cd = r.headers.get('content-disposition') || '';
+        const match = cd.match(/filename="([^"]+)"/);
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = match ? match[1] : `kassenpruefung_${report.period_end}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+      } catch (e) {
+        if (e !== 'unauthenticated') this.auditReportsError = e.message || String(e);
+      }
     },
 
     // Replaces the Findings textarea with every entry's discrepancy note from
@@ -6345,9 +6657,23 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
           findings: this.auditReportForm.findings || null,
           recommends_discharge: this.auditReportForm.recommends_discharge,
           paperless_document_id: this.auditReportForm.paperless_document_id || null,
+          has_objections: this.auditReportForm.has_objections,
+          receipts_complete: this.auditReportForm.receipts_complete === '' ? null : this.auditReportForm.receipts_complete === 'true',
+          statements_complete: this.auditReportForm.statements_complete === '' ? null : this.auditReportForm.statements_complete === 'true',
+          receipts_clearly_marked: this.auditReportForm.receipts_clearly_marked,
+          receipts_comment: this.auditReportForm.receipts_comment || null,
+          next_audit_date: this.auditReportForm.next_audit_date || null,
+          remarks: this.auditReportForm.remarks || null,
+          place: this.auditReportForm.place || null,
         };
         if (this.editingAuditReportId && !this.auditReportForm.paperless_document_id) {
           payload.clear_paperless_document_id = true;
+        }
+        if (this.editingAuditReportId && !this.auditReportForm.next_audit_date) {
+          payload.clear_next_audit_date = true;
+        }
+        if (!this.editingAuditReportId && this.auditReportForm.supplements_report_id) {
+          payload.supplements_report_id = this.auditReportForm.supplements_report_id;
         }
         const url = this.editingAuditReportId
           ? `/api/v1/ledger/audit-reports/${this.editingAuditReportId}` : '/api/v1/ledger/audit-reports';

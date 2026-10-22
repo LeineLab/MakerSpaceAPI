@@ -10,10 +10,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi import Response as FastAPIResponse
 from fastapi.responses import Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import func, or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import Session, aliased, joinedload
 
-from app.auth.deps import require_auditor_writer_user, require_ledger_viewer_user, require_treasurer_user
+from app.auth.deps import (
+    require_auditor_writer_user,
+    require_ledger_viewer_user,
+    require_receipt_marker_user,
+    require_treasurer_user,
+)
 from app.auth.tokens import generate_api_token, verify_api_token
 from app.api.v1.audit import AuditLogResponse, filtered_audit_query
 from app.config import settings
@@ -69,12 +74,14 @@ from app.schemas.ledger import (
     LedgerAssetCreate,
     LedgerAssetResponse,
     LedgerAssetUpdate,
+    AuditStats,
     LedgerAuditReportCreate,
     LedgerAuditReportResponse,
     LedgerAuditReportUpdate,
     LedgerCategoryCreate,
     LedgerCategoryResponse,
     LedgerEntryLineResponse,
+    LedgerEntryReceiptUpdate,
     LedgerCategoryUpdate,
     LedgerConfigResponse,
     LedgerEntryCreate,
@@ -368,7 +375,12 @@ def update_account(
     account = db.query(BankAccount).filter(BankAccount.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Bank account not found")
-    before = {"name": account.name, "tracked": account.tracked, "is_cash_clearing_account": account.is_cash_clearing_account}
+    before = {"name": account.name, "tracked": account.tracked, "is_cash_clearing_account": account.is_cash_clearing_account,
+              "closed_on": account.closed_on}
+    if body.closed_on is not None:
+        account.closed_on = body.closed_on
+    elif body.clear_closed_on:
+        account.closed_on = None
     if body.name is not None:
         account.name = body.name
     if body.tracked is not None:
@@ -384,7 +396,8 @@ def update_account(
                 {BankAccount.is_cash_clearing_account: False}
             )
         account.is_cash_clearing_account = body.is_cash_clearing_account
-    after = {"name": account.name, "tracked": account.tracked, "is_cash_clearing_account": account.is_cash_clearing_account}
+    after = {"name": account.name, "tracked": account.tracked, "is_cash_clearing_account": account.is_cash_clearing_account,
+             "closed_on": account.closed_on}
     if audit_changes(before, after):
         audit(db, treasurer.get("sub"), "ledger.account_updated", "bank_account", account_id, **audit_changes(before, after))
     db.commit()
@@ -760,6 +773,108 @@ def update_category(
 
 # --- Journal entries (Buchungssätze) ---
 
+# --- Receipt completeness (expense bookings without a linked document) ---
+
+def _expense_entry_ids(db: Session, *, without_document: bool):
+    """Entry ids with at least one expense-category line of positive amount
+    (a cost); with `without_document` only those where such a line has no
+    linked Paperless document."""
+    q = (
+        db.query(LedgerEntryLine.entry_id)
+        .join(LedgerCategory, LedgerEntryLine.category_id == LedgerCategory.id)
+        .filter(LedgerCategory.kind == LedgerCategoryKind.expense, LedgerEntryLine.amount > 0)
+    )
+    if without_document:
+        q = q.filter(LedgerEntryLine.paperless_document_id.is_(None))
+    return q
+
+
+def _receipt_candidate_clause(db: Session, *, without_document: bool):
+    """Expense bookings that should have a receipt. A Storno and an entry
+    that has been reversed cancel each other out and need none."""
+    reversal = aliased(LedgerEntry)
+    reversed_ids = db.query(reversal.reverses_entry_id).filter(reversal.reverses_entry_id.isnot(None))
+    return and_(
+        LedgerEntry.id.in_(_expense_entry_ids(db, without_document=without_document)),
+        LedgerEntry.reverses_entry_id.is_(None),
+        ~LedgerEntry.id.in_(reversed_ids),
+    )
+
+
+def _receipt_missing_clause(db: Session):
+    """An expense booking with no linked document and no receipt marker."""
+    return and_(_receipt_candidate_clause(db, without_document=True), LedgerEntry.receipt_status.is_(None))
+
+
+_AUDIT_STALE_DAYS = 31
+
+
+def _audit_period_stats(db: Session, start: date, end: date) -> dict:
+    """Figures shown with a Kassenprüfungsprotokoll for the period
+    `start`..`end` (inclusive). Only stored entries count; Bankomat cash-in
+    events are derived from transactions and cannot be checked off. An
+    account counts as stale when its newest imported line is older than
+    `_AUDIT_STALE_DAYS` before the period end (or it never had an import) —
+    an indication that statements may be missing, not proof. Accounts closed
+    before the period end are exempt from that check."""
+    base = db.query(LedgerEntry).filter(LedgerEntry.entry_date >= start, LedgerEntry.entry_date <= end)
+    candidates = _receipt_candidate_clause(db, without_document=False)
+    total = base.count()
+    reviewed = base.filter(LedgerEntry.reviewed_by.isnot(None)).count()
+
+    accounts = (
+        db.query(BankAccount)
+        .filter(BankAccount.tracked.is_(True), BankAccount.is_offline.is_(False))
+        .all()
+    )
+    last_dates = _last_import_line_dates(db, [a.id for a in accounts])
+    stale_before = end - timedelta(days=_AUDIT_STALE_DAYS)
+    # A closed account expects no further statements once the period ends after
+    # its closing date; the balance check below still applies to it.
+    stale = sum(
+        1 for a in accounts
+        if not (a.closed_on and a.closed_on < end)
+        and (last_dates.get(a.id) is None or last_dates[a.id] < stale_before)
+    )
+    unreconciled = 0
+    for a in accounts:
+        batch = (
+            db.query(LedgerImportBatch)
+            .filter(LedgerImportBatch.bank_account_id == a.id, LedgerImportBatch.statement_closing_balance.isnot(None))
+            .order_by(LedgerImportBatch.statement_balance_date.desc(), LedgerImportBatch.id.desc())
+            .first()
+        )
+        if batch and batch.statement_balance_date:
+            if _computed_balance(db, a, batch.statement_balance_date) != batch.statement_closing_balance:
+                unreconciled += 1
+
+    return {
+        "entries_total": total,
+        "entries_reviewed": reviewed,
+        "entries_unreviewed": total - reviewed,
+        "entries_with_note": base.filter(LedgerEntry.review_note.isnot(None)).count(),
+        "expense_entries": base.filter(candidates).count(),
+        "receipts_missing": base.filter(_receipt_missing_clause(db)).count(),
+        "receipts_external": base.filter(candidates, LedgerEntry.receipt_status == "external").count(),
+        "receipts_not_required": base.filter(candidates, LedgerEntry.receipt_status == "not_required").count(),
+        "accounts_total": len(accounts),
+        "accounts_stale": stale,
+        "accounts_unreconciled": unreconciled,
+    }
+
+
+def _mark_receipt_missing(db: Session, entries: list) -> None:
+    """Set the transient `receipt_missing` flag the response schema reads."""
+    ids = [e.id for e in entries if e.id > 0]
+    missing: set[int] = set()
+    if ids:
+        missing = {
+            i for (i,) in db.query(LedgerEntry.id).filter(LedgerEntry.id.in_(ids), _receipt_missing_clause(db)).all()
+        }
+    for e in entries:
+        e.receipt_missing = e.id in missing
+
+
 _CASH_IN_TYPE_LABELS = {
     TransactionType.topup: "Bareinzahlung",
     TransactionType.booking_target_topup: "Einzahlung",
@@ -856,6 +971,7 @@ def list_entries(
     has_note: Optional[bool] = Query(default=None),
     has_document: Optional[bool] = Query(default=None),
     is_reversal: Optional[bool] = Query(default=None),
+    receipt_missing: Optional[bool] = Query(default=None),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     _viewer: dict = Depends(require_ledger_viewer_user),
@@ -902,6 +1018,10 @@ def list_entries(
     line", not a single column). `is_reversal` filters on whether the entry
     is itself a Storno (`reverses_entry_id` set) — `true` for Stornos only,
     `false` to exclude them, omitted for both.
+
+    `receipt_missing` filters on expense bookings that have neither a linked
+    Paperless document nor a receipt marker (`true`) or on everything else
+    (`false`); Stornos and reversed entries never count as missing.
 
     `ids` (repeatable, e.g. `?ids=1&ids=2`) fetches one or more specific
     entries directly by id — the Kassen tab's payout-detail expansion uses
@@ -985,6 +1105,9 @@ def list_entries(
             if is_reversal
             else LedgerEntry.reverses_entry_id.is_(None)
         )
+    if receipt_missing is not None:
+        clause = _receipt_missing_clause(db)
+        query = query.filter(clause if receipt_missing else ~clause)
     query = query.distinct()
 
     # Bankomat cash-in events are merged in, except when a filter can only
@@ -993,6 +1116,7 @@ def list_entries(
     include_virtual = (
         ids is None and reviewed is None and paperless_document_id is None
         and has_note is not True and has_document is not True and is_reversal is not True
+        and receipt_missing is not True
     )
     virtual = (
         _virtual_cash_in_entries(
@@ -1016,6 +1140,7 @@ def list_entries(
     # entry-detail view's bank data (booking_date, counterparty, bank
     # reference), so there's only ever one query/field for both, not two
     # that could drift apart.
+    _mark_receipt_missing(db, entries)
     entry_ids = [e.id for e in entries if e.id > 0]
     if entry_ids:
         lines_by_entry: dict[int, list[LedgerImportLine]] = {}
@@ -1222,6 +1347,20 @@ def unreview_entry(
         raise HTTPException(status_code=404, detail="Entry not found")
     if entry.reviewed_by is None:
         raise HTTPException(status_code=400, detail="Entry is not marked as reviewed")
+    closed = (
+        db.query(LedgerAuditReport)
+        .filter(
+            LedgerAuditReport.status == "final",
+            LedgerAuditReport.period_start <= entry.entry_date,
+            LedgerAuditReport.period_end >= entry.entry_date,
+        )
+        .first()
+    )
+    if closed:
+        raise HTTPException(
+            status_code=409,
+            detail=f"The check mark is locked: the entry lies in the period of closed audit report #{closed.id}",
+        )
 
     previous = {"reviewed_by": entry.reviewed_by, "reviewed_at": entry.reviewed_at}
     entry.reviewed_by = None
@@ -1229,6 +1368,36 @@ def unreview_entry(
     audit(db, auditor.get("sub"), "ledger.entry_unreviewed", "ledger_entry", entry_id, **previous)
     db.commit()
     db.refresh(entry)
+    return entry
+
+
+@router.put(
+    "/entries/{entry_id}/receipt", response_model=LedgerEntryResponse, responses={**HTTP_400, **HTTP_404},
+)
+def update_entry_receipt(
+    entry_id: int,
+    body: LedgerEntryReceiptUpdate,
+    user: dict = Depends(require_receipt_marker_user),
+    db: Session = Depends(get_db),
+):
+    """Mark (or clear) that the receipt of an expense booking exists outside
+    Paperless (`external`, `note` = where it is filed) or is not required
+    (`not_required`, e.g. a bank fee shown on the statement). Open to the
+    treasurer and to Kassenprüfende; a plain annotation that never touches
+    the booking's lines. An `external` marker needs a Fundstelle."""
+    entry = db.query(LedgerEntry).filter(LedgerEntry.id == entry_id).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    note = (body.note or "").strip() or None
+    if body.status == "external" and not note:
+        raise HTTPException(status_code=400, detail="A note saying where the receipt is filed is required")
+    previous = {"status": entry.receipt_status, "note": entry.receipt_note}
+    entry.receipt_status = body.status
+    entry.receipt_note = note if body.status else None
+    audit(db, user.get("sub"), "ledger.entry_receipt_changed", "ledger_entry", entry_id, **{"from": previous, "to": {"status": entry.receipt_status, "note": entry.receipt_note}})
+    db.commit()
+    db.refresh(entry)
+    _mark_receipt_missing(db, [entry])
     return entry
 
 
@@ -1869,7 +2038,7 @@ def create_asset(
     `category_id`. Whether a given purchase is even required to be
     capitalized (GWG threshold, currently 800€ net — and itself not enforced
     here since it changes yearly and, without Vorsteuerabzug, the threshold
-    applies to the gross amount) is left to the treasurer's/Kassenprüfer's
+    applies to the gross amount) is left to the treasurer's/Kassenprüfende's
     judgment — including whether several separate purchases must be combined
     into one Wirtschaftsgut because they only have functional value together
     (e.g. a computer's individually-bought parts). Each component defaults
@@ -2076,7 +2245,7 @@ def delete_asset(
 def _compute_euer_report(db: Session, year: int, cumulative: bool = False) -> EuerReportResponse:
     """Einnahmenüberschussrechnung: category totals for a year, grouped by
     category (which carries its EÜR-Sphäre). Categorization correctness (which
-    category, which Sphäre) should be signed off by the Verein's Kassenprüfer/
+    category, which Sphäre) should be signed off by the Verein's Kassenprüfende/
     Steuerberater — this only aggregates what has been booked. Shared by the
     JSON endpoint and the PDF export so both always agree.
 
@@ -2768,15 +2937,73 @@ def account_balances_by_year(
 
 # --- Kassenprüfungsprotokolle (audit reports) ---
 
+_AUDIT_REPORT_FIELDS = (
+    "period_start", "period_end", "audit_date", "auditors", "findings", "recommends_discharge",
+    "paperless_document_id", "has_objections", "receipts_complete", "statements_complete",
+    "receipts_clearly_marked", "receipts_comment", "next_audit_date", "remarks", "place",
+)
+
+
+def _audit_report_response(db: Session, report: LedgerAuditReport) -> LedgerAuditReportResponse:
+    """A draft shows live figures; a closed report shows the figures frozen
+    when it was closed, and `current_stats` always carries today's state."""
+    result = LedgerAuditReportResponse.model_validate(report)
+    current = AuditStats(**_audit_period_stats(db, report.period_start, report.period_end))
+    result.current_stats = current
+    result.stats = AuditStats(**report.frozen_stats) if report.status == "final" and report.frozen_stats else current
+    return result
+
+
+def _get_audit_report(db: Session, report_id: int) -> LedgerAuditReport:
+    report = db.query(LedgerAuditReport).filter(LedgerAuditReport.id == report_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Audit report not found")
+    return report
+
+
+def _require_draft(report: LedgerAuditReport) -> None:
+    if report.status == "final":
+        raise HTTPException(
+            status_code=409,
+            detail="The audit report is closed and locked; create a supplement (Nachtrag) instead",
+        )
+
+
 @router.get("/audit-reports", response_model=list[LedgerAuditReportResponse])
 def list_audit_reports(
     _viewer: dict = Depends(require_ledger_viewer_user),
     db: Session = Depends(get_db),
 ):
-    return db.query(LedgerAuditReport).order_by(LedgerAuditReport.period_end.desc()).all()
+    reports = db.query(LedgerAuditReport).order_by(LedgerAuditReport.period_end.desc(), LedgerAuditReport.id.desc()).all()
+    return [_audit_report_response(db, r) for r in reports]
 
 
-@router.post("/audit-reports", response_model=LedgerAuditReportResponse, status_code=201, responses={**HTTP_400})
+@router.get("/audit-reports/{report_id}/stats", response_model=AuditStats)
+def audit_period_stats(
+    report_id: int,
+    _viewer: dict = Depends(require_ledger_viewer_user),
+    db: Session = Depends(get_db),
+):
+    """Live figures for the report's period (same as `current_stats`)."""
+    report = _get_audit_report(db, report_id)
+    return AuditStats(**_audit_period_stats(db, report.period_start, report.period_end))
+
+
+@router.get("/audit-period-stats", response_model=AuditStats, responses={**HTTP_400})
+def audit_period_stats_for_dates(
+    period_start: date,
+    period_end: date,
+    _viewer: dict = Depends(require_ledger_viewer_user),
+    db: Session = Depends(get_db),
+):
+    """Live figures for an arbitrary period, used by the report form before
+    anything is saved."""
+    if period_end < period_start:
+        raise HTTPException(status_code=400, detail="period_end must not be before period_start")
+    return AuditStats(**_audit_period_stats(db, period_start, period_end))
+
+
+@router.post("/audit-reports", response_model=LedgerAuditReportResponse, status_code=201, responses={**HTTP_400, **HTTP_404, **HTTP_409})
 def create_audit_report(
     body: LedgerAuditReportCreate,
     auditor: dict = Depends(require_auditor_writer_user),
@@ -2785,82 +3012,199 @@ def create_audit_report(
     """Writing a Kassenprüfungsprotokoll requires the narrower auditor-only
     permission (admin or explicit auditor-group membership) — a plain
     treasurer authoring the report that audits their own bookkeeping would
-    defeat the point of an independent Kassenprüfung."""
+    defeat the point of an independent Kassenprüfung. A new report is a
+    draft; `supplements_report_id` creates a Nachtrag to a closed report."""
     if body.period_end < body.period_start:
         raise HTTPException(status_code=400, detail="period_end must not be before period_start")
+    if body.supplements_report_id is not None:
+        original = _get_audit_report(db, body.supplements_report_id)
+        if original.status != "final":
+            raise HTTPException(status_code=409, detail="Only a closed audit report can be supplemented; edit the draft instead")
     report = LedgerAuditReport(
-        period_start=body.period_start,
-        period_end=body.period_end,
-        audit_date=body.audit_date,
-        auditors=body.auditors,
-        findings=body.findings,
-        recommends_discharge=body.recommends_discharge,
-        paperless_document_id=body.paperless_document_id,
+        **{f: getattr(body, f) for f in _AUDIT_REPORT_FIELDS},
+        supplements_report_id=body.supplements_report_id,
+        status="draft",
         created_by=auditor.get("sub", "unknown"),
         created_at=datetime.now(UTC).replace(tzinfo=None),
     )
     db.add(report)
     db.flush()
-    audit(db, auditor.get("sub"), "ledger.audit_report_created", "audit_report", report.id, period_start=body.period_start, period_end=body.period_end, auditors=body.auditors)
+    audit(db, auditor.get("sub"), "ledger.audit_report_created", "audit_report", report.id, period_start=body.period_start, period_end=body.period_end, auditors=body.auditors, supplements_report_id=body.supplements_report_id)
     db.commit()
     db.refresh(report)
-    return report
+    return _audit_report_response(db, report)
 
 
-@router.put("/audit-reports/{report_id}", response_model=LedgerAuditReportResponse, responses={**HTTP_400, **HTTP_404})
+@router.put("/audit-reports/{report_id}", response_model=LedgerAuditReportResponse, responses={**HTTP_400, **HTTP_404, **HTTP_409})
 def update_audit_report(
     report_id: int,
     body: LedgerAuditReportUpdate,
     auditor: dict = Depends(require_auditor_writer_user),
     db: Session = Depends(get_db),
 ):
-    report = db.query(LedgerAuditReport).filter(LedgerAuditReport.id == report_id).first()
-    if not report:
-        raise HTTPException(status_code=404, detail="Audit report not found")
+    report = _get_audit_report(db, report_id)
+    _require_draft(report)
 
-    before = {"period_start": report.period_start, "period_end": report.period_end, "audit_date": report.audit_date, "auditors": report.auditors, "findings": report.findings, "recommends_discharge": report.recommends_discharge, "paperless_document_id": report.paperless_document_id}
+    before = {f: getattr(report, f) for f in _AUDIT_REPORT_FIELDS}
     new_start = body.period_start if body.period_start is not None else report.period_start
     new_end = body.period_end if body.period_end is not None else report.period_end
     if new_end < new_start:
         raise HTTPException(status_code=400, detail="period_end must not be before period_start")
 
-    if body.period_start is not None:
-        report.period_start = body.period_start
-    if body.period_end is not None:
-        report.period_end = body.period_end
-    if body.audit_date is not None:
-        report.audit_date = body.audit_date
-    if body.auditors is not None:
-        report.auditors = body.auditors
-    if body.findings is not None:
-        report.findings = body.findings
-    if body.recommends_discharge is not None:
-        report.recommends_discharge = body.recommends_discharge
+    for field in _AUDIT_REPORT_FIELDS:
+        if field in ("paperless_document_id", "next_audit_date"):
+            continue
+        value = getattr(body, field)
+        if value is not None:
+            setattr(report, field, value)
     if body.clear_paperless_document_id:
         report.paperless_document_id = None
     elif body.paperless_document_id is not None:
         report.paperless_document_id = body.paperless_document_id
+    if body.clear_next_audit_date:
+        report.next_audit_date = None
+    elif body.next_audit_date is not None:
+        report.next_audit_date = body.next_audit_date
 
-    after = {"period_start": report.period_start, "period_end": report.period_end, "audit_date": report.audit_date, "auditors": report.auditors, "findings": report.findings, "recommends_discharge": report.recommends_discharge, "paperless_document_id": report.paperless_document_id}
+    after = {f: getattr(report, f) for f in _AUDIT_REPORT_FIELDS}
     if audit_changes(before, after):
         audit(db, auditor.get("sub"), "ledger.audit_report_updated", "audit_report", report_id, **audit_changes(before, after))
     db.commit()
     db.refresh(report)
-    return report
+    return _audit_report_response(db, report)
 
 
-@router.delete("/audit-reports/{report_id}", status_code=204, responses={**HTTP_404})
+@router.post("/audit-reports/{report_id}/finalize", response_model=LedgerAuditReportResponse, responses={**HTTP_400, **HTTP_404, **HTTP_409})
+def finalize_audit_report(
+    report_id: int,
+    auditor: dict = Depends(require_auditor_writer_user),
+    db: Session = Depends(get_db),
+):
+    """Close a draft: the figures for its period are computed once and stored
+    with the report, and the report can no longer be edited or deleted. Later
+    corrections are a new report that supplements this one. The statements on
+    receipts and statements must have been chosen first."""
+    report = _get_audit_report(db, report_id)
+    _require_draft(report)
+    if report.receipts_complete is None or report.statements_complete is None:
+        raise HTTPException(status_code=400, detail="Choose whether receipts and bank statements were complete before closing")
+    stats = _audit_period_stats(db, report.period_start, report.period_end)
+    report.frozen_stats = stats
+    report.status = "final"
+    report.finalized_at = datetime.now(UTC).replace(tzinfo=None)
+    report.finalized_by = auditor.get("sub", "unknown")
+    audit(db, auditor.get("sub"), "ledger.audit_report_finalized", "audit_report", report_id, **stats)
+    db.commit()
+    db.refresh(report)
+    return _audit_report_response(db, report)
+
+
+@router.delete("/audit-reports/{report_id}", status_code=204, responses={**HTTP_404, **HTTP_409})
 def delete_audit_report(
     report_id: int,
     auditor: dict = Depends(require_auditor_writer_user),
     db: Session = Depends(get_db),
 ):
-    report = db.query(LedgerAuditReport).filter(LedgerAuditReport.id == report_id).first()
-    if not report:
-        raise HTTPException(status_code=404, detail="Audit report not found")
+    report = _get_audit_report(db, report_id)
+    _require_draft(report)
     db.delete(report)
-    audit(db, auditor.get("sub"), "ledger.audit_report_deleted", "audit_report", report_id, period_start=report.period_start, period_end=report.period_end, audit_date=report.audit_date, auditors=report.auditors, findings=report.findings, recommends_discharge=report.recommends_discharge, paperless_document_id=report.paperless_document_id)
+    audit(db, auditor.get("sub"), "ledger.audit_report_deleted", "audit_report", report_id, **{f: getattr(report, f) for f in _AUDIT_REPORT_FIELDS})
     db.commit()
+
+
+_AUDIT_REPORT_TYP_PATH = Path(__file__).parent.parent.parent.parent / "statements" / "audit_report.typ"
+
+
+def _compile_audit_report_pdf(db: Session, report: LedgerAuditReport, lang: str) -> bytes:
+    import typst  # optional dependency
+
+    _ = get_translator(lang)
+    response = _audit_report_response(db, report)
+    stats, current = response.stats.model_dump(), response.current_stats.model_dump()
+
+    def fmt(d: Optional[date]) -> Optional[str]:
+        return d.strftime("%d.%m.%Y") if d else None
+
+    def stat_lines(st: dict) -> list[str]:
+        return [
+            _("ledger.apdf_stat_entries", reviewed=st["entries_reviewed"], total=st["entries_total"]),
+            _("ledger.apdf_stat_receipts", expense=st["expense_entries"], missing=st["receipts_missing"],
+              external=st["receipts_external"], not_required=st["receipts_not_required"]),
+            _("ledger.apdf_stat_accounts", stale=st["accounts_stale"], total=st["accounts_total"],
+              unreconciled=st["accounts_unreconciled"]),
+        ]
+
+    supplement_of = None
+    if report.supplements_report_id:
+        original = db.query(LedgerAuditReport).filter(LedgerAuditReport.id == report.supplements_report_id).first()
+        if original:
+            supplement_of = _("ledger.apdf_supplement_of", date=fmt(original.audit_date))
+
+    keys = (
+        "draft_mark", "report_for_year", "on_date", "audit_happened", "for_period", "to",
+        "took_place", "auditors_heading", "result_heading", "no_objections", "objections", "records_heading",
+        "records_intro", "receipts_complete", "receipts_incomplete", "statements_complete",
+        "statements_incomplete", "receipts_clearly_marked", "discharge_heading", "discharge_yes",
+        "discharge_no", "next_audit", "computed_heading", "current_heading", "remarks_heading",
+        "no_remarks", "place", "date", "sign_auditors", "sign_treasurer", "generated",
+    )
+    data = {
+        "draft": report.status != "final",
+        "title": _("ledger.apdf_title"),
+        "supplement_of": supplement_of,
+        "year": str(report.period_end.year),
+        "association": settings.ASSOCIATION_NAME or None,
+        "audit_date": fmt(report.audit_date),
+        "period_start": fmt(report.period_start),
+        "period_end": fmt(report.period_end),
+        "auditors": report.auditors,
+        "has_objections": report.has_objections,
+        "findings": report.findings,
+        "receipts_complete": report.receipts_complete,
+        "statements_complete": report.statements_complete,
+        "receipts_clearly_marked": bool(report.receipts_clearly_marked),
+        "receipts_comment": report.receipts_comment,
+        "recommends_discharge": report.recommends_discharge,
+        "next_audit_date": fmt(report.next_audit_date),
+        "stats_lines": stat_lines(stats),
+        "current_lines": stat_lines(current) if report.status == "final" and current != stats else [],
+        "unreviewed_warning": (
+            _("ledger.apdf_unreviewed_warning", count=stats["entries_unreviewed"])
+            if stats["entries_unreviewed"] > 0 else None
+        ),
+        "remarks": report.remarks,
+        "place": report.place,
+        "labels": {k: _(f"ledger.apdf_{k}") for k in keys},
+    }
+    font_paths = [settings.TYPST_FONT_DIR] if settings.TYPST_FONT_DIR else []
+    return typst.compile(
+        input=str(_AUDIT_REPORT_TYP_PATH),
+        sys_inputs={"data": json.dumps(data, ensure_ascii=False)},
+        font_paths=font_paths,
+    )
+
+
+@router.get("/audit-reports/{report_id}/pdf", response_class=Response, responses={**HTTP_404})
+def audit_report_pdf(
+    report_id: int,
+    lang: str = Query(default="de"),
+    _viewer: dict = Depends(require_ledger_viewer_user),
+    db: Session = Depends(get_db),
+):
+    """The protocol as a PDF following the structure of the common
+    Kassenprüfung form, with signature lines. A draft can be exported too
+    (marked "ENTWURF") so the wording can be checked before closing."""
+    report = _get_audit_report(db, report_id)
+    try:
+        pdf = _compile_audit_report_pdf(db, report, lang)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {e}") from e
+    suffix = "" if report.status == "final" else "_entwurf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="kassenpruefung_{report.period_end}{suffix}.pdf"'},
+    )
 
 
 # --- Bank statement import (Phase 2: file upload; FinTS live-pull is Phase 3) ---
