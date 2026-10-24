@@ -2453,7 +2453,6 @@ def _compile_euer_pdf(report: EuerReportResponse, lang: str) -> bytes:
         "net_result": _("ledger.report_net_result"),
         "generated": _("ledger.pdf_generated"),
         "empty": _("ledger.pdf_empty"),
-        "disclaimer": _("ledger.pdf_disclaimer"),
     }
     data = {
         "title": _("ledger.pdf_title"),

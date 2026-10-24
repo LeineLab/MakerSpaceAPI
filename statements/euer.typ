@@ -66,5 +66,3 @@
   #v(1em)
 ]
 
-#v(1em)
-#text(size: 8pt, fill: gray, labels.at("disclaimer"))
