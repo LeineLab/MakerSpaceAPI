@@ -26,75 +26,45 @@
 
 #set text(font: ("Albert Sans", "Liberation Sans", "Helvetica", "Arial"), size: 10pt, weight: "regular")
 
-#let category_table(items, spheres_enabled) = {
-  if items.len() == 0 {
-    text(fill: gray, labels.at("empty"))
-  } else if spheres_enabled {
-    table(
-      columns: (3fr, 2fr, 1fr),
-      align: (left, left, right),
-      row-gutter: 0.4em,
-      column-gutter: 0.5em,
-      stroke: none,
-      table.header(
-        text(weight: "bold", labels.at("col_category")),
-        text(weight: "bold", labels.at("col_sphere")),
-        text(weight: "bold", labels.at("col_amount")),
-        table.hline(),
-      ),
-      ..items.map(row => (row.at("name"), row.at("sphere_label"), row.at("line_amount"))).flatten(),
-    )
-  } else {
-    table(
-      columns: (4fr, 1fr),
-      align: (left, right),
-      row-gutter: 0.4em,
-      column-gutter: 0.5em,
-      stroke: none,
-      table.header(
-        text(weight: "bold", labels.at("col_category")),
-        text(weight: "bold", labels.at("col_amount")),
-        table.hline(),
-      ),
-      ..items.map(row => (row.at("name"), row.at("line_amount"))).flatten(),
-    )
-  }
+#let report_table(title, items, income, expense, result, balance_label, result_label) = {
+  heading(level: 2, title)
+  v(0.5em)
+  table(
+    columns: (4fr, 1.4fr, 1.4fr),
+    align: (left, right, right),
+    row-gutter: 0.4em,
+    column-gutter: 0.5em,
+    stroke: none,
+    table.header(
+      text(weight: "bold", labels.at("col_category")),
+      text(weight: "bold", labels.at("col_income")),
+      text(weight: "bold", labels.at("col_expense")),
+      table.hline(),
+    ),
+    ..items.map(row => (row.at("name"), row.at("income_amount"), row.at("expense_amount"))).flatten(),
+    table.hline(),
+    text(weight: "bold", balance_label),
+    text(weight: "bold", income),
+    text(weight: "bold", expense),
+    text(weight: "bold", result_label),
+    text(weight: "bold", result),
+    [],
+  )
 }
 
-#heading(level: 2, labels.at("section_income"))
-#v(0.5em)
-#category_table(doc.at("income_items"), doc.at("spheres_enabled"))
-#v(0.5em)
-#table(
-  columns: (4fr, 1fr), stroke: none, column-gutter: 0.5em,
-  table.hline(),
-  text(weight: "bold", labels.at("total_income")), text(weight: "bold", doc.at("total_income")),
+#report_table(
+  labels.at("section_total"), (), doc.at("total_income"), doc.at("total_expense"), doc.at("net_result"),
+  labels.at("overall_balance"), labels.at("overall_result"),
 )
 
-#v(1.5em)
-
-#heading(level: 2, labels.at("section_expense"))
-#v(0.5em)
-#category_table(doc.at("expense_items"), doc.at("spheres_enabled"))
-#v(0.5em)
-#table(
-  columns: (4fr, 1fr), stroke: none, column-gutter: 0.5em,
-  table.hline(),
-  text(weight: "bold", labels.at("total_expense")), text(weight: "bold", doc.at("total_expense")),
-)
-
-#v(2em)
-
-#table(
-  columns: (4fr, 1fr),
-  align: (left, right),
-  stroke: none,
-  column-gutter: 0.5em,
-  table.hline(stroke: 1pt),
-  text(weight: "bold", size: 12pt, labels.at("net_result")),
-  text(weight: "bold", size: 12pt, doc.at("net_result")),
-  table.hline(stroke: 1pt),
-)
+#v(1em)
+#for sphere in doc.at("spheres") [
+  #report_table(
+    sphere.at("name"), sphere.at("items"), sphere.at("total_income"), sphere.at("total_expense"), sphere.at("net_result"),
+    sphere.at("balance_label"), sphere.at("result_label"),
+  )
+  #v(1em)
+]
 
 #v(1em)
 #text(size: 8pt, fill: gray, labels.at("disclaimer"))

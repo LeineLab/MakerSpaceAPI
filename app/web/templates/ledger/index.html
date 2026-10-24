@@ -575,7 +575,12 @@
         <button @click="copyEuerMarkdown()" :disabled="pdfExporting"
                 class="bg-gray-600 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-700 disabled:opacity-50"
                 x-text="markdownCopied ? MARKDOWN_COPIED_L : MARKDOWN_BTN_L"></button>
-        <button @click="exportEuerPdf()" :disabled="pdfExporting"
+        <button @click="exportEuerMarkdown()" :disabled="pdfExporting || markdownExporting"
+          class="bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 px-3 py-1.5 rounded text-sm hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50">
+          <span x-show="!markdownExporting">{{ _('ledger.btn_export_markdown') }}</span>
+          <span x-show="markdownExporting">…</span>
+        </button>
+        <button @click="exportEuerPdf()" :disabled="pdfExporting || markdownExporting"
                 class="bg-gray-600 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-700 disabled:opacity-50">
           <span x-show="!pdfExporting">{{ _('ledger.btn_export_pdf') }}</span>
           <span x-show="pdfExporting">…</span>
@@ -594,84 +599,77 @@
       <p class="text-gray-400 dark:text-gray-500">{{ _('ledger.report_empty') }}</p>
     </template>
     <template x-if="!loadingReport && report && report.categories.length > 0">
-      <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden mb-6">
-        <div class="overflow-x-auto">
-        <table class="min-w-full text-sm">
-          <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
-            <tr>
-              <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="reportSort.toggle('name')">{{ _('common.name') }} <span class="text-gray-400 dark:text-gray-500" x-text="reportSort.indicator('name')"></span></th>
-              <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="reportSort.toggle('kind')">{{ _('ledger.col_kind') }} <span class="text-gray-400 dark:text-gray-500" x-text="reportSort.indicator('kind')"></span></th>
-              <th class="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" x-show="config.spheres_enabled" @click="reportSort.toggle('sphere')">{{ _('ledger.col_sphere') }} <span class="text-gray-400 dark:text-gray-500" x-text="reportSort.indicator('sphere')"></span></th>
-              <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200" @click="reportSort.toggle('total')">{{ _('ledger.col_total') }} <span class="text-gray-400 dark:text-gray-500" x-text="reportSort.indicator('total')"></span></th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-            <template x-for="c in sortedReportCategories" :key="c.category_id">
-              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
-                <td class="px-4 py-3 font-medium" x-text="c.name"></td>
-                <td class="px-4 py-3">
-                  <span class="px-2 py-0.5 rounded text-xs font-medium"
-                        :class="c.kind === 'income' ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'"
-                        x-text="c.kind === 'income' ? KIND_L.income : KIND_L.expense"></span>
-                </td>
-                <td class="px-4 py-3 text-xs" x-show="config.spheres_enabled" x-text="sphereLabel(c.sphere)"></td>
-                <td class="px-4 py-3 text-right font-mono" x-text="fmt(c.total)"></td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
-        </div>
-      </div>
-    </template>
+      <div class="space-y-4 mb-6">
+        <p class="text-sm text-gray-500 dark:text-gray-400" x-text="reportPeriod(report.year)"></p>
 
-    <template x-if="!loadingReport && report">
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-          <div class="text-xs text-gray-400 dark:text-gray-500 uppercase">{{ _('ledger.report_total_income') }}</div>
-          <div class="text-xl font-bold text-green-600 dark:text-green-400" x-text="fmt(report.total_income)"></div>
-        </div>
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-          <div class="text-xs text-gray-400 dark:text-gray-500 uppercase">{{ _('ledger.report_total_expense') }}</div>
-          <div class="text-xl font-bold text-red-600 dark:text-red-400" x-text="fmt(report.total_expense)"></div>
-        </div>
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-          <div class="text-xs text-gray-400 dark:text-gray-500 uppercase">{{ _('ledger.report_net_result') }}</div>
-          <div class="text-xl font-bold" :class="report.net_result >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'" x-text="fmt(report.net_result)"></div>
-        </div>
-      </div>
-    </template>
-
-    <template x-if="!loadingReport && report && config.spheres_enabled && reportSphereSummary.length > 0">
-      <div class="mt-6">
-        <h3 class="text-lg font-semibold mb-3">{{ _('ledger.sphere_summary_title') }}</h3>
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+        <section class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+          <h3 class="px-4 py-3 text-lg font-semibold border-b border-gray-100 dark:border-gray-700" x-text="REPORT_TOTAL_L"></h3>
           <div class="overflow-x-auto">
-          <table class="min-w-full text-sm">
-            <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
-              <tr>
-                <th class="px-4 py-3 text-left">{{ _('ledger.col_sphere') }}</th>
-                <th class="px-4 py-3 text-right">{{ _('ledger.report_total_income') }}</th>
-                <th class="px-4 py-3 text-right">{{ _('ledger.report_total_expense') }}</th>
-                <th class="px-4 py-3 text-right">{{ _('ledger.report_net_result') }}</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-              <template x-for="r in reportSphereSummary" :key="r.key">
-                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
-                  <td class="px-4 py-3 font-medium" x-text="r.label"></td>
-                  <td class="px-4 py-3 text-right font-mono" x-text="fmt(r.income)"></td>
-                  <td class="px-4 py-3 text-right font-mono" x-text="fmt(r.expense)"></td>
-                  <td class="px-4 py-3 text-right font-mono" :class="r.result >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'" x-text="fmt(r.result)"></td>
+            <table class="min-w-full text-sm">
+              <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
+                <tr>
+                  <th class="px-4 py-3 text-left">{{ _('ledger.report_col_booking_type') }}</th>
+                  <th class="px-4 py-3 text-right">{{ _('ledger.report_col_income') }}</th>
+                  <th class="px-4 py-3 text-right">{{ _('ledger.report_col_expense') }}</th>
                 </tr>
-              </template>
-            </tbody>
-          </table>
+              </thead>
+              <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                <tr>
+                  <td class="px-4 py-2" x-text="REPORT_OVERALL_BALANCE_L"></td>
+                  <td class="px-4 py-2 text-right font-mono" x-text="fmtEuer(report.total_income)"></td>
+                  <td class="px-4 py-2 text-right font-mono" x-text="fmtEuer(report.total_expense)"></td>
+                </tr>
+                <tr class="font-semibold">
+                  <td class="px-4 py-2" x-text="REPORT_OVERALL_RESULT_L"></td>
+                  <td class="px-4 py-2 text-right font-mono" x-text="fmtEuer(report.net_result)"></td>
+                  <td class="px-4 py-2"></td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-        </div>
+        </section>
+
+        <template x-for="sphere in report.spheres" :key="sphere.sphere || 'none'">
+          <section class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+            <h3 class="px-4 py-3 text-lg font-semibold border-b border-gray-100 dark:border-gray-700" x-text="sphereLabel(sphere.sphere) + ':'"></h3>
+            <div class="overflow-x-auto">
+              <table class="min-w-full text-sm">
+                <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 uppercase text-xs">
+                  <tr>
+                    <th class="px-4 py-3 text-left">{{ _('ledger.report_col_booking_type') }}</th>
+                    <th class="px-4 py-3 text-right">{{ _('ledger.report_col_income') }}</th>
+                    <th class="px-4 py-3 text-right">{{ _('ledger.report_col_expense') }}</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                  <template x-for="c in sphere.categories" :key="c.category_id">
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                      <td class="px-4 py-2" x-text="c.name"></td>
+                      <td class="px-4 py-2 text-right font-mono" x-text="c.kind === 'income' ? fmtEuer(c.total) : ''"></td>
+                      <td class="px-4 py-2 text-right font-mono" x-text="c.kind === 'expense' ? fmtEuer(c.total) : ''"></td>
+                    </tr>
+                  </template>
+                  <tr class="font-semibold border-t border-gray-200 dark:border-gray-600">
+                    <td class="px-4 py-2" x-text="REPORT_SPHERE_BALANCE_TMPL.replace('{sphere}', sphereLabel(sphere.sphere))"></td>
+                    <td class="px-4 py-2 text-right font-mono" x-text="fmtEuer(sphere.total_income)"></td>
+                    <td class="px-4 py-2 text-right font-mono" x-text="fmtEuer(sphere.total_expense)"></td>
+                  </tr>
+                  <tr class="font-semibold">
+                    <td class="px-4 py-2" x-text="REPORT_SPHERE_RESULT_TMPL.replace('{sphere}', sphereLabel(sphere.sphere))"></td>
+                    <td class="px-4 py-2 text-right font-mono" x-text="fmtEuer(sphere.net_result)"></td>
+                    <td class="px-4 py-2"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </template>
+
       </div>
     </template>
 
-    <h2 class="text-xl font-semibold mt-8 mb-4">{{ _('ledger.kontostaende_title') }}</h2>
+    <div class="mt-10">
+    <h2 class="text-xl font-semibold mb-4">{{ _('ledger.kontostaende_title') }}</h2>
     <div x-show="accountBalancesYearError" class="mb-4 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 p-3 rounded text-sm" x-text="accountBalancesYearError"></div>
     <template x-if="loadingAccountBalancesYear">
       <div class="text-gray-400 dark:text-gray-500 text-sm">Loading…</div>
@@ -705,6 +703,7 @@
         </div>
       </div>
     </template>
+    </div>
   </div>
 
   <!-- ================= Import ================= -->
@@ -3101,6 +3100,12 @@ const SPHERE_L = {
 };
 const ASSET_IDEELL_WARNING_L = {{ _('ledger.asset_ideell_warning') | tojson }};
 const SPHERE_NONE = {{ _('ledger.sphere_none') | tojson }};
+const REPORT_PERIOD_TMPL = {{ _('ledger.report_period') | tojson }};
+const REPORT_TOTAL_L = {{ _('ledger.report_total') | tojson }};
+const REPORT_OVERALL_BALANCE_L = {{ _('ledger.report_overall_balance') | tojson }};
+const REPORT_OVERALL_RESULT_L = {{ _('ledger.report_overall_result') | tojson }};
+const REPORT_SPHERE_BALANCE_TMPL = {{ _('ledger.report_sphere_balance') | tojson }};
+const REPORT_SPHERE_RESULT_TMPL = {{ _('ledger.report_sphere_result') | tojson }};
 // Jinja's `tojson` output can't be embedded inline inside a double-quoted HTML
 // attribute (the JSON string's own quotes terminate the attribute early), so
 // every translated string used inside an x-text expression is predefined here.
@@ -3414,8 +3419,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     pdfExporting: false,
     markdownCopied: false,
     categorySort: makeSort('name'),
-    reportSort: makeSort(),
     assetSort: makeSort(),
+    markdownExporting: false,
     pdfExportError: null,
     accountBalancesYear: null,
     loadingAccountBalancesYear: false,
@@ -3642,29 +3647,6 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
         if (k === 'match_keywords') return (c.match_keywords || []).join(', ');
         return c[k];
       });
-    },
-
-    get sortedReportCategories() {
-      if (!this.report) return [];
-      return this.reportSort.apply(this.report.categories, (c, k) => {
-        if (k === 'total') return parseFloat(c.total);
-        if (k === 'sphere') return this.sphereLabel(c.sphere);
-        return c[k];
-      });
-    },
-
-    // Income/expense/result per Sphäre, derived from the loaded EÜR
-    // categories (same totals as the table above, just grouped).
-    get reportSphereSummary() {
-      if (!this.report) return [];
-      const order = ['ideell', 'vermoegensverwaltung', 'zweckbetrieb', 'wirtschaftlicher_geschaeftsbetrieb', ''];
-      const groups = {};
-      for (const c of this.report.categories) {
-        const key = c.sphere || '';
-        const g = groups[key] || (groups[key] = { key: key || 'none', label: this.sphereLabel(c.sphere), income: 0, expense: 0 });
-        if (c.kind === 'income') g.income += parseFloat(c.total); else g.expense += parseFloat(c.total);
-      }
-      return order.filter(k => groups[k]).map(k => ({ ...groups[k], result: groups[k].income - groups[k].expense }));
     },
 
     // How much of each entry line is already claimed by some asset's
@@ -4582,6 +4564,34 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       }
     },
 
+    async exportEuerMarkdown() {
+      this.markdownExporting = true;
+      this.pdfExportError = null;
+      try {
+        const lang = document.documentElement.lang || 'de';
+        const r = await apiFetch(`/api/v1/ledger/report/euer/markdown?year=${this.reportYear}&lang=${lang}`);
+        if (!r.ok) {
+          const data = await r.json().catch(() => ({}));
+          throw new Error(data.detail || 'Error generating Markdown');
+        }
+        const blob = await r.blob();
+        const cd = r.headers.get('content-disposition') || '';
+        const match = cd.match(/filename="([^"]+)"/);
+        const filename = match ? match[1] : `euer_${this.reportYear}.md`;
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+      } catch (e) {
+        if (e !== 'unauthenticated') this.pdfExportError = e.message || String(e);
+      } finally {
+        this.markdownExporting = false;
+      }
+    },
+
     // --- entries ---
     // Same shape searchPaperlessForLine()/pickPaperlessDocForLine() already
     // expect on a Book Import Line Modal category line — reused as-is here
@@ -4876,9 +4886,16 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       if (!s) return SPHERE_NONE;
       return SPHERE_L[s] || s;
     },
+    reportPeriod(year) {
+      return REPORT_PERIOD_TMPL.replaceAll('{year}', String(year));
+    },
 
     fmt(v) {
       return parseFloat(v).toFixed(2) + ' €';
+    },
+    fmtEuer(v) {
+      const lang = document.documentElement.lang || 'de';
+      return new Intl.NumberFormat(lang, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v)) + ' €';
     },
 
     fmtDateTime(iso) {

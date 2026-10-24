@@ -62,6 +62,7 @@ from app.schemas.ledger import (
     CsvPreviewResponse,
     EuerCategoryTotal,
     EuerReportResponse,
+    EuerSphereTotal,
     FinTSImportRequest,
     FinTSPollRequest,
     FinTSStartRequest,
@@ -2364,7 +2365,9 @@ def _compute_euer_report(db: Session, year: int, cumulative: bool = False) -> Eu
                 total=display_total,
             )
         )
-    category_totals.sort(key=lambda c: c.name)
+    category_totals.sort(
+        key=lambda c: (c.kind != LedgerCategoryKind.income, c.name.casefold())
+    )
 
     total_income = sum(
         (c.total for c in category_totals if c.kind == LedgerCategoryKind.income), Decimal("0.00")
@@ -2372,10 +2375,33 @@ def _compute_euer_report(db: Session, year: int, cumulative: bool = False) -> Eu
     total_expense = sum(
         (c.total for c in category_totals if c.kind == LedgerCategoryKind.expense), Decimal("0.00")
     )
-
+    categories_by_sphere: dict[Optional[LedgerSphere], list[EuerCategoryTotal]] = {}
+    for category in category_totals:
+        categories_by_sphere.setdefault(category.sphere, []).append(category)
+    sphere_totals = []
+    for sphere in [*LedgerSphere, None]:
+        sphere_categories = categories_by_sphere.get(sphere, [])
+        if not sphere_categories:
+            continue
+        sphere_income = sum(
+            (c.total for c in sphere_categories if c.kind == LedgerCategoryKind.income), Decimal("0.00")
+        )
+        sphere_expense = sum(
+            (c.total for c in sphere_categories if c.kind == LedgerCategoryKind.expense), Decimal("0.00")
+        )
+        sphere_totals.append(
+            EuerSphereTotal(
+                sphere=sphere,
+                categories=sphere_categories,
+                total_income=sphere_income,
+                total_expense=sphere_expense,
+                net_result=sphere_income - sphere_expense,
+            )
+        )
     return EuerReportResponse(
         year=year,
         categories=category_totals,
+        spheres=sphere_totals,
         total_income=total_income,
         total_expense=total_expense,
         net_result=total_income - total_expense,
@@ -2394,24 +2420,34 @@ def euer_report(
 _EUER_TYP_PATH = Path(__file__).parent.parent.parent.parent / "statements" / "euer.typ"
 
 
+def _format_euer_amount(amount: Decimal, lang: str) -> str:
+    formatted = f"{amount:,.2f}"
+    if lang.startswith("de"):
+        formatted = formatted.replace(",", "\0").replace(".", ",").replace("\0", ".")
+    return f"{formatted} {settings.CURRENCY}"
+
+
 def _compile_euer_pdf(report: EuerReportResponse, lang: str) -> bytes:
     import typst  # optional dependency
 
     _ = get_translator(lang)
-    spheres_enabled = settings.LEDGER_SPHERES_ENABLED
-
-    def _item(c: EuerCategoryTotal) -> dict:
-        row = {"name": c.name, "line_amount": f"{c.total:.2f} {settings.CURRENCY}"}
-        if spheres_enabled:
-            row["sphere_label"] = _(f"ledger.sphere_{c.sphere.value}") if c.sphere else _("ledger.sphere_none")
-        return row
+    def _items(categories: list[EuerCategoryTotal]) -> list[dict]:
+        return [
+            {
+                "name": c.name,
+                "income_amount": _format_euer_amount(c.total, lang) if c.kind == LedgerCategoryKind.income else "",
+                "expense_amount": _format_euer_amount(c.total, lang) if c.kind == LedgerCategoryKind.expense else "",
+            }
+            for c in categories
+        ]
 
     labels = {
-        "col_category": _("common.name"),
-        "col_sphere": _("ledger.col_sphere"),
-        "col_amount": _("ledger.col_total"),
-        "section_income": _("ledger.pdf_section_income"),
-        "section_expense": _("ledger.pdf_section_expense"),
+        "col_category": _("ledger.report_col_booking_type"),
+        "col_income": _("ledger.report_col_income"),
+        "col_expense": _("ledger.report_col_expense"),
+        "section_total": _("ledger.report_total"),
+        "overall_balance": _("ledger.report_overall_balance"),
+        "overall_result": _("ledger.report_overall_result"),
         "total_income": _("ledger.report_total_income"),
         "total_expense": _("ledger.report_total_expense"),
         "net_result": _("ledger.report_net_result"),
@@ -2422,12 +2458,29 @@ def _compile_euer_pdf(report: EuerReportResponse, lang: str) -> bytes:
     data = {
         "title": _("ledger.pdf_title"),
         "period": _("ledger.pdf_period", year=report.year),
-        "spheres_enabled": spheres_enabled,
-        "income_items": [_item(c) for c in report.categories if c.kind == LedgerCategoryKind.income],
-        "expense_items": [_item(c) for c in report.categories if c.kind == LedgerCategoryKind.expense],
-        "total_income": f"{report.total_income:.2f} {settings.CURRENCY}",
-        "total_expense": f"{report.total_expense:.2f} {settings.CURRENCY}",
-        "net_result": f"{report.net_result:.2f} {settings.CURRENCY}",
+        "spheres": [
+            {
+                "name": (
+                    _(f"ledger.sphere_{s.sphere.value}") if s.sphere else _("ledger.sphere_none")
+                ) + ":",
+                "items": _items(s.categories),
+                "total_income": _format_euer_amount(s.total_income, lang),
+                "total_expense": _format_euer_amount(s.total_expense, lang),
+                "net_result": _format_euer_amount(s.net_result, lang),
+                "balance_label": _(
+                    "ledger.report_sphere_balance",
+                    sphere=_(f"ledger.sphere_{s.sphere.value}") if s.sphere else _("ledger.sphere_none"),
+                ),
+                "result_label": _(
+                    "ledger.report_sphere_result",
+                    sphere=_(f"ledger.sphere_{s.sphere.value}") if s.sphere else _("ledger.sphere_none"),
+                ),
+            }
+            for s in report.spheres
+        ],
+        "total_income": _format_euer_amount(report.total_income, lang),
+        "total_expense": _format_euer_amount(report.total_expense, lang),
+        "net_result": _format_euer_amount(report.net_result, lang),
         "labels": labels,
     }
 
@@ -2436,72 +2489,6 @@ def _compile_euer_pdf(report: EuerReportResponse, lang: str) -> bytes:
         input=str(_EUER_TYP_PATH),
         sys_inputs={"data": json.dumps(data, ensure_ascii=False)},
         font_paths=font_paths,
-    )
-
-
-def _euer_markdown(report: EuerReportResponse, lang: str) -> str:
-    """The EÜR as Markdown tables (Einnahmen/Ausgaben plus totals), for pasting
-    into meeting minutes. Labels come from the same translator as the PDF."""
-    _ = get_translator(lang)
-    spheres_enabled = settings.LEDGER_SPHERES_ENABLED
-    money = lambda v: f"{v:.2f} {settings.CURRENCY}"  # noqa: E731
-
-    def _cell(text: str) -> str:
-        return text.replace("|", "\\|")
-
-    def _section(title: str, kind: LedgerCategoryKind, total: Decimal) -> list[str]:
-        items = [c for c in report.categories if c.kind == kind]
-        out = [f"## {title}", ""]
-        if not items:
-            return out + [f"_{_('ledger.pdf_empty')}_", ""]
-        header = [_("common.name")] + ([_("ledger.col_sphere")] if spheres_enabled else []) + [_("ledger.col_total")]
-        out.append("| " + " | ".join(header) + " |")
-        out.append("|" + "|".join(["---"] * (len(header) - 1) + ["---:"]) + "|")
-        for c in items:
-            row = [_cell(c.name)]
-            if spheres_enabled:
-                row.append(_(f"ledger.sphere_{c.sphere.value}") if c.sphere else _("ledger.sphere_none"))
-            row.append(money(c.total))
-            out.append("| " + " | ".join(row) + " |")
-        pad = [""] if spheres_enabled else []
-        out.append("| " + " | ".join([f"**{_('ledger.report_total_' + kind.value)}**"] + pad + [f"**{money(total)}**"]) + " |")
-        return out + [""]
-
-    lines = [f"# {_('ledger.pdf_title')} {report.year}", ""]
-    lines += _section(_("ledger.pdf_section_income"), LedgerCategoryKind.income, report.total_income)
-    lines += _section(_("ledger.pdf_section_expense"), LedgerCategoryKind.expense, report.total_expense)
-    lines += [f"**{_('ledger.report_net_result')}: {money(report.net_result)}**", ""]
-    if spheres_enabled and report.categories:
-        sphere_order = [s.value for s in LedgerSphere]
-        groups: dict[Optional[str], list[Decimal]] = {}
-        for c in report.categories:
-            key = c.sphere.value if c.sphere else None
-            g = groups.setdefault(key, [Decimal("0.00"), Decimal("0.00")])
-            g[0 if c.kind == LedgerCategoryKind.income else 1] += c.total
-        lines += [f"## {_('ledger.sphere_summary_title')}", "",
-                  f"| {_('ledger.col_sphere')} | {_('ledger.report_total_income')} | {_('ledger.report_total_expense')} | {_('ledger.report_net_result')} |",
-                  "|---|---:|---:|---:|"]
-        for key in [k for k in sphere_order if k in groups] + ([None] if None in groups else []):
-            inc, exp = groups[key]
-            label = _(f"ledger.sphere_{key}") if key else _("ledger.sphere_none")
-            lines.append(f"| {label} | {money(inc)} | {money(exp)} | {money(inc - exp)} |")
-        lines.append("")
-    lines += [f"_{_('ledger.pdf_disclaimer')}_", ""]
-    return "\n".join(lines)
-
-
-@router.get("/report/euer/markdown", response_class=Response, responses={**HTTP_400})
-def euer_report_markdown(
-    year: int = Query(...),
-    lang: str = Query(default="de"),
-    _viewer: dict = Depends(require_ledger_viewer_user),
-    db: Session = Depends(get_db),
-):
-    report = _compute_euer_report(db, year)
-    return Response(
-        content=_euer_markdown(report, lang),
-        media_type="text/markdown; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="euer_{year}.md"'},
     )
 
 
@@ -2521,6 +2508,84 @@ def euer_report_pdf(
     return Response(
         content=pdf,
         media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/report/euer/markdown", response_class=Response)
+def euer_report_markdown(
+    year: int = Query(...),
+    lang: str = Query(default="de"),
+    _viewer: dict = Depends(require_ledger_viewer_user),
+    db: Session = Depends(get_db),
+):
+    report = _compute_euer_report(db, year)
+    _ = get_translator(lang)
+    labels = {
+        "title": _("ledger.pdf_title"),
+        "period": _("ledger.pdf_period", year=year),
+        "total": _("ledger.report_total"),
+        "booking_type": _("ledger.report_col_booking_type"),
+        "income": _("ledger.report_col_income"),
+        "expense": _("ledger.report_col_expense"),
+    }
+    if not report.categories:
+        return Response(
+            content=f"# {labels['title']}\n\n{labels['period']}\n\n_{_('ledger.pdf_empty')}_\n",
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="euer_{year}.md"'},
+        )
+
+    def _table(
+        title: str,
+        categories: list[EuerCategoryTotal],
+        income: Decimal,
+        expense: Decimal,
+        result: Decimal,
+        balance_label: str,
+        result_label: str,
+    ) -> str:
+        rows = [
+            f"## {title}",
+            "",
+            f"| {labels['booking_type']} | {labels['income']} | {labels['expense']} |",
+            "|---|---:|---:|",
+        ]
+        for category in categories:
+            name = category.name.replace("|", "\\|").replace("\n", " ")
+            category_income = _format_euer_amount(category.total, lang) if category.kind == LedgerCategoryKind.income else ""
+            category_expense = _format_euer_amount(category.total, lang) if category.kind == LedgerCategoryKind.expense else ""
+            rows.append(f"| {name} | {category_income} | {category_expense} |")
+        rows.extend([
+            f"| **{balance_label}** | **{_format_euer_amount(income, lang)}** | **{_format_euer_amount(expense, lang)}** |",
+            f"| **{result_label}** | **{_format_euer_amount(result, lang)}** | |",
+        ])
+        return "\n".join(rows)
+
+    sections = [
+        f"# {labels['title']}",
+        "",
+        labels["period"],
+        "",
+        _table(
+            labels["total"], [], report.total_income, report.total_expense, report.net_result,
+            _("ledger.report_overall_balance"), _("ledger.report_overall_result"),
+        ),
+    ]
+    for sphere in report.spheres:
+        sphere_name = _(f"ledger.sphere_{sphere.sphere.value}") if sphere.sphere else _("ledger.sphere_none")
+        sections.extend([
+            "",
+            _table(
+                sphere_name + ":", sphere.categories, sphere.total_income, sphere.total_expense, sphere.net_result,
+                _("ledger.report_sphere_balance", sphere=sphere_name),
+                _("ledger.report_sphere_result", sphere=sphere_name),
+            ),
+        ])
+    filename = f"euer_{year}.md"
+    return Response(
+        content="\n".join(sections) + "\n",
+        media_type="text/markdown",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 

@@ -480,9 +480,18 @@ class EuerCategoryTotal(BaseModel):
     total: Decimal = Field(examples=[Decimal("1234.56")])
 
 
+class EuerSphereTotal(BaseModel):
+    sphere: Optional[LedgerSphere]
+    categories: list[EuerCategoryTotal]
+    total_income: Decimal
+    total_expense: Decimal
+    net_result: Decimal
+
+
 class EuerReportResponse(BaseModel):
     year: int
     categories: list[EuerCategoryTotal]
+    spheres: list[EuerSphereTotal]
     total_income: Decimal = Field(examples=[Decimal("5000.00")])
     total_expense: Decimal = Field(examples=[Decimal("3200.00")])
     net_result: Decimal = Field(examples=[Decimal("1800.00")])

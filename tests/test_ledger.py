@@ -1416,6 +1416,12 @@ def test_euer_report_signs_are_intuitive(treasurer_client, bank_account, income_
     by_slug = {c["slug"]: Decimal(str(c["total"])) for c in data["categories"]}
     assert by_slug["mitgliedsbeitraege"] == Decimal("50.00")
     assert by_slug["wareneinkauf"] == Decimal("30.00")
+    assert [category["kind"] for category in data["categories"]] == ["income", "expense"]
+    by_sphere = {sphere["sphere"]: sphere for sphere in data["spheres"]}
+    assert Decimal(str(by_sphere["ideell"]["total_income"])) == Decimal("50.00")
+    assert Decimal(str(by_sphere["ideell"]["total_expense"])) == Decimal("0.00")
+    assert Decimal(str(by_sphere["ideell"]["net_result"])) == Decimal("50.00")
+    assert Decimal(str(by_sphere["zweckbetrieb"]["net_result"])) == Decimal("-30.00")
 
 
 def test_euer_report_excludes_other_years(treasurer_client, bank_account, income_category):
@@ -1656,22 +1662,32 @@ def test_config_first_data_year_from_earliest_entry(treasurer_client, db, income
 
 
 def test_euer_report_markdown_export(treasurer_client, bank_account, income_category, expense_category):
-    for cat, bank_amt, cat_amt in ((income_category, "50.00", "-50.00"), (expense_category, "-20.00", "20.00")):
+    for category, bank_amount, category_amount in (
+        (income_category, "50.00", "-50.00"),
+        (expense_category, "-20.00", "20.00"),
+    ):
         treasurer_client.post(
             "/api/v1/ledger/entries",
             json={
-                "entry_date": "2026-03-01", "description": "x",
-                "lines": [{"bank_account_id": bank_account.id, "amount": bank_amt}, {"category_id": cat.id, "amount": cat_amt}],
+                "entry_date": "2026-03-01",
+                "description": "EÜR Markdown test",
+                "lines": [
+                    {"bank_account_id": bank_account.id, "amount": bank_amount},
+                    {"category_id": category.id, "amount": category_amount},
+                ],
             },
         )
     resp = treasurer_client.get("/api/v1/ledger/report/euer/markdown?year=2026&lang=de")
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/markdown")
     body = resp.text
-    assert body.startswith("# Einnahmenüberschussrechnung 2026")
-    assert "## Einnahmen" in body and "## Ausgaben" in body
-    assert "50.00" in body and "20.00" in body and "30.00" in body
-    assert "## Ergebnis je Sphäre" in body
+    assert "01.01.2026 bis 31.12.2026" in body
+    assert "| Buchungsart | Einnahmen | Ausgaben |" in body
+    assert "| **Gesamtsaldo** | **50,00 €** | **20,00 €** |" in body
+    assert "| **Gesamt Gewinn/Verlust** | **30,00 €** | |" in body
+    assert "## Ideeller Bereich:" in body
+    assert "| Mitgliedsbeiträge | 50,00 € |  |" in body
+    assert "| Wareneinkauf |  | 20,00 € |" in body
 
 
 def test_euer_report_markdown_export_empty_year(treasurer_client):
