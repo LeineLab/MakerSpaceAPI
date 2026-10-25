@@ -318,6 +318,25 @@ def test_shared_placeholder_reference_with_same_amount_still_deduped_on_reimport
     assert data["duplicate_count"] == 2
 
 
+def test_placeholder_reference_with_same_amount_on_other_day_is_not_duplicate(treasurer_client, bank_account):
+    """A later payment sharing placeholder reference and amount with an earlier
+    import (e.g. a monthly fee) has a unique content hash and must stay new."""
+    first = (
+        b":20:STARTUMSE\n:25:DE02120300000000202051\n:28C:1/1\n:60F:C260101EUR1000,00\n"
+        b":61:2603010301D25,00NTRFNOTPROVIDED\n:86:166?00Gebuehr Maerz\n"
+        b":62F:C260301EUR975,00\n"
+    )
+    second = (
+        b":20:STARTUMSE\n:25:DE02120300000000202051\n:28C:1/1\n:60F:C260301EUR975,00\n"
+        b":61:2604010401D25,00NTRFNOTPROVIDED\n:86:166?00Gebuehr April\n"
+        b":62F:C260401EUR950,00\n"
+    )
+    assert _upload(treasurer_client, bank_account.id, first).json()["new_count"] == 1
+    data = _upload(treasurer_client, bank_account.id, second).json()
+    assert data["new_count"] == 1
+    assert data["duplicate_count"] == 0
+
+
 # ---------------------------------------------------------------------------
 # GET /ledger/import/lines
 # ---------------------------------------------------------------------------

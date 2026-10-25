@@ -3284,6 +3284,19 @@ def _compute_dedup_hash(bank_account_id: int, booking_date, amount: Decimal, pur
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+# Banks put these constants into the reference field when a payment carried no
+# end-to-end reference, so they identify nothing and must not drive dedup.
+_PLACEHOLDER_BANK_REFERENCES = {"NOTPROVIDED", "NONREF", "NOREF", "NOTAVAILABLE", "NOT PROVIDED"}
+
+
+def _dedup_reference(line) -> Optional[str]:
+    """The bank reference if it can identify one transaction, else None."""
+    ref = (line.bank_reference or "").strip()
+    if not ref or ref.upper() in _PLACEHOLDER_BANK_REFERENCES:
+        return None
+    return ref
+
+
 def _store_import_lines(db: Session, batch: LedgerImportBatch, account_id: int, parsed_lines: list) -> LedgerImportSummary:
     """Dedup + stage a batch of parsed statement lines against one account.
 
@@ -3309,6 +3322,12 @@ def _store_import_lines(db: Session, batch: LedgerImportBatch, account_id: int, 
     between exports, which the pure content hash below wouldn't) without
     collapsing every same-day `NOTPROVIDED` payment into "already seen."
 
+    Placeholder references still collided across days: a later payment with
+    the same amount (a monthly fee, say) shares `NOTPROVIDED` and the amount
+    with an earlier one and was flagged duplicate although its content hash
+    (date, purpose, counterparty) was unique. Placeholders are therefore
+    ignored as references and such lines are deduplicated by content hash only.
+
     Two upfront queries (not one per line) establish how many times each
     reference/hash has already been imported *before* this batch, so the
     per-line loop below is a pure in-memory decision with no risk of an
@@ -3325,7 +3344,7 @@ def _store_import_lines(db: Session, batch: LedgerImportBatch, account_id: int, 
         .all()
     ) if hashes else {}
 
-    ref_keys = {(line.bank_reference, line.amount) for line in parsed_lines if line.bank_reference}
+    ref_keys = {(_dedup_reference(line), line.amount) for line in parsed_lines if _dedup_reference(line)}
     existing_ref_counts: dict[tuple[str, Decimal], int] = {}
     if ref_keys:
         references = {ref for ref, _ in ref_keys}
@@ -3346,8 +3365,8 @@ def _store_import_lines(db: Session, batch: LedgerImportBatch, account_id: int, 
         dedup_hash = _compute_dedup_hash(
             account_id, line.booking_date, line.amount, line.purpose_text, line.counterparty_iban
         )
-        if line.bank_reference:
-            ref_key = (line.bank_reference, line.amount)
+        if _dedup_reference(line):
+            ref_key = (_dedup_reference(line), line.amount)
             seen_so_far = seen_ref_counts.get(ref_key, 0)
             is_duplicate = seen_so_far < existing_ref_counts.get(ref_key, 0)
             seen_ref_counts[ref_key] = seen_so_far + 1
