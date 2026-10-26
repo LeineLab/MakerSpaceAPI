@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     # Currency symbol appended to all monetary amounts (API messages and PDF statements)
     CURRENCY: str = "€"
 
+    # Separators for monetary amounts in documents (PDF, Markdown) and the web UI.
+    # API responses always use plain numbers. Set DECIMAL_SEPARATOR=. and an
+    # empty THOUSANDS_SEPARATOR for English-style or unformatted amounts.
+    DECIMAL_SEPARATOR: str = ","
+    THOUSANDS_SEPARATOR: str = "."
+
     # Require an EÜR-Sphäre (ideell/Vermögensverwaltung/Zweckbetrieb/wirtschaftlicher
     # Geschäftsbetrieb) on every ledger category. Only relevant for gemeinnützige
     # Vereine — disable for commercial installations (e.g. a for-profit FabLab)

@@ -124,7 +124,7 @@
                   <td class="px-4 py-2 font-medium" x-text="a.user_name || a.user_id"></td>
                   <td class="px-4 py-2 text-right font-mono text-xs">
                     <template x-if="editingAuth !== a.user_id">
-                      <span x-text="'€' + Number(a.price_per_login).toFixed(2)"></span>
+                      <span x-text="fmtMoney(a.price_per_login)"></span>
                     </template>
                     <template x-if="editingAuth === a.user_id">
                       <input type="number" step="0.01" min="0" x-model="authEditForm.price_per_login"
@@ -133,7 +133,7 @@
                   </td>
                   <td class="px-4 py-2 text-right font-mono text-xs">
                     <template x-if="editingAuth !== a.user_id">
-                      <span x-text="'€' + Number(a.price_per_minute).toFixed(2)"></span>
+                      <span x-text="fmtMoney(a.price_per_minute)"></span>
                     </template>
                     <template x-if="editingAuth === a.user_id">
                       <input type="number" step="0.01" min="0" x-model="authEditForm.price_per_minute"
@@ -335,7 +335,7 @@
                     </template>
                   </td>
                   <td class="px-4 py-2 text-right tabular-nums text-xs"
-                      x-text="'€' + Number(s.total_cost).toFixed(2)"></td>
+                      x-text="fmtMoney(s.total_cost)"></td>
                 </tr>
               </template>
               <template x-if="loadingSessions">

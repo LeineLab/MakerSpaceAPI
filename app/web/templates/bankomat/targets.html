@@ -34,7 +34,7 @@
     <template x-for="t in targets" :key="t.id">
       <div @click="openStatementModal(t)"
            class="bg-white dark:bg-gray-800 rounded-lg shadow p-5 border-l-4 border-blue-500 cursor-pointer hover:shadow-md transition-shadow">
-        <div class="text-2xl font-bold text-blue-600 dark:text-blue-400" x-text="parseFloat(t.balance).toFixed(2) + ' €'"></div>
+        <div class="text-2xl font-bold text-blue-600 dark:text-blue-400" x-text="fmtMoney(t.balance)"></div>
         <div class="font-medium mt-1" x-text="t.name"></div>
         <div class="text-xs text-gray-400 dark:text-gray-500 font-mono" x-text="t.slug"></div>
         <button @click.stop="openAdjustModal(t)"
@@ -241,7 +241,7 @@
         <p class="text-sm text-gray-600 dark:text-gray-400">{{ _('bankomat.adjust_body') }}</p>
         <div class="flex justify-between text-sm">
           <span class="text-gray-500 dark:text-gray-400">{{ _('bankomat.adjust_book_balance') }}</span>
-          <span class="font-mono" x-text="adjustTarget ? parseFloat(adjustTarget.balance).toFixed(2) + ' €' : ''"></span>
+          <span class="font-mono" x-text="adjustTarget ? fmtMoney(adjustTarget.balance) : ''"></span>
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ _('bankomat.adjust_counted') }}</label>
@@ -475,7 +475,7 @@ function targetList() {
     },
 
     fmt(v) {
-      return parseFloat(v).toFixed(2) + ' €';
+      return fmtMoney(v);
     },
 
     sinceLabel(lastPayout) {
@@ -521,7 +521,7 @@ function targetList() {
     get adjustDifferenceLabel() {
       const d = this.adjustDifference;
       if (isNaN(d)) return '';
-      return (d >= 0 ? '+' : '') + d.toFixed(2) + ' €';
+      return (d >= 0 ? '+' : '') + fmtMoney(d);
     },
 
     async submitAdjust() {

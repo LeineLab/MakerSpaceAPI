@@ -112,6 +112,7 @@ from app.schemas.ledger import (
 )
 from app.services import fints_client, paperless
 from app.services.audit import audit, changes as audit_changes
+from app.services.formatting import format_money
 from app.services.bank_statement import (
     CsvColumnMapping,
     ParsedStatementLine,
@@ -2420,13 +2421,6 @@ def euer_report(
 _EUER_TYP_PATH = Path(__file__).parent.parent.parent.parent / "statements" / "euer.typ"
 
 
-def _format_euer_amount(amount: Decimal, lang: str) -> str:
-    formatted = f"{amount:,.2f}"
-    if lang.startswith("de"):
-        formatted = formatted.replace(",", "\0").replace(".", ",").replace("\0", ".")
-    return f"{formatted} {settings.CURRENCY}"
-
-
 def _compile_euer_pdf(report: EuerReportResponse, lang: str) -> bytes:
     import typst  # optional dependency
 
@@ -2435,8 +2429,8 @@ def _compile_euer_pdf(report: EuerReportResponse, lang: str) -> bytes:
         return [
             {
                 "name": c.name,
-                "income_amount": _format_euer_amount(c.total, lang) if c.kind == LedgerCategoryKind.income else "",
-                "expense_amount": _format_euer_amount(c.total, lang) if c.kind == LedgerCategoryKind.expense else "",
+                "income_amount": format_money(c.total) if c.kind == LedgerCategoryKind.income else "",
+                "expense_amount": format_money(c.total) if c.kind == LedgerCategoryKind.expense else "",
             }
             for c in categories
         ]
@@ -2463,9 +2457,9 @@ def _compile_euer_pdf(report: EuerReportResponse, lang: str) -> bytes:
                     _(f"ledger.sphere_{s.sphere.value}") if s.sphere else _("ledger.sphere_none")
                 ) + ":",
                 "items": _items(s.categories),
-                "total_income": _format_euer_amount(s.total_income, lang),
-                "total_expense": _format_euer_amount(s.total_expense, lang),
-                "net_result": _format_euer_amount(s.net_result, lang),
+                "total_income": format_money(s.total_income),
+                "total_expense": format_money(s.total_expense),
+                "net_result": format_money(s.net_result),
                 "balance_label": _(
                     "ledger.report_sphere_balance",
                     sphere=_(f"ledger.sphere_{s.sphere.value}") if s.sphere else _("ledger.sphere_none"),
@@ -2477,9 +2471,9 @@ def _compile_euer_pdf(report: EuerReportResponse, lang: str) -> bytes:
             }
             for s in report.spheres
         ],
-        "total_income": _format_euer_amount(report.total_income, lang),
-        "total_expense": _format_euer_amount(report.total_expense, lang),
-        "net_result": _format_euer_amount(report.net_result, lang),
+        "total_income": format_money(report.total_income),
+        "total_expense": format_money(report.total_expense),
+        "net_result": format_money(report.net_result),
         "labels": labels,
     }
 
@@ -2552,12 +2546,12 @@ def euer_report_markdown(
         ]
         for category in categories:
             name = category.name.replace("|", "\\|").replace("\n", " ")
-            category_income = _format_euer_amount(category.total, lang) if category.kind == LedgerCategoryKind.income else ""
-            category_expense = _format_euer_amount(category.total, lang) if category.kind == LedgerCategoryKind.expense else ""
+            category_income = format_money(category.total) if category.kind == LedgerCategoryKind.income else ""
+            category_expense = format_money(category.total) if category.kind == LedgerCategoryKind.expense else ""
             rows.append(f"| {name} | {category_income} | {category_expense} |")
         rows.extend([
-            f"| **{balance_label}** | **{_format_euer_amount(income, lang)}** | **{_format_euer_amount(expense, lang)}** |",
-            f"| **{result_label}** | **{_format_euer_amount(result, lang)}** | |",
+            f"| **{balance_label}** | **{format_money(income)}** | **{format_money(expense)}** |",
+            f"| **{result_label}** | **{format_money(result)}** | |",
         ])
         return "\n".join(rows)
 
@@ -2845,12 +2839,12 @@ def _compile_anlagenspiegel_pdf(report: AnlagenspiegelResponse, lang: str) -> by
         return {
             "name": r.name,
             "category_name": r.category.name if r.category else "—",
-            "acquisition_cost": f"{r.acquisition_cost_end_of_year:.2f} {settings.CURRENCY}",
-            "opening_value": f"{r.opening_book_value:.2f} {settings.CURRENCY}",
-            "zugang": f"{r.zugang:.2f} {settings.CURRENCY}",
-            "abgang": f"{r.abgang:.2f} {settings.CURRENCY}",
-            "afa": f"{r.afa:.2f} {settings.CURRENCY}",
-            "closing_value": f"{r.closing_book_value:.2f} {settings.CURRENCY}",
+            "acquisition_cost": format_money(r.acquisition_cost_end_of_year),
+            "opening_value": format_money(r.opening_book_value),
+            "zugang": format_money(r.zugang),
+            "abgang": format_money(r.abgang),
+            "afa": format_money(r.afa),
+            "closing_value": format_money(r.closing_book_value),
         }
 
     def _totals(rows: list[AnlagenspiegelRow]) -> dict:
@@ -2862,7 +2856,7 @@ def _compile_anlagenspiegel_pdf(report: AnlagenspiegelResponse, lang: str) -> by
             "afa": sum((r.afa for r in rows), Decimal("0.00")),
             "closing_value": sum((r.closing_book_value for r in rows), Decimal("0.00")),
         }
-        return {k: f"{v:.2f} {settings.CURRENCY}" for k, v in t.items()}
+        return {k: format_money(v) for k, v in t.items()}
 
     # Rows come sorted by Sphäre; one group (with subtotals) per Sphäre.
     groups = []

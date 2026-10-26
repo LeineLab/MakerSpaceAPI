@@ -22,7 +22,7 @@
       <dd class="font-medium">{{ old_name }}</dd>
       {% endif %}
       <dt class="text-gray-500 dark:text-gray-400">{{ _('users.col_balance') }}</dt>
-      <dd class="font-medium">{{ "%.2f"|format(old_balance|float) }} €</dd>
+      <dd class="font-medium">{{ format_money(old_balance) }}</dd>
       <dt class="text-gray-500 dark:text-gray-400">{{ _('connect.transfer_old_card') }}</dt>
       <dd class="font-mono">{{ old_id }}</dd>
       <dt class="text-gray-500 dark:text-gray-400">{{ _('connect.transfer_new_card') }}</dt>

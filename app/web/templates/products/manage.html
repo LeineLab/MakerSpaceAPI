@@ -63,7 +63,7 @@
             <td class="px-4 py-2 text-gray-500 dark:text-gray-400" x-text="p.category"></td>
             <td class="px-4 py-2 font-medium" x-text="p.name"></td>
             <td class="px-4 py-2 font-mono text-xs text-gray-500 dark:text-gray-400" x-text="p.ean"></td>
-            <td class="px-4 py-2 text-right" x-text="parseFloat(p.price).toFixed(2) + ' €'"></td>
+            <td class="px-4 py-2 text-right" x-text="fmtMoney(p.price)"></td>
             <td class="px-4 py-2 text-right"
                 :class="p.stock <= 0 ? 'text-red-500 dark:text-red-400 font-semibold' : p.stock < 5 ? 'text-yellow-600 dark:text-yellow-400' : ''"
                 x-text="p.stock"></td>

@@ -373,10 +373,10 @@ def test_adjust_modal_computes_difference(admin_page, live_server, _engine):
     card.locator("button:has-text('Write off discrepancy')").click()
     modal = admin_page.locator(".fixed.inset-0:visible").first
     modal.wait_for(state="visible", timeout=3000)
-    # Counting 80 against a book balance of 100 shows a -20.00 difference
+    # Counting 80 against a book balance of 100 shows a -20,00 difference (default decimal separator)
     modal.locator("input[type=number]").fill("80")
     admin_page.wait_for_function(
-        "document.body.textContent.includes('-20.00')", timeout=3000,
+        "document.body.textContent.includes('-20,00')", timeout=3000,
     )
     assert modal.is_visible()
 

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_device, require_admin_user, require_device_or_admin
 from app.services.audit import audit
+from app.services.formatting import format_money
 from app.config import settings
 from app.database import get_db
 from app.models.booking_target import BookingTarget
@@ -116,7 +117,7 @@ def _compile_month_pdf(target: BookingTarget, year: int, month: int, lang: str, 
         {
             "timestamp": tx.created_at.strftime("%d.%m.%Y %H:%M"),
             "description": tx.note or "",
-            "line_amount": f"{tx.amount:.2f} {settings.CURRENCY}",
+            "line_amount": format_money(tx.amount),
         }
         for tx in txs
     ]
@@ -126,10 +127,10 @@ def _compile_month_pdf(target: BookingTarget, year: int, month: int, lang: str, 
         "title": f"{labels['title_prefix']}: {target.name}",
         "period_start": period_start.strftime("%d.%m.%Y"),
         "period_end": period_end.strftime("%d.%m.%Y"),
-        "balance_old": f"{balance_old:.2f} {settings.CURRENCY}",
-        "balance_new": f"{balance_new:.2f} {settings.CURRENCY}",
-        "sum_inflows": f"{sum_inflows:.2f} {settings.CURRENCY}",
-        "sum_outflows": f"{sum_outflows:.2f} {settings.CURRENCY}",
+        "balance_old": format_money(balance_old),
+        "balance_new": format_money(balance_new),
+        "sum_inflows": format_money(sum_inflows),
+        "sum_outflows": format_money(sum_outflows),
         "items": items,
         "labels": labels,
     }
@@ -187,7 +188,7 @@ def _compile_month_pdf_all(year: int, month: int, lang: str, db: Session) -> byt
         items.append({
             "timestamp": tx.created_at.strftime("%d.%m.%Y %H:%M"),
             "description": description,
-            "line_amount": f"{tx.amount:.2f} {settings.CURRENCY}",
+            "line_amount": format_money(tx.amount),
         })
 
     labels = _statement_labels(lang)
@@ -195,10 +196,10 @@ def _compile_month_pdf_all(year: int, month: int, lang: str, db: Session) -> byt
         "title": labels["title_all"],
         "period_start": period_start.strftime("%d.%m.%Y"),
         "period_end": period_end.strftime("%d.%m.%Y"),
-        "balance_old": f"{balance_old:.2f} {settings.CURRENCY}",
-        "balance_new": f"{balance_new:.2f} {settings.CURRENCY}",
-        "sum_inflows": f"{sum_inflows:.2f} {settings.CURRENCY}",
-        "sum_outflows": f"{sum_outflows:.2f} {settings.CURRENCY}",
+        "balance_old": format_money(balance_old),
+        "balance_new": format_money(balance_new),
+        "sum_inflows": format_money(sum_inflows),
+        "sum_outflows": format_money(sum_outflows),
         "items": items,
         "labels": labels,
     }

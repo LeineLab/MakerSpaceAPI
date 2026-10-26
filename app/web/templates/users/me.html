@@ -36,7 +36,7 @@
         <div class="text-right">
           <div class="text-3xl font-bold tabular-nums"
                :class="parseFloat(profile.balance) < 1 ? 'text-red-500 dark:text-red-400' : parseFloat(profile.balance) < 5 ? 'text-yellow-600 dark:text-yellow-400' : 'text-green-600 dark:text-green-400'"
-               x-text="parseFloat(profile.balance).toFixed(2) + ' €'"></div>
+               x-text="fmtMoney(profile.balance)"></div>
           <div class="text-xs text-gray-400 dark:text-gray-500 mt-1">{{ _('me.balance') }}</div>
         </div>
       </div>
@@ -92,7 +92,7 @@
                     </td>
                     <td class="px-4 py-2 text-xs text-gray-400 dark:text-gray-500 text-right"
                         x-text="parseFloat(m.price_per_minute) > 0
-                          ? parseFloat(m.price_per_minute).toFixed(2) + ' €/min'
+                          ? fmtMoney(m.price_per_minute) + '/min'
                           : _FREE_LABEL"></td>
                   </tr>
                 </template>
@@ -169,7 +169,7 @@
                     </template>
                   </td>
                   <td class="px-4 py-2 text-right tabular-nums text-xs"
-                      x-text="parseFloat(s.total_cost).toFixed(2) + ' €'"></td>
+                      x-text="fmtMoney(s.total_cost)"></td>
                 </tr>
               </template>
             </tbody>
@@ -212,7 +212,7 @@
                       x-text="t.note || t.machine_name || '—'"></td>
                   <td class="px-4 py-2 text-right font-medium tabular-nums text-sm"
                       :class="parseFloat(t.amount) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'"
-                      x-text="(parseFloat(t.amount) >= 0 ? '+' : '') + parseFloat(t.amount).toFixed(2) + ' €'"></td>
+                      x-text="(parseFloat(t.amount) >= 0 ? '+' : '') + fmtMoney(t.amount)"></td>
                 </tr>
               </template>
             </tbody>

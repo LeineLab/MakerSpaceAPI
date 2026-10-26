@@ -4715,7 +4715,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
 
     fmtSigned(v) {
       const n = parseFloat(v);
-      return (n >= 0 ? '+' : '') + n.toFixed(2) + ' €';
+      return (n >= 0 ? '+' : '') + fmtMoney(n);
     },
 
     // --- accounts ---
@@ -4891,11 +4891,10 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     },
 
     fmt(v) {
-      return parseFloat(v).toFixed(2) + ' €';
+      return fmtMoney(v);
     },
     fmtEuer(v) {
-      const lang = document.documentElement.lang || 'de';
-      return new Intl.NumberFormat(lang, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v)) + ' €';
+      return fmtMoney(v);
     },
 
     fmtDateTime(iso) {

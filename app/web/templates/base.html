@@ -18,6 +18,18 @@
   </script>
   <script>
     const TZ = {{ TZ | tojson }};
+    const NUMBER_FORMAT = {{ NUMBER_FORMAT | tojson }};
+    // Amount with the configured separators (DECIMAL_SEPARATOR/THOUSANDS_SEPARATOR)
+    // and, unless `currency` is false, the currency symbol. Display only: values
+    // sent to the API or put into form inputs stay plain numbers.
+    function fmtMoney(v, currency) {
+      const n = Number(v);
+      if (!isFinite(n)) return '';
+      const [whole, fraction] = Math.abs(n).toFixed(2).split('.');
+      const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, NUMBER_FORMAT.thousands);
+      const text = (n < 0 && Number(whole + fraction) !== 0 ? '-' : '') + grouped + NUMBER_FORMAT.decimal + fraction;
+      return currency === false ? text : text + ' ' + NUMBER_FORMAT.currency;
+    }
     // Format an ISO timestamp string (UTC, no Z suffix from DB) as a local date.
     function fmtDate(iso) {
       if (!iso) return '';

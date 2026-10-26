@@ -3,6 +3,8 @@ from decimal import Decimal
 
 import pytest
 
+from app.config import settings
+
 from app.models.ledger import (
     BankAccount,
     LedgerCategory,
@@ -1688,6 +1690,25 @@ def test_euer_report_markdown_export(treasurer_client, bank_account, income_cate
     assert "## Ideeller Bereich:" in body
     assert "| Mitgliedsbeiträge | 50,00 € |  |" in body
     assert "| Wareneinkauf |  | 20,00 € |" in body
+
+
+def test_markdown_export_uses_configured_separators(treasurer_client, bank_account, income_category, monkeypatch):
+    treasurer_client.post(
+        "/api/v1/ledger/entries",
+        json={
+            "entry_date": "2026-03-01",
+            "description": "Format test",
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": "1234.50"},
+                {"category_id": income_category.id, "amount": "-1234.50"},
+            ],
+        },
+    )
+    url = "/api/v1/ledger/report/euer/markdown?year=2026&lang=de"
+    assert "1.234,50 €" in treasurer_client.get(url).text
+    monkeypatch.setattr(settings, "DECIMAL_SEPARATOR", ".")
+    monkeypatch.setattr(settings, "THOUSANDS_SEPARATOR", ",")
+    assert "1,234.50 €" in treasurer_client.get(url).text
 
 
 def test_euer_report_markdown_export_empty_year(treasurer_client):
