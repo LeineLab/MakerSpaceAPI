@@ -156,6 +156,17 @@
                 <option value="false">{{ _('ledger.filter_is_reversal_exclude') }}</option>
               </select>
             </div>
+            <div>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ _('ledger.filter_entry_amount') }}</label>
+              <div class="flex gap-2">
+                <input type="number" step="0.01" x-model="filterAmountMin" @change="entriesPage = 1; loadEntries()"
+                       placeholder="{{ _('ledger.filter_amount_min') }}"
+                       class="w-1/2 border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+                <input type="number" step="0.01" x-model="filterAmountMax" @change="entriesPage = 1; loadEntries()"
+                       placeholder="{{ _('ledger.filter_amount_max') }}"
+                       class="w-1/2 border dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+              </div>
+            </div>
             <!-- Custom date range: overrides the Jahr selector rather than
                  composing with it — entriesQueryParams()/
                  entryMatchesCurrentFilters() send date_from/date_to instead
@@ -3282,6 +3293,8 @@ const LEDGER_TAB_QUERY = {
       if (app.filterHasDocument) p.beleg = app.filterHasDocument;
       if (app.filterReceiptMissing) p.belegfehlt = app.filterReceiptMissing;
       if (app.filterIsReversal) p.storno = app.filterIsReversal;
+      if (app.filterAmountMin !== '') p.betrag_von = app.filterAmountMin;
+      if (app.filterAmountMax !== '') p.betrag_bis = app.filterAmountMax;
       if (app.entriesPage > 1) p.seite = app.entriesPage;
       return p;
     },
@@ -3296,6 +3309,8 @@ const LEDGER_TAB_QUERY = {
       if (params.has('beleg')) app.filterHasDocument = params.get('beleg');
       if (params.has('belegfehlt')) app.filterReceiptMissing = params.get('belegfehlt');
       if (params.has('storno')) app.filterIsReversal = params.get('storno');
+      if (params.has('betrag_von')) app.filterAmountMin = params.get('betrag_von');
+      if (params.has('betrag_bis')) app.filterAmountMax = params.get('betrag_bis');
       if (params.has('seite')) app.entriesPage = parseInt(params.get('seite'), 10) || 1;
     },
   },
@@ -3375,6 +3390,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
     filterHasDocument: '',
     filterReceiptMissing: '',
     filterIsReversal: '',
+    filterAmountMin: '',
+    filterAmountMax: '',
     filterDateFrom: '',
     filterDateTo: '',
     showBankPurposeText: false,
@@ -3885,6 +3902,8 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       if (this.filterIsReversal === 'true' || this.filterIsReversal === 'false') {
         params += `&is_reversal=${this.filterIsReversal}`;
       }
+      if (this.filterAmountMin !== '' && this.filterAmountMin != null) params += `&amount_min=${this.filterAmountMin}`;
+      if (this.filterAmountMax !== '' && this.filterAmountMax != null) params += `&amount_max=${this.filterAmountMax}`;
       return params;
     },
 
@@ -3902,6 +3921,7 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       if (this.filterHasDocument) n++;
       if (this.filterReceiptMissing) n++;
       if (this.filterIsReversal) n++;
+      if (this.filterAmountMin !== '' || this.filterAmountMax !== '') n++;
       if (this.filterDateFrom || this.filterDateTo) n++;
       return n;
     },
@@ -4007,6 +4027,13 @@ function ledgerApp(userIsTreasurer, userCanWriteAuditReports) {
       if (this.filterHasDocument === 'false' && hasDoc) return false;
       if (this.filterIsReversal === 'true' && !entry.reverses_entry_id) return false;
       if (this.filterIsReversal === 'false' && entry.reverses_entry_id) return false;
+      if (this.filterAmountMin !== '' || this.filterAmountMax !== '') {
+        // Same rule as the server: some bank-account line within the range.
+        const min = this.filterAmountMin === '' ? -Infinity : parseFloat(this.filterAmountMin);
+        const max = this.filterAmountMax === '' ? Infinity : parseFloat(this.filterAmountMax);
+        const inRange = entry.lines.some(l => l.bank_account_id && parseFloat(l.amount) >= min && parseFloat(l.amount) <= max);
+        if (!inRange) return false;
+      }
       return true;
     },
 

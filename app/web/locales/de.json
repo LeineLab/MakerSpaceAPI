@@ -753,6 +753,7 @@
   "ledger.filter_is_reversal_all": "Alle",
   "ledger.filter_is_reversal_only": "Nur Stornos",
   "ledger.filter_is_reversal_exclude": "Ohne Stornos",
+  "ledger.filter_entry_amount": "Betrag auf dem Konto (mit Vorzeichen, Eingang +, Ausgang −)",
   "ledger.filter_amount_min": "Betrag von",
   "ledger.filter_amount_max": "Betrag bis",
   "ledger.filter_asset_status_active": "Aktiv",

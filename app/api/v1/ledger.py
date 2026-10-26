@@ -893,6 +893,8 @@ def _virtual_cash_in_entries(
     bank_account_id: Optional[int],
     category_id: Optional[int],
     q: Optional[str],
+    amount_min: Optional[Decimal] = None,
+    amount_max: Optional[Decimal] = None,
 ) -> list[LedgerEntryResponse]:
     """Bankomat cash-in events (topups, target topups, cash adjustments) as
     read-only pseudo entries, so the Buchungen list shows the same events the
@@ -935,6 +937,13 @@ def _virtual_cash_in_entries(
             continue
         if category_id is not None and category.id != category_id:
             continue
+        if amount_min is not None or amount_max is not None:
+            # The amount filter looks at bank-account lines; the cash-in's
+            # bank line is the Kassenbestand clearing account (+amount).
+            if not has_cash_line:
+                continue
+            if (amount_min is not None and tx.amount < amount_min) or (amount_max is not None and tx.amount > amount_max):
+                continue
         description = f"Kasse {target.name}: {_CASH_IN_TYPE_LABELS[tx.type]}"
         if tx.note:
             description += f" ({tx.note})"
@@ -968,6 +977,8 @@ def list_entries(
     bank_account_id: Optional[int] = Query(default=None),
     category_id: Optional[int] = Query(default=None),
     paperless_document_id: Optional[str] = Query(default=None),
+    amount_min: Optional[Decimal] = Query(default=None),
+    amount_max: Optional[Decimal] = Query(default=None),
     q: Optional[str] = Query(default=None),
     reviewed: Optional[bool] = Query(default=None),
     has_note: Optional[bool] = Query(default=None),
@@ -1025,6 +1036,12 @@ def list_entries(
     Paperless document nor a receipt marker (`true`) or on everything else
     (`false`); Stornos and reversed entries never count as missing.
 
+    `amount_min`/`amount_max` (signed, inclusive) match entries with a
+    bank-account line whose amount lies in that range: positive for money
+    coming in, negative for money going out. Category lines are not
+    considered, since they carry the opposite sign. Both bounds apply to the
+    same line, so an entry matches only if one line satisfies them together.
+
     `ids` (repeatable, e.g. `?ids=1&ids=2`) fetches one or more specific
     entries directly by id — the Kassen tab's payout-detail expansion uses
     this to show a booked payout's full entry detail (same shape/fields as
@@ -1062,6 +1079,13 @@ def list_entries(
         query = query.filter(LedgerEntry.id.in_(
             db.query(LedgerEntryLine.entry_id).filter(LedgerEntryLine.category_id == category_id)
         ))
+    if amount_min is not None or amount_max is not None:
+        amount_lines = db.query(LedgerEntryLine.entry_id).filter(LedgerEntryLine.bank_account_id.isnot(None))
+        if amount_min is not None:
+            amount_lines = amount_lines.filter(LedgerEntryLine.amount >= amount_min)
+        if amount_max is not None:
+            amount_lines = amount_lines.filter(LedgerEntryLine.amount <= amount_max)
+        query = query.filter(LedgerEntry.id.in_(amount_lines))
     if paperless_document_id is not None:
         # paperless_document_id lives per line (migration 0016) — used by
         # the frontend to warn (not block — partial payments against the
@@ -1124,6 +1148,7 @@ def list_entries(
         _virtual_cash_in_entries(
             db, year=year, date_from=date_from, date_to=date_to,
             bank_account_id=bank_account_id, category_id=category_id, q=q,
+            amount_min=amount_min, amount_max=amount_max,
         )
         if include_virtual else []
     )

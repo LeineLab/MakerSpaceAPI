@@ -1715,3 +1715,29 @@ def test_euer_report_markdown_export_empty_year(treasurer_client):
     resp = treasurer_client.get("/api/v1/ledger/report/euer/markdown?year=2026")
     assert resp.status_code == 200
     assert "Keine Buchungen." in resp.text
+
+
+def test_list_entries_filter_by_signed_amount(treasurer_client, bank_account, income_category, expense_category):
+    for category, bank_amount, category_amount, desc in (
+        (income_category, "50.00", "-50.00", "in"),
+        (expense_category, "-20.00", "20.00", "out"),
+        (expense_category, "-80.00", "80.00", "big out"),
+    ):
+        treasurer_client.post("/api/v1/ledger/entries", json={
+            "entry_date": "2026-03-01", "description": desc,
+            "lines": [
+                {"bank_account_id": bank_account.id, "amount": bank_amount},
+                {"category_id": category.id, "amount": category_amount},
+            ],
+        })
+
+    def descriptions(query):
+        resp = treasurer_client.get(f"/api/v1/ledger/entries?year=2026&{query}")
+        assert resp.status_code == 200
+        return sorted(e["description"] for e in resp.json())
+
+    assert descriptions("amount_min=0") == ["in"]
+    assert descriptions("amount_max=0") == ["big out", "out"]
+    assert descriptions("amount_min=-30&amount_max=-10") == ["out"]
+    assert descriptions("amount_min=-100&amount_max=-50") == ["big out"]
+    assert descriptions("amount_min=100") == []

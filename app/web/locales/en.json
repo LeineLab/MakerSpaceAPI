@@ -753,6 +753,7 @@
   "ledger.filter_is_reversal_all": "All",
   "ledger.filter_is_reversal_only": "Reversals only",
   "ledger.filter_is_reversal_exclude": "Excluding reversals",
+  "ledger.filter_entry_amount": "Account amount (signed, incoming +, outgoing −)",
   "ledger.filter_amount_min": "Amount from",
   "ledger.filter_amount_max": "Amount to",
   "ledger.filter_asset_status_active": "Active",
