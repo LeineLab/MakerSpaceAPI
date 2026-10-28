@@ -778,13 +778,13 @@ def update_category(
 # --- Receipt completeness (expense bookings without a linked document) ---
 
 def _expense_entry_ids(db: Session, *, without_document: bool):
-    """Entry ids with at least one expense-category line of positive amount
-    (a cost); with `without_document` only those where such a line has no
-    linked Paperless document."""
-    q = (
-        db.query(LedgerEntryLine.entry_id)
-        .join(LedgerCategory, LedgerEntryLine.category_id == LedgerCategory.id)
-        .filter(LedgerCategory.kind == LedgerCategoryKind.expense, LedgerEntryLine.amount > 0)
+    """Entry ids with at least one category line of positive amount, i.e. money
+    leaving a bank account for a category. The category kind does not matter:
+    a refund booked against an income category (e.g. a returned membership
+    fee) is an outflow and needs a receipt as well. With `without_document`
+    only those where such a line has no linked Paperless document."""
+    q = db.query(LedgerEntryLine.entry_id).filter(
+        LedgerEntryLine.category_id.isnot(None), LedgerEntryLine.amount > 0
     )
     if without_document:
         q = q.filter(LedgerEntryLine.paperless_document_id.is_(None))

@@ -102,6 +102,13 @@ def test_auditor_may_mark_receipt_plain_viewer_may_not(auditor_client, treasurer
     assert client.put(f"/api/v1/ledger/entries/{e['id']}/receipt", json={"status": "not_required"}).status_code in (401, 403)
 
 
+def test_refund_booked_against_income_category_needs_receipt(treasurer_client, bank_account, income_category):
+    refund = _book(treasurer_client, bank_account, income_category, "15.00", expense=True)
+    income = _book(treasurer_client, bank_account, income_category, "15.00", expense=False)
+    assert _entry(treasurer_client, refund["id"])["receipt_missing"] is True
+    assert _entry(treasurer_client, income["id"])["receipt_missing"] is False
+
+
 # --- stats ---
 
 def test_period_stats(treasurer_client, auditor_client, bank_account, expense_category):
