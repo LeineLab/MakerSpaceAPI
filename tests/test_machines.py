@@ -69,3 +69,15 @@ def test_authorize_requires_device_token(client, machine_token, test_user):
         f"/api/v1/machines/{machine.slug}/authorize/{test_user.id}",
     )
     assert resp.status_code == 401
+
+
+def test_authorization_write_responses_include_user_name(admin_client, machine_token, test_user):
+    _, machine = machine_token
+    base = f"/api/v1/machines/{machine.slug}/authorizations"
+    r = admin_client.post(base, json={"nfc_id": test_user.id, "price_per_login": "1.00",
+                                      "price_per_minute": "0.10", "booking_interval": 30})
+    assert r.status_code == 201
+    assert r.json()["user_name"] == test_user.name
+    r = admin_client.put(f"{base}/{test_user.id}", json={"price_per_minute": "0.20"})
+    assert r.status_code == 200
+    assert r.json()["user_name"] == test_user.name
