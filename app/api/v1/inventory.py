@@ -391,4 +391,9 @@ def shopping_list(db: Session = Depends(get_db)):
 
 @router.get("/summary", response_model=InventorySummary)
 def summary(db: Session = Depends(get_db)):
-    return InventorySummary(attention_items=len(_attention_rows(db)))
+    # Counted per position, not per row, to match the grouped shopping list.
+    positions = {
+        (r.item.name.strip().lower(), (r.item.unit or "").strip().lower())
+        for r in _attention_rows(db)
+    }
+    return InventorySummary(attention_items=len(positions))

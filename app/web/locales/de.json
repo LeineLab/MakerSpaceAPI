@@ -1008,5 +1008,8 @@
   "ledger.ar_label_receipts_comment": "Anmerkung zu Belegen und Kontoauszügen",
   "ledger.ar_label_next_audit": "Weiterer Prüfungstermin",
   "ledger.ar_label_place": "Ort",
-  "ledger.ar_label_remarks": "Besondere Bemerkungen"
+  "ledger.ar_label_remarks": "Besondere Bemerkungen",
+  "inventory.col_order_total": "Insgesamt nachkaufen",
+  "inventory.col_locations": "Standorte",
+  "inventory.order_part": "fehlt {n}"
 }

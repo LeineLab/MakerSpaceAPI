@@ -282,3 +282,12 @@ def test_inventory_page_renders_for_any_user_and_passes_slug(c, location):
     assert f'const INITIAL_SLUG = "{location["slug"]}";' in resp.text
     assert 'x-data="inventoryApp(INITIAL_SLUG)"' in resp.text
     assert c.get("/inventory").status_code == 200
+
+
+def test_summary_counts_a_position_once_across_locations(c, location):
+    other = c.post(f"{API}/locations", json={"name": "Erste-Hilfe-Kasten Gemeinschaftsraum"}).json()
+    _item(c, location, name="Steriler Wundverband", unit="Stk.", target_qty=5, quantity=1)
+    _item(c, other, name="steriler wundverband ", unit="stk.", target_qty=5, quantity=2)
+    _item(c, other, name="Pflaster", target_qty=3, quantity=0)
+    assert len(c.get(f"{API}/shopping-list").json()) == 3
+    assert c.get(f"{API}/summary").json() == {"attention_items": 2}

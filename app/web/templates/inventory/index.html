@@ -23,7 +23,7 @@
             :class="tab === 'shopping' ? 'border-blue-600 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'"
             class="px-4 py-2 text-sm font-medium border-b-2 -mb-px">
       {{ _('inventory.tab_shopping') }}
-      <span x-show="shoppingRows.length > 0" x-text="shoppingRows.length"
+      <span x-show="shoppingGroups.length > 0" x-text="shoppingGroups.length"
             class="ml-1 bg-amber-500 text-white text-xs rounded-full px-1.5 py-0.5"></span>
     </button>
   </div>
@@ -140,35 +140,38 @@
     </template>
   </div>
 
-  <!-- Shopping list -->
+  <!-- Shopping list: one row per position, summed over all locations -->
   <div x-show="tab === 'shopping'" class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
     <p class="px-5 py-3 text-xs text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">{{ _('inventory.shopping_hint') }}</p>
     <div class="overflow-x-auto">
       <table class="w-full text-sm">
         <thead class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 uppercase text-xs">
           <tr>
-            <th class="px-4 py-3 text-left">{{ _('inventory.col_location') }}</th>
             <th class="px-4 py-3 text-left">{{ _('inventory.col_name') }}</th>
-            <th class="px-4 py-3 text-right">{{ _('inventory.col_target') }}</th>
-            <th class="px-4 py-3 text-right">{{ _('inventory.col_actual') }}</th>
+            <th class="px-4 py-3 text-right">{{ _('inventory.col_order_total') }}</th>
             <th class="px-4 py-3 text-right">{{ _('inventory.col_expired') }}</th>
             <th class="px-4 py-3 text-right">{{ _('inventory.col_expiring') }}</th>
-            <th class="px-4 py-3 text-right">{{ _('inventory.col_order') }}</th>
+            <th class="px-4 py-3 text-left">{{ _('inventory.col_locations') }}</th>
           </tr>
         </thead>
         <tbody>
-          <tr x-show="shoppingRows.length === 0">
-            <td colspan="7" class="px-4 py-8 text-center text-gray-400 dark:text-gray-500">{{ _('inventory.shopping_empty') }}</td>
+          <tr x-show="shoppingGroups.length === 0">
+            <td colspan="5" class="px-4 py-8 text-center text-gray-400 dark:text-gray-500">{{ _('inventory.shopping_empty') }}</td>
           </tr>
-          <template x-for="r in shoppingRows" :key="r.it.id">
-            <tr class="border-t dark:border-gray-700">
-              <td class="px-4 py-2"><a :href="'/inventory/' + r.loc.slug" class="text-blue-600 dark:text-blue-400 hover:underline" x-text="r.loc.name"></a></td>
-              <td class="px-4 py-2" x-text="r.it.name + (r.it.unit ? ' (' + r.it.unit + ')' : '')"></td>
-              <td class="px-4 py-2 text-right" x-text="r.it.target_qty"></td>
-              <td class="px-4 py-2 text-right" x-text="r.it.on_hand"></td>
-              <td class="px-4 py-2 text-right" x-text="r.it.expired_qty || ''"></td>
-              <td class="px-4 py-2 text-right" x-text="r.it.expiring_soon_qty || ''"></td>
-              <td class="px-4 py-2 text-right font-semibold" x-text="r.it.to_order || ''"></td>
+          <template x-for="g in shoppingGroups" :key="g.key">
+            <tr class="border-t dark:border-gray-700 align-top">
+              <td class="px-4 py-2" x-text="g.name + (g.unit ? ' (' + g.unit + ')' : '')"></td>
+              <td class="px-4 py-2 text-right font-semibold" x-text="g.to_order || ''"></td>
+              <td class="px-4 py-2 text-right" x-text="g.expired || ''"></td>
+              <td class="px-4 py-2 text-right" x-text="g.expiring || ''"></td>
+              <td class="px-4 py-2">
+                <template x-for="e in g.entries" :key="e.it.id">
+                  <div>
+                    <a :href="'/inventory/' + e.loc.slug" class="text-blue-600 dark:text-blue-400 hover:underline" x-text="e.loc.name"></a>
+                    <span class="text-gray-500 dark:text-gray-400" x-text="entryDetail(e.it)"></span>
+                  </div>
+                </template>
+              </td>
             </tr>
           </template>
         </tbody>
@@ -269,6 +272,7 @@
 <script>
 const INITIAL_SLUG = {{ initial_slug | tojson }};
 const NO_DATE_L = {{ _('inventory.batch_no_date') | tojson }};
+const ORDER_PART_L = {{ _('inventory.order_part') | tojson }};
 const STATUS_OK_L = {{ _('inventory.status_ok') | tojson }};
 const STATUS_SHORT_L = {{ _('inventory.status_short') | tojson }};
 const STATUS_EXPIRED_L = {{ _('inventory.status_expired') | tojson }};
@@ -329,15 +333,35 @@ function inventoryApp(initialSlug) {
     itemsOf(locationId) { return this.items.filter(i => i.location_id === locationId); },
     needsAttention(i) { return i.to_order > 0 || i.expired_qty > 0; },
     attentionCount(locationId) { return this.itemsOf(locationId).filter(i => this.needsAttention(i)).length; },
-    get shoppingRows() {
+    // One group per position (same name and unit, case-insensitive) across all
+    // locations, so two first-aid kits missing the same dressing show up once
+    // with the summed amount and a per-location breakdown.
+    get shoppingGroups() {
       const byId = Object.fromEntries(this.locations.map(l => [l.id, l]));
-      return this.items
-        .filter(i => this.needsAttention(i) && byId[i.location_id])
-        .map(i => ({ it: i, loc: byId[i.location_id] }))
-        .sort((a, b) => a.loc.name.localeCompare(b.loc.name) || a.it.name.localeCompare(b.it.name));
+      const groups = new Map();
+      for (const it of this.items) {
+        if (!this.needsAttention(it) || !byId[it.location_id]) continue;
+        const key = it.name.trim().toLowerCase() + '|' + (it.unit || '').trim().toLowerCase();
+        let g = groups.get(key);
+        if (!g) { g = { key, name: it.name.trim(), unit: it.unit, to_order: 0, expired: 0, expiring: 0, entries: [] }; groups.set(key, g); }
+        g.to_order += it.to_order;
+        g.expired += it.expired_qty;
+        g.expiring += it.expiring_soon_qty;
+        g.entries.push({ it, loc: byId[it.location_id] });
+      }
+      const list = [...groups.values()];
+      list.forEach(g => g.entries.sort((a, b) => a.loc.name.localeCompare(b.loc.name)));
+      return list.sort((a, b) => a.name.localeCompare(b.name));
+    },
+    entryDetail(it) {
+      const parts = [];
+      if (it.to_order > 0) parts.push(ORDER_PART_L.replace('{n}', it.to_order));
+      if (it.expired_qty > 0) parts.push(STATUS_EXPIRED_L.replace('{n}', it.expired_qty));
+      if (it.expiring_soon_qty > 0) parts.push(STATUS_EXPIRING_L.replace('{n}', it.expiring_soon_qty));
+      return parts.length ? '(' + parts.join(', ') + ')' : '';
     },
     publishAttention() {
-      window.dispatchEvent(new CustomEvent('inventory-attention', { detail: this.items.filter(i => this.needsAttention(i)).length }));
+      window.dispatchEvent(new CustomEvent('inventory-attention', { detail: this.shoppingGroups.length }));
     },
 
     // --- display helpers ---

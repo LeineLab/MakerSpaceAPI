@@ -105,4 +105,4 @@ class InventoryShoppingRow(BaseModel):
 
 
 class InventorySummary(BaseModel):
-    attention_items: int  # items on the shopping list
+    attention_items: int  # distinct positions on the shopping list

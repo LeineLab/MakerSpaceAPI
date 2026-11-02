@@ -1008,5 +1008,8 @@
   "ledger.ar_label_receipts_comment": "Comment on receipts and statements",
   "ledger.ar_label_next_audit": "Further audit date",
   "ledger.ar_label_place": "Place",
-  "ledger.ar_label_remarks": "Special remarks"
+  "ledger.ar_label_remarks": "Special remarks",
+  "inventory.col_order_total": "Total to buy",
+  "inventory.col_locations": "Locations",
+  "inventory.order_part": "{n} missing"
 }
