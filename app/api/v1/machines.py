@@ -10,7 +10,7 @@ from app.auth.deps import get_current_device, require_admin_user, require_machin
 from app.auth.oidc import is_admin
 from app.auth.tokens import generate_api_token
 from app.database import get_db
-from app.models.machine import Machine, MachineAdmin, MachineAuthorization, MachineTerms, terms_accepted
+from app.models.machine import Machine, MachineAdmin, MachineAuthorization, MachineTerms, MachineTermsAcceptance, terms_accepted
 from app.models.session import MachineSession
 from app.services.audit import audit
 from app.models.transaction import Transaction
@@ -375,8 +375,23 @@ def publish_terms(
 
 # --- Authorizations ---
 
-def _authorization_response(a: MachineAuthorization) -> dict:
-    return {**AuthorizationResponse.model_validate(a).model_dump(), "user_name": a.user.name}
+def _accepted_terms_versions(db: Session, machine_id: int) -> dict[int, int]:
+    """Newest accepted terms version per user for one machine."""
+    rows = (
+        db.query(MachineTermsAcceptance.user_id, func.max(MachineTermsAcceptance.version))
+        .filter(MachineTermsAcceptance.machine_id == machine_id)
+        .group_by(MachineTermsAcceptance.user_id)
+        .all()
+    )
+    return {user_id: version for user_id, version in rows}
+
+
+def _authorization_response(a: MachineAuthorization, accepted: dict[int, int]) -> dict:
+    return {
+        **AuthorizationResponse.model_validate(a).model_dump(),
+        "user_name": a.user.name,
+        "terms_accepted_version": accepted.get(a.user_id),
+    }
 
 
 @router.get("/{slug}/authorizations", response_model=list[AuthorizationResponse], responses={**HTTP_404})
@@ -386,7 +401,8 @@ def list_authorizations(
     db: Session = Depends(get_db),
 ):
     _, machine = require_machine_manager(slug, request, db)
-    return [_authorization_response(a) for a in machine.authorizations]
+    accepted = _accepted_terms_versions(db, machine.id)
+    return [_authorization_response(a, accepted) for a in machine.authorizations]
 
 
 @router.post("/{slug}/authorizations", response_model=AuthorizationResponse, status_code=201, responses={**HTTP_404, **HTTP_409})
@@ -426,7 +442,7 @@ def grant_authorization(
           booking_interval=body.booking_interval)
     db.commit()
     db.refresh(auth)
-    return _authorization_response(auth)
+    return _authorization_response(auth, _accepted_terms_versions(db, machine.id))
 
 
 @router.put("/{slug}/authorizations/{nfc_id}", response_model=AuthorizationResponse, responses={**HTTP_404})
@@ -464,7 +480,7 @@ def update_authorization(
         audit(db, user_info.get("sub"), "machine.authorization_updated", "machine", slug, nfc_id=nfc_id, **changes)
     db.commit()
     db.refresh(auth)
-    return _authorization_response(auth)
+    return _authorization_response(auth, _accepted_terms_versions(db, machine.id))
 
 
 @router.delete("/{slug}/authorizations/{nfc_id}", response_model=MessageResponse, responses={**HTTP_404})

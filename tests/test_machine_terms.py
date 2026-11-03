@@ -127,3 +127,23 @@ def test_machine_health_endpoint(client, authorized, test_user):
     _session(client, token, test_user.id)
     assert client.get("/api/health/machines/test-machine").json()["open_session_overdue_seconds"] == 0
     assert client.get("/api/health/machines/nope").status_code == 404
+
+
+def test_authorization_list_shows_accepted_terms_version(client, admin_client, authorized, test_user, db):
+    test_user.oidc_sub = "test-admin-sub"
+    db.commit()
+
+    def version():
+        return admin_client.get("/api/v1/machines/test-machine/authorizations").json()[0]["terms_accepted_version"]
+
+    assert version() is None
+    admin_client.post("/api/v1/machines/test-machine/terms", json={"text": "v1"})
+    assert version() is None
+    admin_client.post("/api/v1/users/me/machines/test-machine/terms/accept", json={"version": 1})
+    assert version() == 1
+    admin_client.post("/api/v1/machines/test-machine/terms", json={"text": "v2"})
+    assert version() == 1  # older than current
+    admin_client.post("/api/v1/users/me/machines/test-machine/terms/accept", json={"version": 2})
+    assert version() == 2
+    r = admin_client.put(f"/api/v1/machines/test-machine/authorizations/{test_user.id}", json={"price_per_minute": "0.30"})
+    assert r.json()["terms_accepted_version"] == 2

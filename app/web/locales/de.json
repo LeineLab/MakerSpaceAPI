@@ -1011,5 +1011,7 @@
   "ledger.ar_label_remarks": "Besondere Bemerkungen",
   "inventory.col_order_total": "Insgesamt nachkaufen",
   "inventory.col_locations": "Standorte",
-  "inventory.order_part": "fehlt {n}"
+  "inventory.order_part": "fehlt {n}",
+  "machines.auth_terms": "Vereinb.",
+  "machines.auth_terms_none": "Aktuelle Nutzungsvereinbarung noch nicht akzeptiert"
 }

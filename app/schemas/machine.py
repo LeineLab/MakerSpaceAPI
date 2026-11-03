@@ -78,6 +78,7 @@ class AuthorizationResponse(BaseModel):
     booking_interval: int
     granted_by: Optional[str]
     granted_at: datetime
+    terms_accepted_version: Optional[int] = None  # newest terms version this user accepted, None if none
 
     model_config = ConfigDict(from_attributes=True)
 

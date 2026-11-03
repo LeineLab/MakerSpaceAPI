@@ -1011,5 +1011,7 @@
   "ledger.ar_label_remarks": "Special remarks",
   "inventory.col_order_total": "Total to buy",
   "inventory.col_locations": "Locations",
-  "inventory.order_part": "{n} missing"
+  "inventory.order_part": "{n} missing",
+  "machines.auth_terms": "Terms",
+  "machines.auth_terms_none": "Current terms of use not accepted yet"
 }

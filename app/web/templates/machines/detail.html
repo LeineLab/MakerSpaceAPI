@@ -112,12 +112,13 @@
                 <th class="px-4 py-2 text-right cursor-pointer select-none hover:text-gray-900" @click="toggleAuthSort('price_per_minute')">{{ _('machines.auth_per_minute') }} <span class="text-gray-400 dark:text-gray-500" x-text="authSortIndicator('price_per_minute')"></span></th>
                 <th class="px-4 py-2 text-right cursor-pointer select-none hover:text-gray-900" @click="toggleAuthSort('booking_interval')">{{ _('machines.auth_interval') }} <span class="text-gray-400 dark:text-gray-500" x-text="authSortIndicator('booking_interval')"></span></th>
                 <th class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleAuthSort('granted_by')">{{ _('machines.auth_granted_by') }} <span class="text-gray-400 dark:text-gray-500" x-text="authSortIndicator('granted_by')"></span></th>
+                <th x-show="terms.current" class="px-4 py-2 text-left cursor-pointer select-none hover:text-gray-900" @click="toggleAuthSort('terms_accepted_version')">{{ _('machines.auth_terms') }} <span class="text-gray-400 dark:text-gray-500" x-text="authSortIndicator('terms_accepted_version')"></span></th>
                 <th class="px-4 py-2 text-right">{{ _('machines.col_actions') }}</th>
               </tr>
             </thead>
             <tbody>
               <template x-if="authorizations.length === 0">
-                <tr><td colspan="6" class="px-4 py-6 text-center text-gray-400 dark:text-gray-500">{{ _('machines.no_auths') }}</td></tr>
+                <tr><td colspan="7" class="px-4 py-6 text-center text-gray-400 dark:text-gray-500">{{ _('machines.no_auths') }}</td></tr>
               </template>
               <template x-for="a in sortedAuthorizations" :key="a.user_id">
                 <tr class="border-t dark:border-gray-700">
@@ -150,6 +151,14 @@
                     </template>
                   </td>
                   <td class="px-4 py-2 text-xs text-gray-500 dark:text-gray-400" x-text="a.granted_by || '—'"></td>
+                  <td x-show="terms.current" class="px-4 py-2 text-xs whitespace-nowrap">
+                    <span class="rounded px-1.5 py-0.5"
+                          :class="terms.current && a.terms_accepted_version === terms.current.version
+                            ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300'
+                            : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'"
+                          :title="a.terms_accepted_version ? '' : AUTH_TERMS_NONE_L"
+                          x-text="a.terms_accepted_version ? 'v' + a.terms_accepted_version : '—'"></span>
+                  </td>
                   <td class="px-4 py-2 text-right whitespace-nowrap">
                     <template x-if="editingAuth !== a.user_id">
                       <span>
@@ -355,6 +364,7 @@
 </div>
 
 <script>
+const AUTH_TERMS_NONE_L = {{ _('machines.auth_terms_none') | tojson }};
 const OOO_ACTIVE_L = {{ _('machines.ooo_active') | tojson }};
 const OOO_OK_L = {{ _('machines.ooo_ok') | tojson }};
 const OOO_SET_L = {{ _('machines.ooo_set') | tojson }};
@@ -460,6 +470,7 @@ function machineDetail(slug, isAdmin) {
       const dir = this.authSortDir === 'asc' ? 1 : -1;
       return [...this.authorizations].sort((a, b) => {
         let va = a[key], vb = b[key];
+        if (key === 'terms_accepted_version') { va = va || 0; vb = vb || 0; }
         if (key === 'price_per_login' || key === 'price_per_minute' || key === 'booking_interval') {
           va = parseFloat(va); vb = parseFloat(vb);
         }
